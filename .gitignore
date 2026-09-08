@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.vercel/
+
+# Environment / secrets — NEVER commit
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+vercel-env-paste.txt
+
+# Local database (SQLite dev fallback)
+server/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Logs / OS noise
+*.log
+npm-debug.log*
+.DS_Store

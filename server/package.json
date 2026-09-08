@@ -1,0 +1,11 @@
+{
+  "name": "vertoc-agro-server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "seed": "node seed.js",
+    "mcp:stdio": "node mcp-stdio.js"
+  }
+}

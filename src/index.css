@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens, recovered verbatim from the original build.
+ * Colours are stored as bare HSL channels so Tailwind can compose them
+ * with opacity modifiers (e.g. bg-primary/80).
+ */
+@layer base {
+  :root {
+    --radius: 1.25rem;
+
+    --background: 40 33% 97%;
+    --foreground: 220 60% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 60% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 60% 12%;
+    --primary: 220 100% 15%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 40 25% 94%;
+    --secondary-foreground: 220 100% 15%;
+    --muted: 40 20% 94%;
+    --muted-foreground: 220 10% 45%;
+    --accent: 88 55% 48%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 40 15% 90%;
+    --input: 40 15% 90%;
+    --ring: 220 100% 15%;
+
+    --success: 88 55% 48%;
+    --warning: 38 90% 50%;
+    --info: 200 80% 45%;
+
+    /* Photo scrim. Deliberately NOT --primary: the dark palette turns
+       primary into a light blue, which washes out images used behind text. */
+    --scrim: 220 100% 15%;
+    --scrim-foreground: 0 0% 100%;
+
+    --gradient-primary: linear-gradient(135deg, #001a4d 0%, #0d2f73 100%);
+    --gradient-card: linear-gradient(135deg, #001a4d 0%, #7fbe37 100%);
+    --gradient-background: linear-gradient(180deg, #faf8f5 0%, #f4f1ec 100%);
+    --shadow-card: 0 4px 20px #001a4d0f;
+    --shadow-hover: 0 8px 30px #001a4d1a;
+  }
+
+  .dark {
+    --background: 220 40% 6%;
+    --foreground: 40 33% 97%;
+    --card: 220 35% 10%;
+    --card-foreground: 40 33% 97%;
+    --popover: 220 35% 10%;
+    --popover-foreground: 40 33% 97%;
+    --primary: 220 60% 55%;
+    --primary-foreground: 220 40% 6%;
+    --secondary: 220 20% 14%;
+    --secondary-foreground: 40 33% 97%;
+    --muted: 220 20% 14%;
+    --muted-foreground: 220 15% 60%;
+    --accent: 88 50% 55%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 20% 18%;
+    --input: 220 20% 18%;
+    --ring: 88 50% 55%;
+
+    /* Kept dark so hero/CTA imagery stays legible in dark mode. */
+    --scrim: 220 70% 9%;
+    --scrim-foreground: 0 0% 100%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
