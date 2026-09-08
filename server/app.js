@@ -11,18 +11,7 @@
  * The MCP endpoint can create, edit and delete content, so it is protected by
  * a bearer token. Set VERTOC_MCP_TOKEN before exposing this to the internet.
  */
-import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-// Load server/.env before anything reads process.env — the store driver is
-// selected at import time, so this has to happen first.
-const here = dirname(fileURLToPath(import.meta.url))
-const envPath = join(here, '.env')
-if (existsSync(envPath)) {
-  process.loadEnvFile(envPath)
-}
-
+import './load-env.js'
 import express from 'express'
 import cors from 'cors'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'

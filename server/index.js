@@ -3,6 +3,7 @@
  *
  * Vercel never runs this file — it imports the app through api/index.js.
  */
+import './load-env.js'
 import app from './app.js'
 import { driver } from './store/index.js'
 

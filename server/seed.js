@@ -9,13 +9,7 @@
  *
  * Safe to re-run: existing slugs are updated rather than duplicated.
  */
-import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const envPath = join(dirname(fileURLToPath(import.meta.url)), '.env')
-if (existsSync(envPath)) process.loadEnvFile(envPath)
-
+import './load-env.js'
 import { products, posts } from './seed-data.js'
 import * as content from './content.js'
 import { driver } from './store/index.js'
