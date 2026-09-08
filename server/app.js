@@ -12,6 +12,7 @@
  * a bearer token. Set VERTOC_MCP_TOKEN before exposing this to the internet.
  */
 import './load-env.js'
+import { timingSafeEqual } from 'node:crypto'
 import express from 'express'
 import cors from 'cors'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -34,7 +35,17 @@ if (PROD && !process.env.TURNSTILE_SECRET_KEY) {
 }
 
 const app = express()
-app.use(cors())
+app.disable('x-powered-by')
+
+// The site and its API share an origin, and the MCP client (claude.ai) calls
+// server-to-server, so no cross-origin browser access is needed in production.
+// Only the Vite dev server needs it. ALLOWED_ORIGINS can extend the list.
+const devOrigins = PROD ? [] : ['http://localhost:5173', 'http://127.0.0.1:5173']
+const allowed = new Set([...devOrigins, ...(process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean)])
+app.use(cors({
+  origin: (origin, cb) => cb(null, !origin || allowed.has(origin)),
+  methods: ['GET', 'POST', 'OPTIONS'],
+}))
 app.use(express.json({ limit: '2mb' }))
 
 /* ------------------------------------------------------ public read API */
@@ -49,7 +60,8 @@ const send = async (res, fn) => {
     }
     res.json(data)
   } catch (e) {
-    res.status(400).json({ error: e.message })
+    console.error('[api]', e.message)
+    res.status(500).json({ error: 'Something went wrong on our side.' })
   }
 }
 
@@ -118,7 +130,8 @@ app.post('/api/enquiries', async (req, res) => {
     })
     res.status(201).json({ ok: true, id: saved.id })
   } catch (e) {
-    res.status(400).json({ error: e.message })
+    console.error('[enquiries]', e.message)
+    res.status(500).json({ error: 'Could not save your message. Please try again.' })
   }
 })
 
@@ -127,7 +140,12 @@ app.post('/api/enquiries', async (req, res) => {
 function authorised(req) {
   if (!TOKEN) return true // local dev: no token configured
   const h = req.get('authorization') || ''
-  return h.startsWith('Bearer ') && h.slice(7) === TOKEN
+  if (!h.startsWith('Bearer ')) return false
+  // Constant-time compare so response timing can't leak how many leading
+  // bytes of a guessed token were correct.
+  const given = Buffer.from(h.slice(7))
+  const want = Buffer.from(TOKEN)
+  return given.length === want.length && timingSafeEqual(given, want)
 }
 
 app.all('/mcp', async (req, res) => {
