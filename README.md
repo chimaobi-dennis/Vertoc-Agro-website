@@ -121,6 +121,35 @@ RLS is enabled on all three tables by the migration. The policies allow the
 public `anon` key to read *published* products and posts only, and to read no
 enquiries at all — so even a leaked anon key cannot expose customer details.
 
+## Security
+
+Hardened after a live audit of the public repo and Vercel deployment. What is
+in place, and why:
+
+- **Secrets never ship.** `service_role`, the Turnstile secret and the MCP
+  token exist only in `server/.env` (local) and Vercel's environment. Nothing
+  secret is in git history or the served bundle — the only key in the bundle
+  is the Turnstile *site* key, which is public by design.
+- **MCP write endpoint** is bearer-token gated, compared with
+  `crypto.timingSafeEqual` so response timing cannot leak partial matches.
+- **CORS is an allowlist**, not `*`. Same-origin needs nothing; the Vite dev
+  server is allowed in development; `ALLOWED_ORIGINS` extends it if ever needed.
+- **Internal errors are not returned to clients.** They are logged server-side
+  and a generic message is sent, so database schema details cannot leak.
+- **Headers** (`vercel.json`): `frame-ancestors 'self'` + `X-Frame-Options`
+  against clickjacking, `X-Content-Type-Options: nosniff`, a strict
+  `Referrer-Policy`, `Permissions-Policy` denying device APIs, and
+  `Cache-Control: no-store` on `/api` and `/mcp`. `X-Powered-By` is disabled.
+- **Row Level Security** is enabled on all tables; the public `anon` key can
+  read published content only and cannot read enquiries at all.
+- **Dependencies:** `qs` is overridden to a patched version — Express pins a
+  vulnerable range that `npm audit fix` will not cross on its own.
+
+**Recommended follow-up:** a full `Content-Security-Policy` with `script-src`.
+It is deliberately not set yet, because `index.html` carries an inline theme
+script and Turnstile injects its own; a strict policy must be tested against
+both before it is safe to deploy.
+
 ## Spam protection (Cloudflare Turnstile)
 
 The original site used a canvas captcha generated and checked in the browser,
