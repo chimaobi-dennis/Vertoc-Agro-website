@@ -1,7 +1,8 @@
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Calendar, Clock } from 'lucide-react'
 import { useApi } from '../lib/api'
-import { Loading, ErrorState } from '../components/PageState'
+import { ErrorState } from '../components/PageState'
+import { BlogPostSkeleton } from '../components/Skeleton'
 
 const fmtDate = iso =>
   new Date(iso + 'T00:00:00').toLocaleDateString('en-US', {
@@ -31,7 +32,7 @@ export default function BlogPost() {
   const { slug } = useParams()
   const { data: post, error, loading } = useApi(`/posts/${slug}`, [slug])
 
-  if (loading) return <main className="flex-grow"><Loading label="Loading post…" /></main>
+  if (loading) return <main className="flex-grow"><BlogPostSkeleton /></main>
   if (error) return <main><ErrorState error={error} /></main>
   if (!post) return null
 

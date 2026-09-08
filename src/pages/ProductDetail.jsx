@@ -3,7 +3,8 @@ import {
   ArrowRight, CircleCheckBig, FileCheck, MapPin, Package, ShieldCheck, TrendingUp,
 } from 'lucide-react'
 import { useApi } from '../lib/api'
-import { Loading, ErrorState } from '../components/PageState'
+import { ErrorState } from '../components/PageState'
+import { ProductDetailSkeleton } from '../components/Skeleton'
 
 function DetailRow({ icon: Icon, label, value }) {
   if (!value) return null
@@ -47,7 +48,7 @@ export default function ProductDetail() {
   const { data: product, error, loading } = useApi(`/products/${slug}`, [slug])
   const { data: all } = useApi('/products')
 
-  if (loading) return <main className="flex-grow"><Loading label="Loading product…" /></main>
+  if (loading) return <main className="flex-grow"><ProductDetailSkeleton /></main>
   if (error) return <main><ErrorState error={error} /></main>
   if (!product) return null
 

@@ -1,12 +1,4 @@
-/* Shared loading / empty / error states for the API-backed pages. */
-export function Loading({ label = 'Loading…' }) {
-  return (
-    <div className="py-24 text-center text-muted-foreground" role="status" aria-live="polite">
-      {label}
-    </div>
-  )
-}
-
+/* Shared empty / error states for the API-backed pages. */
 export function ErrorState({ error }) {
   return (
     <div className="py-24 text-center">

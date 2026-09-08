@@ -10,7 +10,7 @@ const QUOTE_FIELDS = {
 
 export default function Quote() {
   const { field, setToken, submit, status, error } = useEnquiryForm('quote', QUOTE_FIELDS)
-  const { data: products } = useApi('/products')
+  const { data: products, loading: productsLoading } = useApi('/products')
 
   return (
     <main className="flex-grow">
@@ -93,8 +93,8 @@ export default function Quote() {
       </div>
       <div>
         <label className="text-sm font-medium text-foreground mb-1 block">Commodity *</label>
-        <select required className="flex h-9 w-full rounded-md border border-input bg-transparent py-1 text-base transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm px-2" {...field('commodity')}>
-          <option value="">Select a commodity</option>
+        <select required disabled={productsLoading} className={`flex h-9 w-full rounded-md border border-input bg-transparent py-1 text-base transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm px-2${productsLoading ? ' animate-pulse' : ''}`} {...field('commodity')}>
+          <option value="">{productsLoading ? 'Loading commodities…' : 'Select a commodity'}</option>
           {(products || []).map(p => (
             <option key={p.slug} value={p.name}>{p.name}</option>
           ))}

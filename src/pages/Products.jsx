@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useApi } from '../lib/api'
 import ProductCard from '../components/ProductCard'
-import { Loading, ErrorState, Empty } from '../components/PageState'
+import { ErrorState, Empty } from '../components/PageState'
+import { CardGridSkeleton, ProductCardSkeleton } from '../components/Skeleton'
 
 const FILTERS = ['All Products', 'Agro Commodities', 'Solid Minerals']
 const matches = (product, filter) =>
@@ -75,7 +76,13 @@ export default function Products() {
             ))}
           </div>
 
-          {loading && <Loading label="Loading products…" />}
+          {loading && (
+            <CardGridSkeleton
+              card={ProductCardSkeleton}
+              gridClassName="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12"
+              label="Loading products"
+            />
+          )}
           {error && <ErrorState error={error} />}
           {!loading && !error && !visible.length && (
             <Empty label={`No products in ${filter} yet.`} />

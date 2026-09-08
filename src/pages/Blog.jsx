@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
 import { Calendar, Clock, Tag } from 'lucide-react'
 import { useApi } from '../lib/api'
-import { Loading, ErrorState, Empty } from '../components/PageState'
+import { ErrorState, Empty } from '../components/PageState'
+import { CardGridSkeleton, BlogCardSkeleton } from '../components/Skeleton'
 
 const fmtDate = iso =>
   new Date(iso + 'T00:00:00').toLocaleDateString('en-US', {
@@ -26,7 +27,13 @@ export default function Blog() {
             </p>
           </div>
 
-          {loading && <Loading label="Loading posts…" />}
+          {loading && (
+            <CardGridSkeleton
+              card={BlogCardSkeleton}
+              gridClassName="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              label="Loading posts"
+            />
+          )}
           {error && <ErrorState error={error} />}
           {!loading && !error && !posts?.length && <Empty label="No posts published yet." />}
 
