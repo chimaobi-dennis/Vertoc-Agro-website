@@ -96,12 +96,12 @@ const exposing = fn => async (...a) => {
 }
 
 mountContent('products', 'product', {
-  list: content.listProducts, get: content.getProduct,
+  list: content.listProducts, get: k => content.getProduct(k, { status: 'all' }),
   create: exposing(content.createProduct), update: exposing(content.updateProduct), remove: content.deleteProduct,
 }, PERMISSIONS.products)
 
 mountContent('posts', 'post', {
-  list: content.listPosts, get: content.getPost,
+  list: content.listPosts, get: k => content.getPost(k, { status: 'all' }),
   create: exposing(content.createPost), update: exposing(content.updatePost), remove: content.deletePost,
 }, PERMISSIONS.posts)
 

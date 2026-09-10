@@ -47,15 +47,18 @@ export async function listProducts({ status = 'published', limit = 100, offset =
   return unwrap(await q, 'listProducts') ?? []
 }
 
-export async function getProduct(slugOrId) {
-  const rows = unwrap(await byIdOrSlug(supabase.from('products').select('*'), slugOrId).limit(1), 'getProduct')
+/** Public callers see published rows only; pass { status: 'all' } for admin/MCP. */
+export async function getProduct(slugOrId, { status = 'published' } = {}) {
+  let q = byIdOrSlug(supabase.from('products').select('*'), slugOrId)
+  if (status !== 'all') q = q.eq('status', status)
+  const rows = unwrap(await q.limit(1), 'getProduct')
   return rows?.[0] ?? null
 }
 
 export async function createProduct(input) {
   if (!input?.name) throw new Error('name is required')
   const slug = slugify(input.slug || input.name)
-  if (await getProduct(slug)) throw new Error(`a product with slug "${slug}" already exists`)
+  if (await getProduct(slug, { status: 'all' })) throw new Error(`a product with slug "${slug}" already exists`)
 
   const row = {
     slug,
@@ -88,7 +91,7 @@ const PRODUCT_PATCHABLE = [
 ]
 
 export async function updateProduct(slugOrId, patch) {
-  const existing = await getProduct(slugOrId)
+  const existing = await getProduct(slugOrId, { status: 'all' })
   if (!existing) throw new Error(`no product found for "${slugOrId}"`)
 
   const row = {}
@@ -104,7 +107,7 @@ export async function updateProduct(slugOrId, patch) {
 }
 
 export async function deleteProduct(slugOrId) {
-  const existing = await getProduct(slugOrId)
+  const existing = await getProduct(slugOrId, { status: 'all' })
   if (!existing) throw new Error(`no product found for "${slugOrId}"`)
   unwrap(await supabase.from('products').delete().eq('id', existing.id), 'deleteProduct')
   return { deleted: true, slug: existing.slug, name: existing.name }
@@ -121,15 +124,17 @@ export async function listPosts({ status = 'published', limit = 100, offset = 0 
   return unwrap(await q, 'listPosts') ?? []
 }
 
-export async function getPost(slugOrId) {
-  const rows = unwrap(await byIdOrSlug(supabase.from('posts').select('*'), slugOrId).limit(1), 'getPost')
+export async function getPost(slugOrId, { status = 'published' } = {}) {
+  let q = byIdOrSlug(supabase.from('posts').select('*'), slugOrId)
+  if (status !== 'all') q = q.eq('status', status)
+  const rows = unwrap(await q.limit(1), 'getPost')
   return rows?.[0] ?? null
 }
 
 export async function createPost(input) {
   if (!input?.title) throw new Error('title is required')
   const slug = slugify(input.slug || input.title)
-  if (await getPost(slug)) throw new Error(`a post with slug "${slug}" already exists`)
+  if (await getPost(slug, { status: 'all' })) throw new Error(`a post with slug "${slug}" already exists`)
 
   const row = {
     slug,
@@ -152,7 +157,7 @@ const POST_PATCHABLE = [
 ]
 
 export async function updatePost(slugOrId, patch) {
-  const existing = await getPost(slugOrId)
+  const existing = await getPost(slugOrId, { status: 'all' })
   if (!existing) throw new Error(`no post found for "${slugOrId}"`)
 
   const row = {}
@@ -167,7 +172,7 @@ export async function updatePost(slugOrId, patch) {
 }
 
 export async function deletePost(slugOrId) {
-  const existing = await getPost(slugOrId)
+  const existing = await getPost(slugOrId, { status: 'all' })
   if (!existing) throw new Error(`no post found for "${slugOrId}"`)
   unwrap(await supabase.from('posts').delete().eq('id', existing.id), 'deletePost')
   return { deleted: true, slug: existing.slug, title: existing.title }

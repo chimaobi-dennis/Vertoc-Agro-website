@@ -70,8 +70,8 @@ export function buildServer() {
     title: 'Get a product',
     description: 'Fetch one product by slug or id, with all of its detail fields.',
     inputSchema: { slug: z.string().describe('Product slug or numeric id') },
-  }, run(a => {
-    const p = content.getProduct(a.slug)
+  }, run(async a => {
+    const p = await content.getProduct(a.slug, { status: 'all' })
     if (!p) throw new Error(`no product found for "${a.slug}"`)
     return p
   }))
@@ -86,13 +86,13 @@ export function buildServer() {
     title: 'Update a product',
     description: 'Change fields on an existing product. Only pass what should change.',
     inputSchema: { slug: z.string().describe('Slug or id of the product to update'), ...Object.fromEntries(Object.entries(productShape).map(([k, v]) => [k, v.optional()])) },
-  }, run(async ({ slug, ...patch }) => { const before = await content.getProduct(slug); const after = await content.updateProduct(slug, patch); await audit({ actor: MCP_ACTOR, action: 'update', entity: 'product', entityId: after.slug, before, after }); return after }))
+  }, run(async ({ slug, ...patch }) => { const before = await content.getProduct(slug, { status: 'all' }); const after = await content.updateProduct(slug, patch); await audit({ actor: MCP_ACTOR, action: 'update', entity: 'product', entityId: after.slug, before, after }); return after }))
 
   server.registerTool('delete_product', {
     title: 'Delete a product',
     description: 'Permanently remove a product from the site.',
     inputSchema: { slug: z.string().describe('Slug or id of the product to delete') },
-  }, run(async a => { const before = await content.getProduct(a.slug); const r = await content.deleteProduct(a.slug); await audit({ actor: MCP_ACTOR, action: 'delete', entity: 'product', entityId: r.slug, before }); return r }))
+  }, run(async a => { const before = await content.getProduct(a.slug, { status: 'all' }); const r = await content.deleteProduct(a.slug); await audit({ actor: MCP_ACTOR, action: 'delete', entity: 'product', entityId: r.slug, before }); return r }))
 
   /* --------------------------------------------------------------- blog */
 
@@ -109,8 +109,8 @@ export function buildServer() {
     title: 'Get a blog post',
     description: 'Fetch one blog post by slug or id, including its full body.',
     inputSchema: { slug: z.string().describe('Post slug or numeric id') },
-  }, run(a => {
-    const p = content.getPost(a.slug)
+  }, run(async a => {
+    const p = await content.getPost(a.slug, { status: 'all' })
     if (!p) throw new Error(`no post found for "${a.slug}"`)
     return p
   }))
@@ -125,13 +125,13 @@ export function buildServer() {
     title: 'Update a blog post',
     description: 'Change fields on an existing post. Only pass what should change.',
     inputSchema: { slug: z.string().describe('Slug or id of the post to update'), ...Object.fromEntries(Object.entries(postShape).map(([k, v]) => [k, v.optional()])) },
-  }, run(async ({ slug, ...patch }) => { const before = await content.getPost(slug); const after = await content.updatePost(slug, patch); await audit({ actor: MCP_ACTOR, action: 'update', entity: 'post', entityId: after.slug, before, after }); return after }))
+  }, run(async ({ slug, ...patch }) => { const before = await content.getPost(slug, { status: 'all' }); const after = await content.updatePost(slug, patch); await audit({ actor: MCP_ACTOR, action: 'update', entity: 'post', entityId: after.slug, before, after }); return after }))
 
   server.registerTool('delete_post', {
     title: 'Delete a blog post',
     description: 'Permanently remove a blog post from the site.',
     inputSchema: { slug: z.string().describe('Slug or id of the post to delete') },
-  }, run(async a => { const before = await content.getPost(a.slug); const r = await content.deletePost(a.slug); await audit({ actor: MCP_ACTOR, action: 'delete', entity: 'post', entityId: r.slug, before }); return r }))
+  }, run(async a => { const before = await content.getPost(a.slug, { status: 'all' }); const r = await content.deletePost(a.slug); await audit({ actor: MCP_ACTOR, action: 'delete', entity: 'post', entityId: r.slug, before }); return r }))
 
   /* ---------------------------------------------------------- enquiries */
 
@@ -149,8 +149,8 @@ export function buildServer() {
     title: 'Get an enquiry',
     description: 'Fetch one enquiry by its numeric id.',
     inputSchema: { id: z.number().describe('Enquiry id') },
-  }, run(a => {
-    const e = content.getEnquiry(a.id)
+  }, run(async a => {
+    const e = await content.getEnquiry(a.id)
     if (!e) throw new Error(`no enquiry found with id ${a.id}`)
     return e
   }))

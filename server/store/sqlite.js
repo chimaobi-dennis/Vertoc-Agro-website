@@ -39,17 +39,17 @@ export async function listProducts({ status = 'published', limit = 100, offset =
     .map(parseProduct)
 }
 
-export async function getProduct(slugOrId) {
+export async function getProduct(slugOrId, { status = 'published' } = {}) {
   const row = db
-    .prepare('SELECT * FROM products WHERE slug = ? OR id = ?')
-    .get(String(slugOrId), Number(slugOrId) || -1)
+    .prepare("SELECT * FROM products WHERE (slug = ? OR id = ?) AND (? = 'all' OR status = ?)")
+    .get(String(slugOrId), Number(slugOrId) || -1, status, status)
   return parseProduct(row)
 }
 
 export async function createProduct(input) {
   if (!input?.name) throw new Error('name is required')
   const slug = slugify(input.slug || input.name)
-  if (await getProduct(slug)) throw new Error(`a product with slug "${slug}" already exists`)
+  if (await getProduct(slug, { status: 'all' })) throw new Error(`a product with slug "${slug}" already exists`)
 
   const cols = ['slug', ...PRODUCT_FIELDS, ...JSON_FIELDS]
   const vals = [
@@ -77,7 +77,7 @@ export async function createProduct(input) {
 }
 
 export async function updateProduct(slugOrId, patch) {
-  const existing = await getProduct(slugOrId)
+  const existing = await getProduct(slugOrId, { status: 'all' })
   if (!existing) throw new Error(`no product found for "${slugOrId}"`)
 
   const sets = [], args = []
@@ -99,7 +99,7 @@ export async function updateProduct(slugOrId, patch) {
 }
 
 export async function deleteProduct(slugOrId) {
-  const existing = await getProduct(slugOrId)
+  const existing = await getProduct(slugOrId, { status: 'all' })
   if (!existing) throw new Error(`no product found for "${slugOrId}"`)
   db.prepare('DELETE FROM products WHERE id = ?').run(existing.id)
   return { deleted: true, slug: existing.slug, name: existing.name }
@@ -115,16 +115,16 @@ export async function listPosts({ status = 'published', limit = 100, offset = 0 
     .all(...args, limit, offset)
 }
 
-export async function getPost(slugOrId) {
+export async function getPost(slugOrId, { status = 'published' } = {}) {
   return db
-    .prepare('SELECT * FROM posts WHERE slug = ? OR id = ?')
-    .get(String(slugOrId), Number(slugOrId) || -1) ?? null
+    .prepare("SELECT * FROM posts WHERE (slug = ? OR id = ?) AND (? = 'all' OR status = ?)")
+    .get(String(slugOrId), Number(slugOrId) || -1, status, status) ?? null
 }
 
 export async function createPost(input) {
   if (!input?.title) throw new Error('title is required')
   const slug = slugify(input.slug || input.title)
-  if (await getPost(slug)) throw new Error(`a post with slug "${slug}" already exists`)
+  if (await getPost(slug, { status: 'all' })) throw new Error(`a post with slug "${slug}" already exists`)
 
   const cols = ['slug', ...POST_FIELDS]
   const vals = [
@@ -146,7 +146,7 @@ export async function createPost(input) {
 }
 
 export async function updatePost(slugOrId, patch) {
-  const existing = await getPost(slugOrId)
+  const existing = await getPost(slugOrId, { status: 'all' })
   if (!existing) throw new Error(`no post found for "${slugOrId}"`)
 
   const sets = [], args = []
@@ -163,7 +163,7 @@ export async function updatePost(slugOrId, patch) {
 }
 
 export async function deletePost(slugOrId) {
-  const existing = await getPost(slugOrId)
+  const existing = await getPost(slugOrId, { status: 'all' })
   if (!existing) throw new Error(`no post found for "${slugOrId}"`)
   db.prepare('DELETE FROM posts WHERE id = ?').run(existing.id)
   return { deleted: true, slug: existing.slug, title: existing.title }
