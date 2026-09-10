@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import Home from './pages/Home'
@@ -13,9 +14,16 @@ import Contact from './pages/Contact'
 import Quote from './pages/Quote'
 import NotFound from './pages/NotFound'
 
+// Code-split: public visitors never download the admin panel.
+const AdminApp = lazy(() => import('./admin/AdminApp'))
+
 export default function App() {
   return (
     <Routes>
+      <Route
+        path="/admin/*"
+        element={<Suspense fallback={<div className="min-h-screen bg-background" />}><AdminApp /></Suspense>}
+      />
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
         <Route path="/about" element={<About />} />

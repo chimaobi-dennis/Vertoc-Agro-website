@@ -19,6 +19,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { buildServer } from './mcp.js'
 import * as content from './content.js'
 import { verifyTurnstile } from './verify-turnstile.js'
+import adminRouter from './admin-routes.js'
 import { driver } from './store/index.js'
 
 const PORT = process.env.PORT || 8787
@@ -46,7 +47,12 @@ app.use(cors({
   origin: (origin, cb) => cb(null, !origin || allowed.has(origin)),
   methods: ['GET', 'POST', 'OPTIONS'],
 }))
-app.use(express.json({ limit: '2mb' }))
+// The image upload route parses its own (larger) body; skip it here so the
+// 2 MB global limit doesn't reject uploads before they reach it.
+app.use(express.json({
+  limit: '2mb',
+  type: req => req.path !== '/api/admin/upload' && /json/i.test(req.get('content-type') || ''),
+}))
 
 /* ------------------------------------------------------ public read API */
 
@@ -74,6 +80,10 @@ app.get('/api/posts', (req, res) =>
   send(res, () => content.listPosts({ status: req.query.status || 'published' })))
 app.get('/api/posts/:slug', (req, res) =>
   send(res, () => content.getPost(req.params.slug)))
+
+/* ----------------------------------------------------------- admin API */
+
+app.use('/api/admin', adminRouter)
 
 /* --------------------------------------------------- enquiry submission */
 

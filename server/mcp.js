@@ -9,6 +9,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import * as content from './content.js'
+import { audit, MCP_ACTOR } from './audit.js'
 
 const ok = data => ({ content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] })
 const fail = err => ({
@@ -79,19 +80,19 @@ export function buildServer() {
     title: 'Create a product',
     description: 'Add a new commodity product. Only name is required.',
     inputSchema: productShape,
-  }, run(a => content.createProduct(a)))
+  }, run(async a => { const after = await content.createProduct(a); await audit({ actor: MCP_ACTOR, action: 'create', entity: 'product', entityId: after.slug, after }); return after }))
 
   server.registerTool('update_product', {
     title: 'Update a product',
     description: 'Change fields on an existing product. Only pass what should change.',
     inputSchema: { slug: z.string().describe('Slug or id of the product to update'), ...Object.fromEntries(Object.entries(productShape).map(([k, v]) => [k, v.optional()])) },
-  }, run(({ slug, ...patch }) => content.updateProduct(slug, patch)))
+  }, run(async ({ slug, ...patch }) => { const before = await content.getProduct(slug); const after = await content.updateProduct(slug, patch); await audit({ actor: MCP_ACTOR, action: 'update', entity: 'product', entityId: after.slug, before, after }); return after }))
 
   server.registerTool('delete_product', {
     title: 'Delete a product',
     description: 'Permanently remove a product from the site.',
     inputSchema: { slug: z.string().describe('Slug or id of the product to delete') },
-  }, run(a => content.deleteProduct(a.slug)))
+  }, run(async a => { const before = await content.getProduct(a.slug); const r = await content.deleteProduct(a.slug); await audit({ actor: MCP_ACTOR, action: 'delete', entity: 'product', entityId: r.slug, before }); return r }))
 
   /* --------------------------------------------------------------- blog */
 
@@ -118,19 +119,19 @@ export function buildServer() {
     title: 'Create a blog post',
     description: 'Publish a new blog post. Only title is required.',
     inputSchema: postShape,
-  }, run(a => content.createPost(a)))
+  }, run(async a => { const after = await content.createPost(a); await audit({ actor: MCP_ACTOR, action: 'create', entity: 'post', entityId: after.slug, after }); return after }))
 
   server.registerTool('update_post', {
     title: 'Update a blog post',
     description: 'Change fields on an existing post. Only pass what should change.',
     inputSchema: { slug: z.string().describe('Slug or id of the post to update'), ...Object.fromEntries(Object.entries(postShape).map(([k, v]) => [k, v.optional()])) },
-  }, run(({ slug, ...patch }) => content.updatePost(slug, patch)))
+  }, run(async ({ slug, ...patch }) => { const before = await content.getPost(slug); const after = await content.updatePost(slug, patch); await audit({ actor: MCP_ACTOR, action: 'update', entity: 'post', entityId: after.slug, before, after }); return after }))
 
   server.registerTool('delete_post', {
     title: 'Delete a blog post',
     description: 'Permanently remove a blog post from the site.',
     inputSchema: { slug: z.string().describe('Slug or id of the post to delete') },
-  }, run(a => content.deletePost(a.slug)))
+  }, run(async a => { const before = await content.getPost(a.slug); const r = await content.deletePost(a.slug); await audit({ actor: MCP_ACTOR, action: 'delete', entity: 'post', entityId: r.slug, before }); return r }))
 
   /* ---------------------------------------------------------- enquiries */
 
@@ -161,7 +162,7 @@ export function buildServer() {
       id: z.number().describe('Enquiry id'),
       status: z.enum(['new', 'read', 'archived']),
     },
-  }, run(a => content.updateEnquiryStatus(a.id, a.status)))
+  }, run(async a => { const before = await content.getEnquiry(a.id); const after = await content.updateEnquiryStatus(a.id, a.status); await audit({ actor: MCP_ACTOR, action: 'update', entity: 'enquiry', entityId: a.id, before, after }); return after }))
 
   return server
 }

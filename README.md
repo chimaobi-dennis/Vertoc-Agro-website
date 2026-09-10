@@ -121,6 +121,68 @@ RLS is enabled on all three tables by the migration. The policies allow the
 public `anon` key to read *published* products and posts only, and to read no
 enquiries at all — so even a leaked anon key cannot expose customer details.
 
+## Admin panel
+
+Lives at `/admin`, code-split so public visitors never download it. Accounts
+are **invite-only** — there is no signup page.
+
+### Roles
+
+| Role | Can manage |
+|---|---|
+| `admin` | everything, including users and the audit log |
+| `editor` | products and blog posts |
+| `sales` | clients, quotes and email (Phase 2–3) |
+
+Roles are checked **server-side on every request**, re-read from the profile
+each time — changing someone's role or deactivating them takes effect on their
+very next request, with no re-login. The frontend only hides menus.
+
+### Setup (once)
+
+1. **Run `server/migrations/002_admin.sql`** in the Supabase SQL editor
+   (profiles, roles, audit log, media bucket).
+2. **Anon key → frontend.** Supabase → Settings → API → `anon` `public` key,
+   into `.env` as `VITE_SUPABASE_ANON_KEY`. This key is public by design and
+   is only used to sign in; all data still goes through the backend.
+3. **Auth URLs.** Supabase → Authentication → URL Configuration:
+   - Site URL: your deployed origin, e.g. `https://vertoc-agro.vercel.app`
+   - Redirect URLs: add `<origin>/admin/set-password` for every origin you
+     use (production and `http://localhost:5173`). Invite links land there.
+4. **`ADMIN_URL`** in `server/.env` / Vercel: the same origin, used to build
+   invite links.
+5. **First admin** — from your machine, so the password never leaves it:
+
+   ```bash
+   node server/create-admin.js you@example.com 'a-strong-password' 'Your Name'
+   ```
+
+   Every further user is invited from the panel (Users → Invite).
+
+> Invite emails go through Supabase's built-in mailer, which is rate-limited
+> to a few per hour — fine for a small team. Phase 3 switches it to Resend.
+
+### Guards worth knowing
+
+- You cannot remove your own admin access, and the last active admin cannot
+  be demoted or deactivated — so the panel can never lock everyone out.
+- Every change — by a person in the panel or by Claude through MCP — writes
+  an audit row with before/after. Admins see it under Audit log.
+- Images upload to the `media` storage bucket via the backend (8 MB cap,
+  images only); nothing writes to storage from the browser.
+
+### Testing
+
+With the backend running and steps 1–2 done:
+
+```bash
+node server/test-admin.mjs
+```
+
+Creates a throwaway admin, signs in the way the browser does, exercises every
+admin route including the role and lock-out guards, and removes everything it
+made — even on failure.
+
 ## Security
 
 Hardened after a live audit of the public repo and Vercel deployment. What is
