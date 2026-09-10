@@ -77,7 +77,7 @@ export default function AdminLayout() {
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={() => setOpen(false)} />
-          <div className="relative h-full w-64 shadow-2xl animate-fade-in">{sidebar}</div>
+          <div className="relative z-10 h-full w-64 shadow-2xl animate-slide-in-left">{sidebar}</div>
         </div>
       )}
 
@@ -100,7 +100,7 @@ export default function AdminLayout() {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-10 animate-fade-in"><Outlet /></main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-10"><Outlet /></main>
       </div>
     </div>
   )
