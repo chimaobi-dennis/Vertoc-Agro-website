@@ -9,10 +9,11 @@
  *   /mcp    — Streamable HTTP MCP endpoint for claude.ai custom connectors
  *
  * The MCP endpoint can create, edit and delete content, so it is protected by
- * a bearer token. Set VERTOC_MCP_TOKEN before exposing this to the internet.
+ * a bearer token: VERTOC_MCP_TOKEN in the environment, or a token generated
+ * under Settings → MCP (stored as a hash). Either must be set before exposing
+ * this to the internet.
  */
 import './load-env.js'
-import { timingSafeEqual } from 'node:crypto'
 import express from 'express'
 import cors from 'cors'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -21,9 +22,11 @@ import * as content from './content.js'
 import { verifyTurnstile } from './verify-turnstile.js'
 import adminRouter from './admin-routes.js'
 import { driver } from './store/index.js'
+import { renderQuotePdf } from './quote-pdf.js'
+import { authorised } from './mcp-auth.js'
+import { audit } from './audit.js'
 
 const PORT = process.env.PORT || 8787
-const TOKEN = process.env.VERTOC_MCP_TOKEN || ''
 const PROD = process.env.NODE_ENV === 'production'
 
 // Throw rather than process.exit: on a serverless platform exit() kills the
@@ -54,6 +57,18 @@ app.use(express.json({
   type: req => req.path !== '/api/admin/upload' && /json/i.test(req.get('content-type') || ''),
 }))
 
+// Small in-memory throttle. Enough to stop naive floods; a real deployment
+// behind a proxy should also rate-limit at that layer.
+const hits = new Map()
+function throttled(ip, limit = 5, windowMs = 10 * 60 * 1000) {
+  const now = Date.now()
+  const list = (hits.get(ip) || []).filter(t => now - t < windowMs)
+  list.push(now)
+  hits.set(ip, list)
+  if (hits.size > 5000) hits.clear() // crude bound on memory
+  return list.length > limit
+}
+
 /* ------------------------------------------------------ public read API */
 
 // The store is async (the Supabase driver is promise-based), so this must
@@ -81,23 +96,64 @@ app.get('/api/posts', (req, res) =>
 app.get('/api/posts/:slug', (req, res) =>
   send(res, () => content.getPost(req.params.slug)))
 
+// Site identity and contact details, edited under Settings → Site.
+app.get('/api/site', (_req, res) =>
+  send(res, async () => (await content.getSettings()).site))
+
+/* ------------------------------------------------ public quote links --- */
+// /q/<token> in the browser calls these. The token is the only credential:
+// 24 random bytes, so the link is unguessable; nothing internal is exposed.
+
+async function liveQuote(token) {
+  const q = await content.getQuoteByToken(token)
+  return q && q.status !== 'draft' ? q : null
+}
+const quoteView = async q => {
+  const [settings, fields] = await Promise.all([content.getSettings(), content.listQuoteFields()])
+  return { view: content.publicQuote(q, settings, fields), settings, fields }
+}
+
+app.get('/api/q/:token', (req, res) => send(res, async () => {
+  let q = await liveQuote(req.params.token)
+  if (!q) return null
+  if (q.status === 'sent') q = await content.markQuoteViewed(q.id)
+  return (await quoteView(q)).view
+}))
+
+app.get('/api/q/:token/pdf', async (req, res) => {
+  try {
+    const q = await liveQuote(req.params.token)
+    if (!q) return res.status(404).json({ error: 'not found' })
+    const { settings, fields } = await quoteView(q)
+    const link = `${(process.env.SITE_URL || process.env.ADMIN_URL || '').replace(/\/$/, '')}/q/${q.token}`
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${q.number}.pdf"`)
+    res.send(renderQuotePdf(q, settings, fields, link))
+  } catch (e) {
+    console.error('[quote-pdf]', e.message)
+    res.status(500).json({ error: 'Something went wrong on our side.' })
+  }
+})
+
+app.post('/api/q/:token/respond', async (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown'
+  if (throttled(ip, 10)) return res.status(429).json({ error: 'Too many attempts. Please try again later.' })
+  try {
+    const q = await content.respondToQuote(req.params.token, req.body?.action, req.body?.note)
+    if (!q) return res.status(404).json({ error: 'not found' })
+    await audit({ actor: { id: null, label: 'client' }, action: q.status, entity: 'quote', entityId: q.id, after: { number: q.number, note: q.response_note } })
+    res.json((await quoteView(q)).view)
+  } catch (e) {
+    // respondToQuote's messages are written for the client to read.
+    res.status(409).json({ error: e.message })
+  }
+})
+
 /* ----------------------------------------------------------- admin API */
 
 app.use('/api/admin', adminRouter)
 
 /* --------------------------------------------------- enquiry submission */
-
-// Small in-memory throttle. Enough to stop naive floods; a real deployment
-// behind a proxy should also rate-limit at that layer.
-const hits = new Map()
-function throttled(ip, limit = 5, windowMs = 10 * 60 * 1000) {
-  const now = Date.now()
-  const list = (hits.get(ip) || []).filter(t => now - t < windowMs)
-  list.push(now)
-  hits.set(ip, list)
-  if (hits.size > 5000) hits.clear() // crude bound on memory
-  return list.length > limit
-}
 
 const isEmail = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || '').trim())
 const clean = (v, max = 2000) => String(v ?? '').trim().slice(0, max)
@@ -147,19 +203,8 @@ app.post('/api/enquiries', async (req, res) => {
 
 /* ------------------------------------------------- MCP over HTTP (write) */
 
-function authorised(req) {
-  if (!TOKEN) return true // local dev: no token configured
-  const h = req.get('authorization') || ''
-  if (!h.startsWith('Bearer ')) return false
-  // Constant-time compare so response timing can't leak how many leading
-  // bytes of a guessed token were correct.
-  const given = Buffer.from(h.slice(7))
-  const want = Buffer.from(TOKEN)
-  return given.length === want.length && timingSafeEqual(given, want)
-}
-
 app.all('/mcp', async (req, res) => {
-  if (!authorised(req)) {
+  if (!(await authorised(req))) {
     return res.status(401).json({
       jsonrpc: '2.0',
       error: { code: -32001, message: 'Unauthorized' },

@@ -60,4 +60,5 @@ export const PERMISSIONS = {
   clients:  ['admin', 'sales'],
   quotes:   ['admin', 'sales'],
   email:    ['admin', 'sales'],
+  settings: ['admin'],
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ArrowRight, Briefcase, Inbox, Newspaper, Package, Plus, UserPlus, Users } from 'lucide-react'
+import { Activity, ArrowRight, Briefcase, FileText, Inbox, Newspaper, Package, Plus, UserPlus, Users } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { Alert, Badge, Button, Card } from './ui'
@@ -10,10 +10,11 @@ const TILES = [
   { key: 'products', label: 'Products', icon: Package, to: '/admin/products', perm: 'products', tone: 'bg-primary/10 text-primary' },
   { key: 'posts', label: 'Blog posts', icon: Newspaper, to: '/admin/posts', perm: 'posts', tone: 'bg-accent/15 text-accent' },
   { key: 'enquiriesNew', label: 'New enquiries', icon: Inbox, to: '/admin/enquiries', perm: 'quotes', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  { key: 'quotesOpen', label: 'Open quotes', icon: FileText, to: '/admin/quotes?status=open', perm: 'quotes', tone: 'bg-primary/10 text-primary' },
   { key: 'clients', label: 'Clients', icon: Briefcase, to: '/admin/clients', perm: 'clients', tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
   { key: 'users', label: 'Active users', icon: Users, to: '/admin/users', perm: 'users', tone: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300' },
 ]
-const TONE = { create: 'green', update: 'blue', delete: 'red', invite: 'amber', upload: 'muted' }
+const TONE = { create: 'green', update: 'blue', delete: 'red', invite: 'amber', upload: 'muted', send: 'green', send_failed: 'red', accepted: 'green', declined: 'red', rotate: 'amber', revoke: 'red' }
 
 const greet = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening' }
 const ago = iso => {
@@ -50,7 +51,7 @@ export default function Dashboard() {
 
       {err && <Alert>{err}</Alert>}
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 lg:gap-5">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 lg:gap-5">
         {tiles.map(({ key, label, icon: Icon, to, tone }, i) => (
           <Link key={key} to={to} className="animate-fade-up" style={{ animationDelay: `${i * 70}ms` }}>
             <Card hover className="p-5 lg:p-6 h-full">
@@ -69,6 +70,7 @@ export default function Dashboard() {
           <p className="text-sm text-muted-foreground mb-5">Jump straight into the common tasks.</p>
           <div className="flex flex-col gap-2.5">
             {me?.permissions?.products && <Link to="/admin/products/new"><Button variant="accent" className="w-full justify-start"><Plus className="w-4 h-4" />New product</Button></Link>}
+            {me?.permissions?.quotes && <Link to="/admin/quotes/new"><Button variant="outline" className="w-full justify-start"><FileText className="w-4 h-4" />New quote</Button></Link>}
             {me?.permissions?.posts && <Link to="/admin/posts/new"><Button variant="outline" className="w-full justify-start"><Plus className="w-4 h-4" />New blog post</Button></Link>}
             {me?.permissions?.users && <Link to="/admin/users"><Button variant="outline" className="w-full justify-start"><UserPlus className="w-4 h-4" />Invite a user</Button></Link>}
           </div>

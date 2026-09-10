@@ -12,10 +12,14 @@ import PostForm from './PostForm'
 import UsersAdmin from './UsersAdmin'
 import AuditLog from './AuditLog'
 import ClientsAdmin from './ClientsAdmin'
-import ClientForm from './ClientForm'
+import ClientDetail from './ClientDetail'
 import ClientFieldsAdmin from './ClientFieldsAdmin'
 import EnquiriesAdmin from './EnquiriesAdmin'
 import EnquiryDetail from './EnquiryDetail'
+import QuotesAdmin from './QuotesAdmin'
+import QuoteForm from './QuoteForm'
+import QuoteFieldsAdmin from './QuoteFieldsAdmin'
+import SettingsAdmin from './SettingsAdmin'
 import { Button, Card, Alert } from './ui'
 
 const Splash = () => (
@@ -41,7 +45,7 @@ function Blocked({ reason }) {
 function RequireAuth({ children }) {
   const { session, me, loading, error } = useAuth(); const loc = useLocation()
   if (loading) return <Splash />
-  if (!session) return <Navigate to="/admin/login" state={{ from: loc.pathname }} replace />
+  if (!session) return <Navigate to="/admin/login" state={{ from: loc.pathname + loc.search }} replace />
   if (!me) return <Blocked reason={error} />
   return children
 }
@@ -70,9 +74,14 @@ export default function AdminApp() {
           <Route path="posts/:slug" element={P('posts', <PostForm />)} />
           <Route path="users" element={P('users', <UsersAdmin />)} />
           <Route path="clients" element={P('clients', <ClientsAdmin />)} />
-          <Route path="clients/new" element={P('clients', <ClientForm />)} />
+          <Route path="clients/new" element={P('clients', <ClientDetail />)} />
           <Route path="clients/fields" element={P('clients', <ClientFieldsAdmin />)} />
-          <Route path="clients/:id" element={P('clients', <ClientForm />)} />
+          <Route path="clients/:id" element={P('clients', <ClientDetail />)} />
+          <Route path="quotes" element={P('quotes', <QuotesAdmin />)} />
+          <Route path="quotes/new" element={P('quotes', <QuoteForm />)} />
+          <Route path="quotes/fields" element={P('quotes', <QuoteFieldsAdmin />)} />
+          <Route path="quotes/:id" element={P('quotes', <QuoteForm />)} />
+          <Route path="settings" element={P('settings', <SettingsAdmin />)} />
           <Route path="enquiries" element={P('quotes', <EnquiriesAdmin />)} />
           <Route path="enquiries/:id" element={P('quotes', <EnquiryDetail />)} />
           <Route path="audit" element={P('audit', <AuditLog />)} />

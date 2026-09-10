@@ -220,8 +220,15 @@ export async function updateEnquiryStatus(id, status) {
 
 /* Phase 2 (clients, enquiry pipeline) is Supabase-only. The SQLite driver is a
    credential-less dev fallback for the public site and basic content. */
-const needsSupabase = () => { throw new Error('Clients and the enquiry pipeline require Supabase (set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)') }
+const needsSupabase = () => { throw new Error('Clients, quotes, documents, email and settings require Supabase (set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)') }
 export const listClientFields = needsSupabase, getClientField = needsSupabase, createClientField = needsSupabase,
   updateClientField = needsSupabase, deleteClientField = needsSupabase, reorderClientFields = needsSupabase,
   listClients = needsSupabase, getClient = needsSupabase, createClient = needsSupabase, updateClient = needsSupabase,
-  deleteClient = needsSupabase, listClientEnquiries = needsSupabase, updateEnquiry = needsSupabase
+  deleteClient = needsSupabase, listClientEnquiries = needsSupabase, updateEnquiry = needsSupabase,
+  // Phase 3 (documents, quotes, email, purchases, settings): Supabase-only too.
+  listQuoteFields = needsSupabase, getQuoteField = needsSupabase, createQuoteField = needsSupabase, updateQuoteField = needsSupabase, deleteQuoteField = needsSupabase, reorderQuoteFields = needsSupabase,
+  getSettings = needsSupabase, updateSettings = needsSupabase, readSecrets = needsSupabase, writeSecret = needsSupabase,
+  createDocument = needsSupabase, completeDocument = needsSupabase, getDocument = needsSupabase, listDocuments = needsSupabase, documentUrl = needsSupabase, downloadDocument = needsSupabase, deleteDocument = needsSupabase,
+  listQuotes = needsSupabase, getQuote = needsSupabase, getQuoteByToken = needsSupabase, createQuote = needsSupabase, updateQuote = needsSupabase, deleteQuote = needsSupabase, markQuoteSent = needsSupabase, markQuoteViewed = needsSupabase, respondToQuote = needsSupabase, publicQuote = needsSupabase, convertQuoteToPurchase = needsSupabase,
+  createMessage = needsSupabase, updateMessage = needsSupabase, getMessage = needsSupabase, listMessages = needsSupabase,
+  listPurchases = needsSupabase, getPurchase = needsSupabase, createPurchase = needsSupabase, updatePurchase = needsSupabase, deletePurchase = needsSupabase

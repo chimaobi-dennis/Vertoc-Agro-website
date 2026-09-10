@@ -135,7 +135,7 @@ The visual language every admin screen follows is documented in
 |---|---|
 | `admin` | everything, including users and the audit log |
 | `editor` | products and blog posts |
-| `sales` | clients, quotes and email (Phase 2–3) |
+| `sales` | clients, documents, quotes, purchases and email |
 
 Roles are checked **server-side on every request**, re-read from the profile
 each time — changing someone's role or deactivating them takes effect on their
@@ -163,7 +163,8 @@ very next request, with no re-login. The frontend only hides menus.
    Every further user is invited from the panel (Users → Invite).
 
 > Invite emails go through Supabase's built-in mailer, which is rate-limited
-> to a few per hour — fine for a small team. Phase 3 switches it to Resend.
+> to a few per hour — fine for a small team. Client email goes through Resend
+> (see Phase 3 below).
 
 ### Guards worth knowing
 
@@ -171,8 +172,10 @@ very next request, with no re-login. The frontend only hides menus.
   be demoted or deactivated — so the panel can never lock everyone out.
 - Every change — by a person in the panel or by Claude through MCP — writes
   an audit row with before/after. Admins see it under Audit log.
-- Images upload to the `media` storage bucket via the backend (8 MB cap,
-  images only); nothing writes to storage from the browser.
+- Product, post, logo and favicon images upload to the public `media` bucket
+  via the backend (8 MB cap, images only). Client documents go to the
+  **private** `documents` bucket on a signed upload URL issued per file
+  (20 MB cap) and are read only through signed links that expire in an hour.
 
 ### Clients and enquiries (Phase 2)
 
@@ -192,6 +195,66 @@ very next request, with no re-login. The frontend only hides menus.
 - Needs `server/migrations/003_clients_quotes.sql` (seeds seven starting
   fields). Supabase-only; the SQLite dev fallback stubs these features.
 
+### Documents, quotes, email, purchases, settings (Phase 3)
+
+Needs `server/migrations/004_documents_quotes_messages.sql`. The client
+record becomes a hub — **Profile · Documents · Quotes · Messages ·
+Purchases** — and the site's own identity moves out of the code.
+
+- **Documents** — drop PDF, Word, Excel, PowerPoint, CSV, text or images on a
+  client (20 MB each). Files go straight from the browser to the private
+  `documents` bucket on a one-time signed upload URL, then the backend
+  confirms the object exists before the record is marked ready. Every read is
+  a signed link that expires in an hour; the public anon key can read nothing.
+  Client and quote fields gain two types, **Image** and **File**, whose values
+  are verified references to uploaded documents.
+- **Quotes** (`/admin/quotes`) — a builder with line items, discount, tax,
+  notes, terms, internal notes and **your own quote fields** (Incoterm, port,
+  payment terms… managed under Quotes → Fields, same engine as client
+  fields). Numbers are `VQ-YYYY-NNNN` from an atomic per-year counter. The PDF
+  is rendered server-side, so the preview, the attachment and the client's
+  download are the same file. **Send to client** emails the PDF with a unique
+  link `/q/<token>` (24 random bytes) where the client can read, download and
+  **Accept** or **Decline** online; opening the link flips sent → viewed, and
+  an accepted quote locks its prices. Statuses: draft → sent → viewed →
+  accepted | declined, or expired past *Valid until*. **Convert to purchase**
+  turns it into an order once.
+- **Email** — one-to-one only, through [Resend](https://resend.com). Compose
+  from a client (Send email), a quote (Send to client) or an enquiry (Reply by
+  email — the enquiry leaves *new* on its own). Plain text goes inside the
+  brand template with the signature from Settings; attachments come from the
+  client's documents. Every send is logged under **Messages** with Resend's
+  answer — including the reason when it fails (an unverified domain, say) —
+  so nothing is silently lost.
+- **Purchases** — manual entries or converted quotes, moving pending → paid →
+  shipped → delivered (or cancelled), with a lifetime total per currency on the
+  client.
+- **Settings** (`/admin/settings`, admins) — *Site*: name, tagline, logo,
+  favicon, contact details, hours, social links (the public site reads these
+  live from `/api/site`, with the old hard-coded values as fallback). *Company*:
+  the block printed on quotes. *Quotes*: default currency, validity, terms and
+  the payment instructions printed on every quote. *Email*: sender, reply-to,
+  signature, and the Resend API key — stored encrypted (AES-256-GCM under a
+  key derived from the service-role key), write-only, shown as "ends with
+  ····abcd". *MCP & API*: switch the endpoint on or off and generate or revoke
+  a Claude access token; only its SHA-256 hash is stored, and it is shown once.
+- Claude gets the same reach through MCP (35 tools): documents, quotes
+  (`create_quote`, `send_quote`, `convert_quote_to_purchase`…), `send_email`,
+  purchases and `get_settings` / `update_settings`.
+
+Environment for this phase (server side, never `VITE_`):
+
+| Variable | Purpose |
+|---|---|
+| `RESEND_API_KEY` | optional if the key is saved in Settings → Email (the panel key wins) |
+| `SITE_URL` | public origin used in quote links and emails; falls back to `ADMIN_URL` |
+| `EMAIL_DRY_RUN=1` | log messages as sent without calling Resend — local testing only |
+
+Resend only delivers from a **verified domain**. Until `vertocagro.com` has its
+DNS records added at resend.com → Domains, set the From address to
+`Vertoc Agro <onboarding@resend.dev>`; Resend then delivers only to the account
+owner's own address.
+
 ### Testing
 
 With the backend running and steps 1–2 done:
@@ -201,8 +264,11 @@ node server/test-admin.mjs
 ```
 
 Creates a throwaway admin, signs in the way the browser does, exercises every
-admin route including the role and lock-out guards, and removes everything it
-made — even on failure.
+admin route including the role and lock-out guards, the signed document
+upload, the quote lifecycle and the public accept flow, and removes everything
+it made — even on failure. It **never emails anyone**: the send steps run only
+when the backend was started with `EMAIL_DRY_RUN=1`; otherwise they are
+reported as skipped.
 
 ## Security
 

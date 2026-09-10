@@ -5,20 +5,24 @@ import { adminFetch } from '../lib/adminApi'
 const Ctx = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null)
+  // undefined = not yet known. Until the stored session has been read, the
+  // guards must keep showing the splash: treating "unknown" as "signed out"
+  // bounced every hard reload through /admin/login and dropped the query
+  // string (so ?tab= deep links and emailed links landed on the wrong tab).
+  const [session, setSession] = useState(undefined)
   const [me, setMe] = useState(null)        // profile + permissions from the backend
   const [error, setError] = useState(null)  // why /me was refused (inactive, no profile…)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!authConfigured) { setLoading(false); return }
+    if (!authConfigured) { setSession(null); setLoading(false); return }
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
     return () => sub.subscription.unsubscribe()
   }, [])
 
   useEffect(() => {
-    if (!authConfigured) return
+    if (!authConfigured || session === undefined) return
     if (!session) { setMe(null); setLoading(false); return }
     let alive = true
     setLoading(true)

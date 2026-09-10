@@ -1,4 +1,5 @@
 import Turnstile from '../components/Turnstile'
+import { useSite, phoneHref, waHref } from '../lib/site'
 import { useEnquiryForm } from '../lib/useEnquiryForm'
 import { Link } from 'react-router-dom'
 import { ArrowRight, Clock, Mail, MapPin, MessageCircle, Phone, RotateCw, Send, ShieldCheck } from 'lucide-react'
@@ -6,6 +7,7 @@ import { ArrowRight, Clock, Mail, MapPin, MessageCircle, Phone, RotateCw, Send, 
 const CONTACT_FIELDS = { name: '', email: '', phone: '', subject: '', message: '' }
 
 export default function Contact() {
+  const site = useSite()
   const { field, setToken, submit, status, error } = useEnquiryForm('contact', CONTACT_FIELDS)
 
   return (
@@ -25,7 +27,7 @@ export default function Contact() {
       </div>
       <div>
       <p className="text-xs text-muted-foreground uppercase font-medium">Phone</p>
-      <p className="text-sm font-semibold text-foreground">+234 913 500 9001</p>
+      <p className="text-sm font-semibold text-foreground">{site.phone}</p>
       </div>
       </div>
       <div className="bg-card border border-border p-5 rounded-2xl flex items-start gap-3">
@@ -34,7 +36,7 @@ export default function Contact() {
       </div>
       <div>
       <p className="text-xs text-muted-foreground uppercase font-medium">Email</p>
-      <p className="text-sm font-semibold text-foreground">sales@vertocagro.com</p>
+      <p className="text-sm font-semibold text-foreground">{site.email}</p>
       </div>
       </div>
       <div className="bg-card border border-border p-5 rounded-2xl flex items-start gap-3">
@@ -43,7 +45,7 @@ export default function Contact() {
       </div>
       <div>
       <p className="text-xs text-muted-foreground uppercase font-medium">Address</p>
-      <p className="text-sm font-semibold text-foreground">Akala Express Way, Ibadan, Oyo State</p>
+      <p className="text-sm font-semibold text-foreground">{site.address}</p>
       </div>
       </div>
       <div className="bg-card border border-border p-5 rounded-2xl flex items-start gap-3">
@@ -52,7 +54,7 @@ export default function Contact() {
       </div>
       <div>
       <p className="text-xs text-muted-foreground uppercase font-medium">Hours</p>
-      <p className="text-sm font-semibold text-foreground">Mon - Fri: 8AM - 5PM</p>
+      <p className="text-sm font-semibold text-foreground">{site.hours}</p>
       </div>
       </div>
       </div>
@@ -128,7 +130,7 @@ export default function Contact() {
       <Link className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border hover:text-accent-foreground h-9 px-4 py-2 w-full bg-transparent border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 font-semibold rounded-full" to="/quote">Request a Quote<ArrowRight className="w-4 h-4 ml-2" />
       </Link>
       </div>
-      <a href="https://wa.me/2349135009001" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-[#25D366] text-white p-4 rounded-2xl hover:opacity-90 transition-opacity">
+      <a href={waHref(site.whatsapp)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-[#25D366] text-white p-4 rounded-2xl hover:opacity-90 transition-opacity">
       <MessageCircle className="w-6 h-6" />
       <div>
       <p className="text-sm font-semibold">Chat with us on WhatsApp</p>

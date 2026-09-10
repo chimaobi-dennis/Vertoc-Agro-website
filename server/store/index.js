@@ -37,4 +37,11 @@ export const {
   createEnquiry, getEnquiry, listEnquiries, updateEnquiryStatus, updateEnquiry,
   listClientFields, getClientField, createClientField, updateClientField, deleteClientField, reorderClientFields,
   listClients, getClient, createClient, updateClient, deleteClient, listClientEnquiries,
+  // Phase 3
+  listQuoteFields, getQuoteField, createQuoteField, updateQuoteField, deleteQuoteField, reorderQuoteFields,
+  getSettings, updateSettings, readSecrets, writeSecret,
+  createDocument, completeDocument, getDocument, listDocuments, documentUrl, downloadDocument, deleteDocument,
+  listQuotes, getQuote, getQuoteByToken, createQuote, updateQuote, deleteQuote, markQuoteSent, markQuoteViewed, respondToQuote, publicQuote, convertQuoteToPurchase,
+  createMessage, updateMessage, getMessage, listMessages,
+  listPurchases, getPurchase, createPurchase, updatePurchase, deletePurchase,
 } = store

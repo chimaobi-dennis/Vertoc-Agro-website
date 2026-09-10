@@ -9,6 +9,10 @@ import express, { Router } from 'express'
 import { authenticate, requireRole, PERMISSIONS } from './auth.js'
 import { audit } from './audit.js'
 import * as content from './content.js'
+import { deliver, sendQuote, resolveResendKey, dryRun, quoteLink, publicUrl } from './messaging.js'
+import { renderQuotePdf } from './quote-pdf.js'
+import { encryptSecret, sha256, newToken } from './secrets.js'
+import { refreshMcpSettings } from './mcp-auth.js'
 
 const router = Router()
 router.use(authenticate)
@@ -20,7 +24,7 @@ const supabase = () => svc ??= import('./store/supabase.js').then(m => m.supabas
 const h = fn => async (req, res) => {
   try { await fn(req, res) }
   catch (e) {
-    if (e.expose) return res.status(e.status || 400).json({ error: e.message })
+    if (e.expose) return res.status(e.status || 400).json({ error: e.message, ...(e.message_id ? { message_id: e.message_id } : {}) })
     console.error('[admin]', req.method, req.path, e.message)
     res.status(500).json({ error: 'Something went wrong on our side.' })
   }
@@ -38,17 +42,23 @@ router.get('/me', h(async (req, res) => {
 
 router.get('/stats', h(async (_req, res) => {
   const sb = await supabase()
-  const count = async (table, filter) => {
-    let q = sb.from(table).select('*', { count: 'exact', head: true })
-    if (filter) q = q.eq(...filter)
-    return (await q).count ?? 0
+  // A count of 0 rather than a 500 if a later migration is not applied yet.
+  const count = async (table, where) => {
+    try {
+      let q = sb.from(table).select('*', { count: 'exact', head: true })
+      if (where) q = where(q)
+      const { count: n, error } = await q
+      return error ? 0 : (n ?? 0)
+    } catch { return 0 }
   }
   res.json({
-    clients: await count('clients', ['status', 'active']),
+    clients: await count('clients', q => q.eq('status', 'active')),
     products: await count('products'),
     posts: await count('posts'),
-    enquiriesNew: await count('enquiries', ['status', 'new']),
-    users: await count('profiles', ['active', true]),
+    enquiriesNew: await count('enquiries', q => q.eq('status', 'new')),
+    users: await count('profiles', q => q.eq('active', true)),
+    quotesOpen: await count('quotes', q => q.in('status', ['sent', 'viewed'])),
+    purchasesPending: await count('purchases', q => q.eq('status', 'pending')),
   })
 }))
 
@@ -213,34 +223,32 @@ router.post('/upload', express.json({ limit: '12mb' }), requireRole(...PERMISSIO
 const crm   = requireRole(...PERMISSIONS.clients)
 const inbox = requireRole(...PERMISSIONS.quotes)
 
-/* client fields */
-router.get('/client-fields', crm, h(async (_req, res) => res.json(await content.listClientFields())))
-
-router.post('/client-fields', crm, h(async (req, res) => {
-  const after = await exposing(content.createClientField)(req.body)
-  await audit({ actor: req.user, action: 'create', entity: 'client_field', entityId: after.key, after })
-  res.status(201).json(after)
-}))
-
-router.put('/client-fields/order', crm, h(async (req, res) => {
-  res.json(await exposing(content.reorderClientFields)(req.body?.ids))
-}))
-
-router.patch('/client-fields/:id', crm, h(async (req, res) => {
-  const before = await content.getClientField(req.params.id)
-  if (!before) throw bad('field not found', 404)
-  const after = await exposing(content.updateClientField)(req.params.id, req.body)
-  await audit({ actor: req.user, action: 'update', entity: 'client_field', entityId: after.key, before, after })
-  res.json(after)
-}))
-
-router.delete('/client-fields/:id', crm, h(async (req, res) => {
-  const before = await content.getClientField(req.params.id)
-  if (!before) throw bad('field not found', 404)
-  const r = await content.deleteClientField(req.params.id)
-  await audit({ actor: req.user, action: 'delete', entity: 'client_field', entityId: before.key, before })
-  res.json(r)
-}))
+/* user-defined fields: one mount for client_fields and quote_fields */
+function mountFields(path, entity, api, guard) {
+  router.get(`/${path}`, guard, h(async (_req, res) => res.json(await api.list())))
+  router.post(`/${path}`, guard, h(async (req, res) => {
+    const after = await exposing(api.create)(req.body)
+    await audit({ actor: req.user, action: 'create', entity, entityId: after.key, after })
+    res.status(201).json(after)
+  }))
+  router.put(`/${path}/order`, guard, h(async (req, res) => res.json(await exposing(api.reorder)(req.body?.ids))))
+  router.patch(`/${path}/:id`, guard, h(async (req, res) => {
+    const before = await api.get(req.params.id)
+    if (!before) throw bad('field not found', 404)
+    const after = await exposing(api.update)(req.params.id, req.body)
+    await audit({ actor: req.user, action: 'update', entity, entityId: after.key, before, after })
+    res.json(after)
+  }))
+  router.delete(`/${path}/:id`, guard, h(async (req, res) => {
+    const before = await api.get(req.params.id)
+    if (!before) throw bad('field not found', 404)
+    const r = await api.remove(req.params.id)
+    await audit({ actor: req.user, action: 'delete', entity, entityId: before.key, before })
+    res.json(r)
+  }))
+}
+mountFields('client-fields', 'client_field', { list: content.listClientFields, get: content.getClientField, create: content.createClientField, update: content.updateClientField, remove: content.deleteClientField, reorder: content.reorderClientFields }, crm)
+mountFields('quote-fields', 'quote_field', { list: content.listQuoteFields, get: content.getQuoteField, create: content.createQuoteField, update: content.updateQuoteField, remove: content.deleteQuoteField, reorder: content.reorderQuoteFields }, inbox)
 
 /* clients */
 router.get('/clients', crm, h(async (req, res) => {
@@ -292,6 +300,193 @@ router.patch('/enquiries/:id', inbox, h(async (req, res) => {
   const after = await exposing(content.updateEnquiry)(req.params.id, req.body)
   await audit({ actor: req.user, action: 'update', entity: 'enquiry', entityId: after.id, before, after })
   res.json(after)
+}))
+
+/* ============== PHASE 3: SETTINGS, DOCUMENTS, QUOTES, EMAIL, PURCHASES ==== */
+
+const mail = requireRole(...PERMISSIONS.email)
+const settingsAdmin = requireRole(...PERMISSIONS.settings)
+const idOrNull = v => (v == null || v === '' ? null : Number(v))
+const SECRET_NAMES = { resend_api_key: /^re_[A-Za-z0-9_]{10,}$/ }
+
+/** Settings as the panel may see them: no token hash, no secret values. */
+function safeSettings(s) {
+  const { mcp, ...rest } = s
+  return { ...rest, mcp: { enabled: mcp.enabled, token_hint: mcp.token_hint, rotated_at: mcp.rotated_at } }
+}
+
+router.get('/settings', h(async (req, res) => {
+  const s = await content.getSettings()
+  const { source } = await resolveResendKey()
+  const out = { ...safeSettings(s), email: { ...s.email, configured: Boolean(source), source, dry_run: dryRun() }, public_url: publicUrl() }
+  if (req.user.role === 'admin') {
+    const secrets = await content.readSecrets()
+    out.secrets = Object.fromEntries(Object.entries(secrets).map(([k, v]) => [k, { hint: v.hint, set_at: v.set_at }]))
+    out.mcp = { ...out.mcp, endpoint: `${publicUrl()}/mcp`, env_token: Boolean(process.env.VERTOC_MCP_TOKEN) }
+    out.env = { resend: Boolean(process.env.RESEND_API_KEY), turnstile: Boolean(process.env.TURNSTILE_SECRET_KEY), site_url: process.env.SITE_URL || null }
+  }
+  res.json(out)
+}))
+
+router.put('/settings', settingsAdmin, h(async (req, res) => {
+  const patch = { ...(req.body || {}) }
+  if (patch.mcp) patch.mcp = { enabled: patch.mcp.enabled }   // the token is managed below, never set directly
+  delete patch.secrets
+  const before = await content.getSettings()
+  const after = await exposing(content.updateSettings)(patch)
+  if (patch.mcp) refreshMcpSettings()
+  const groups = Object.keys(patch)
+  await audit({ actor: req.user, action: 'update', entity: 'settings', entityId: groups.join(','),
+    before: Object.fromEntries(groups.map(g => [g, safeSettings(before)[g]])), after: Object.fromEntries(groups.map(g => [g, safeSettings(after)[g]])) })
+  res.json(safeSettings(after))
+}))
+
+/* MCP access token: generated here, shown once, stored as a hash. */
+router.post('/settings/mcp/token', settingsAdmin, h(async (req, res) => {
+  const token = newToken(32)
+  await content.updateSettings({ mcp: { enabled: true, token_hash: sha256(token), token_hint: token.slice(-4), rotated_at: new Date().toISOString() } })
+  refreshMcpSettings()
+  await audit({ actor: req.user, action: 'rotate', entity: 'mcp_token', after: { hint: token.slice(-4) } })
+  res.status(201).json({ token, hint: token.slice(-4), endpoint: `${publicUrl()}/mcp` })
+}))
+router.delete('/settings/mcp/token', settingsAdmin, h(async (req, res) => {
+  await content.updateSettings({ mcp: { token_hash: '', token_hint: '', rotated_at: new Date().toISOString() } })
+  refreshMcpSettings()
+  await audit({ actor: req.user, action: 'revoke', entity: 'mcp_token' })
+  res.json({ revoked: true })
+}))
+
+/* Secrets (API keys) set from the panel: write-only, encrypted at rest. */
+router.put('/settings/secrets/:name', settingsAdmin, h(async (req, res) => {
+  const { name } = req.params
+  if (!SECRET_NAMES[name]) throw bad('Unknown secret.', 404)
+  const value = String(req.body?.value || '').trim()
+  if (!value) throw bad('Enter a value.')
+  if (!SECRET_NAMES[name].test(value)) throw bad(name === 'resend_api_key' ? 'That does not look like a Resend API key (they start with re_).' : 'Invalid value.')
+  const list = await content.writeSecret(name, encryptSecret(value))
+  await audit({ actor: req.user, action: 'update', entity: 'secret', entityId: name, after: { hint: value.slice(-4) } })
+  res.json(list)
+}))
+router.delete('/settings/secrets/:name', settingsAdmin, h(async (req, res) => {
+  const { name } = req.params
+  if (!SECRET_NAMES[name]) throw bad('Unknown secret.', 404)
+  const list = await content.writeSecret(name, null)
+  await audit({ actor: req.user, action: 'delete', entity: 'secret', entityId: name })
+  res.json(list)
+}))
+
+/* documents: metadata here, bytes straight to storage via signed URLs */
+router.get('/documents', crm, h(async (req, res) => {
+  res.json(await content.listDocuments({ client_id: idOrNull(req.query.client_id), quote_id: idOrNull(req.query.quote_id) }))
+}))
+router.post('/documents', crm, h(async (req, res) => {
+  res.status(201).json(await exposing(content.createDocument)(req.body || {}, req.user.id))
+}))
+router.post('/documents/:id/complete', crm, h(async (req, res) => {
+  const doc = await exposing(content.completeDocument)(req.params.id)
+  await audit({ actor: req.user, action: 'upload', entity: 'document', entityId: doc.id, after: { name: doc.name, bytes: doc.bytes, client_id: doc.client_id, quote_id: doc.quote_id } })
+  res.json(doc)
+}))
+router.get('/documents/:id/url', crm, h(async (req, res) => {
+  res.json(await exposing(content.documentUrl)(req.params.id, { download: req.query.download === '1' }))
+}))
+router.delete('/documents/:id', crm, h(async (req, res) => {
+  const before = await content.getDocument(req.params.id, { any: true })
+  if (!before) throw bad('document not found', 404)
+  const r = await content.deleteDocument(before.id)
+  await audit({ actor: req.user, action: 'delete', entity: 'document', entityId: before.id, before })
+  res.json(r)
+}))
+
+/* quotes */
+router.get('/quotes', inbox, h(async (req, res) => {
+  res.json(await content.listQuotes({ status: req.query.status || 'all', client_id: idOrNull(req.query.client_id) }))
+}))
+router.get('/quotes/:id', inbox, h(async (req, res) => {
+  const q = await content.getQuote(req.params.id)
+  if (!q) throw bad('quote not found', 404)
+  const [messages, documents] = await Promise.all([content.listMessages({ quote_id: q.id }), content.listDocuments({ quote_id: q.id })])
+  res.json({ ...q, messages, documents, link: quoteLink(q) })
+}))
+router.post('/quotes', inbox, h(async (req, res) => {
+  const after = await exposing(content.createQuote)(req.body || {}, req.user.id)
+  await audit({ actor: req.user, action: 'create', entity: 'quote', entityId: after.id, after })
+  res.status(201).json({ ...after, link: quoteLink(after) })
+}))
+router.patch('/quotes/:id', inbox, h(async (req, res) => {
+  const before = await content.getQuote(req.params.id)
+  if (!before) throw bad('quote not found', 404)
+  const after = await exposing(content.updateQuote)(before.id, req.body || {})
+  await audit({ actor: req.user, action: 'update', entity: 'quote', entityId: after.id, before, after })
+  res.json({ ...after, link: quoteLink(after) })
+}))
+router.delete('/quotes/:id', inbox, h(async (req, res) => {
+  const before = await content.getQuote(req.params.id)
+  if (!before) throw bad('quote not found', 404)
+  const r = await content.deleteQuote(before.id)
+  await audit({ actor: req.user, action: 'delete', entity: 'quote', entityId: before.id, before })
+  res.json(r)
+}))
+router.get('/quotes/:id/pdf', inbox, h(async (req, res) => {
+  const q = await content.getQuote(req.params.id)
+  if (!q) throw bad('quote not found', 404)
+  const [settings, fields] = await Promise.all([content.getSettings(), content.listQuoteFields()])
+  const pdf = renderQuotePdf(q, settings, fields, quoteLink(q))
+  res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader('Content-Disposition', `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${q.number}.pdf"`)
+  res.send(pdf)
+}))
+router.post('/quotes/:id/send', mail, h(async (req, res) => {
+  const b = req.body || {}
+  const r = await sendQuote(req.params.id, { actor: req.user, to: b.to, subject: b.subject, body: b.body, attachmentIds: b.attachment_ids || [] })
+  res.json({ ...r, link: quoteLink(r.quote) })
+}))
+router.post('/quotes/:id/convert', crm, h(async (req, res) => {
+  const after = await exposing(content.convertQuoteToPurchase)(req.params.id, req.user.id)
+  await audit({ actor: req.user, action: 'create', entity: 'purchase', entityId: after.id, after })
+  res.status(201).json(after)
+}))
+
+/* messages (one-to-one email) */
+router.get('/messages', mail, h(async (req, res) => {
+  res.json(await content.listMessages({ client_id: idOrNull(req.query.client_id), quote_id: idOrNull(req.query.quote_id), enquiry_id: idOrNull(req.query.enquiry_id) }))
+}))
+router.get('/messages/:id', mail, h(async (req, res) => {
+  const m = await content.getMessage(req.params.id)
+  if (!m) throw bad('message not found', 404)
+  res.json(m)
+}))
+router.post('/messages', mail, h(async (req, res) => {
+  const b = req.body || {}
+  let clientId = idOrNull(b.client_id), enquiryId = idOrNull(b.enquiry_id), toName = b.to_name
+  if (clientId != null) { const c = await content.getClient(clientId); if (!c) throw bad('client not found', 404); toName ??= c.name }
+  if (enquiryId != null) { const e = await content.getEnquiry(enquiryId); if (!e) throw bad('enquiry not found', 404); toName ??= e.name; clientId ??= e.client_id }
+  const msg = await deliver({ actor: req.user, to: b.to, toName, subject: b.subject, body: b.body, attachmentIds: b.attachment_ids || [], clientId, enquiryId })
+  res.status(201).json(msg)
+}))
+
+/* purchases */
+router.get('/purchases', crm, h(async (req, res) => {
+  res.json(await content.listPurchases({ client_id: idOrNull(req.query.client_id), status: req.query.status || 'all' }))
+}))
+router.post('/purchases', crm, h(async (req, res) => {
+  const after = await exposing(content.createPurchase)(req.body || {}, req.user.id)
+  await audit({ actor: req.user, action: 'create', entity: 'purchase', entityId: after.id, after })
+  res.status(201).json(after)
+}))
+router.patch('/purchases/:id', crm, h(async (req, res) => {
+  const before = await content.getPurchase(req.params.id)
+  if (!before) throw bad('purchase not found', 404)
+  const after = await exposing(content.updatePurchase)(before.id, req.body || {})
+  await audit({ actor: req.user, action: 'update', entity: 'purchase', entityId: after.id, before, after })
+  res.json(after)
+}))
+router.delete('/purchases/:id', crm, h(async (req, res) => {
+  const before = await content.getPurchase(req.params.id)
+  if (!before) throw bad('purchase not found', 404)
+  const r = await content.deletePurchase(before.id)
+  await audit({ actor: req.user, action: 'delete', entity: 'purchase', entityId: before.id, before })
+  res.json(r)
 }))
 
 export default router

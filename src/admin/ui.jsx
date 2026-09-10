@@ -1,6 +1,6 @@
 /* Shared admin primitives. See DESIGN.md for the language they implement. */
 import { useEffect, useState } from 'react'
-import { AlertCircle, CheckCircle2, Info } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react'
 
 const VARIANTS = {
   primary: 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm',
@@ -113,3 +113,42 @@ export function useToast() {
 }
 
 export const confirmDelete = label => window.confirm(`Delete "${label}"? This cannot be undone.`)
+
+/** Centred dialog (bottom sheet on phones). Closes on Escape and backdrop click. */
+export function Modal({ open, onClose, title, children, footer, wide = false }) {
+  useEffect(() => {
+    if (!open) return
+    const k = e => e.key === 'Escape' && onClose?.()
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k)
+  }, [open, onClose])
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
+      <div className="absolute inset-0 bg-primary/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <Card className={`relative z-10 w-full ${wide ? 'max-w-3xl' : 'max-w-xl'} max-h-[92vh] flex flex-col animate-fade-up rounded-b-none sm:rounded-b-2xl`}>
+        <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-border">
+          <h2 className="font-serif text-xl font-bold text-foreground">{title}</h2>
+          <button type="button" onClick={onClose} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted" aria-label="Close"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-6 overflow-y-auto">{children}</div>
+        {footer && <div className="px-6 py-4 border-t border-border flex flex-wrap items-center justify-end gap-2">{footer}</div>}
+      </Card>
+    </div>
+  )
+}
+
+/** Underline tabs. tabs: [{ key, label, icon?, count? }] */
+export const Tabs = ({ tabs, value, onChange }) => (
+  <div className="flex gap-1 overflow-x-auto border-b border-border mb-6 animate-fade-up" role="tablist">
+    {tabs.map(({ key, label, icon: Icon, count }) => (
+      <button key={key} role="tab" aria-selected={value === key} type="button" onClick={() => onChange(key)}
+        className={`relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold whitespace-nowrap transition-colors ${value === key ? 'text-accent' : 'text-muted-foreground hover:text-foreground'}`}>
+        {Icon && <Icon className="w-4 h-4" />}{label}
+        {count != null && <span className="ml-0.5 text-[11px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{count}</span>}
+        {value === key && <span className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full bg-accent" />}
+      </button>
+    ))}
+  </div>
+)
+
+export const Empty = ({ children }) => <div className="py-12 text-center text-sm text-muted-foreground">{children}</div>

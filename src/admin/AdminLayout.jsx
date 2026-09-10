@@ -1,18 +1,21 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Briefcase, Inbox, LayoutDashboard, LogOut, Menu, Moon, Newspaper, Package, ScrollText, Sun, Users, X } from 'lucide-react'
+import { Briefcase, FileText, Inbox, LayoutDashboard, LogOut, Menu, Moon, Newspaper, Package, ScrollText, Settings, Sun, Users, X } from 'lucide-react'
 import { useAuth } from './AuthContext'
 import { useAdminTheme } from './AdminTheme'
 
 const NAV = [
-  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/admin/products', label: 'Products', icon: Package, perm: 'products' },
-  { to: '/admin/posts', label: 'Blog', icon: Newspaper, perm: 'posts' },
-  { to: '/admin/enquiries', label: 'Enquiries', icon: Inbox, perm: 'quotes' },
-  { to: '/admin/clients', label: 'Clients', icon: Briefcase, perm: 'clients' },
-  { to: '/admin/users', label: 'Users', icon: Users, perm: 'users' },
-  { to: '/admin/audit', label: 'Audit log', icon: ScrollText, perm: 'audit' },
+  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true, group: 'Manage' },
+  { to: '/admin/products', label: 'Products', icon: Package, perm: 'products', group: 'Manage' },
+  { to: '/admin/posts', label: 'Blog', icon: Newspaper, perm: 'posts', group: 'Manage' },
+  { to: '/admin/enquiries', label: 'Enquiries', icon: Inbox, perm: 'quotes', group: 'Sales' },
+  { to: '/admin/quotes', label: 'Quotes', icon: FileText, perm: 'quotes', group: 'Sales' },
+  { to: '/admin/clients', label: 'Clients', icon: Briefcase, perm: 'clients', group: 'Sales' },
+  { to: '/admin/users', label: 'Users', icon: Users, perm: 'users', group: 'System' },
+  { to: '/admin/audit', label: 'Audit log', icon: ScrollText, perm: 'audit', group: 'System' },
+  { to: '/admin/settings', label: 'Settings', icon: Settings, perm: 'settings', group: 'System' },
 ]
+const GROUPS = ['Manage', 'Sales', 'System']
 
 const initials = s => (s || '?').split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('')
 
@@ -35,9 +38,10 @@ export default function AdminLayout() {
         </button>
       </div>
 
-      <nav className="flex-1 px-3 py-5 space-y-1">
-        <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Manage</p>
-        {items.map(({ to, label, icon: Icon, end }) => (
+      <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
+        {GROUPS.filter(g => items.some(n => n.group === g)).map(g => (<div key={g} className="space-y-1 [&+&]:mt-5">
+        <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{g}</p>
+        {items.filter(n => n.group === g).map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to} to={to} end={end} onClick={() => setOpen(false)}
             className={({ isActive }) =>
@@ -52,6 +56,7 @@ export default function AdminLayout() {
             )}
           </NavLink>
         ))}
+        </div>))}
       </nav>
 
       <div className="p-4 border-t border-border">

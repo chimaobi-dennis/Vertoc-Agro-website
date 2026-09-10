@@ -5,7 +5,12 @@
  * exercises every admin route including the role and lock-out guards, and
  * removes everything it created — even if a step fails.
  *
- *   node server/test-admin.mjs            (backend on :8787, migration 002 applied)
+ *   node server/test-admin.mjs            (backend on :8787, migrations 002–004 applied)
+ *
+ * Never emails anyone: the send steps run only when the backend has
+ * EMAIL_DRY_RUN=1 (messages are logged as sent, Resend is never called);
+ * otherwise they are reported as skipped and the public quote flow is
+ * exercised by marking the quote sent directly.
  */
 import './load-env.js'
 import { readFileSync } from 'node:fs'
@@ -27,7 +32,7 @@ const anon = createClient(SUPABASE_URL, ANON, noSession)
 const EMAIL = `e2e-${Date.now()}@vertocagro.invalid`
 const PASS  = 'E2e-Test-Passw0rd!'
 const results = []
-let userId = null, token = '', uploadPath = null
+let userId = null, token = '', uploadPath = null, docPath = null, settingsBefore = {}
 
 const show = v => (v && typeof v === 'object')
   ? (v.key ?? v.slug ?? (v.name != null ? `${v.name} (#${v.id})` : JSON.stringify(v).slice(0, 48)))
@@ -118,12 +123,99 @@ try {
   await step('DELETE /clients/:id unlinks enquiry', async () => { await api(`/clients/${client.id}`, { method: 'DELETE' }); const x = await api(`/enquiries/${enqId}`); if (x.client_id !== null) throw new Error('still linked'); return 'client_id -> null' })
   await step('DELETE /client-fields/:id', async () => (await api(`/client-fields/${field.id}`, { method: 'DELETE' })).deleted)
 
+
+  // ----------------------- Phase 3: settings, documents, quotes, email, purchases
+  for (const key of ['quotes', 'mcp']) settingsBefore[key] = (await svc.from('settings').select('value').eq('key', key).maybeSingle()).data?.value ?? null
+  const S = await step('GET /settings', async () => {
+    const s = await api('/settings'); if (!s.site?.name || !s.quotes?.default_currency || !('configured' in s.email)) throw new Error('unexpected shape')
+    if (s.mcp?.token_hash !== undefined) throw new Error('token hash exposed')
+    return `site=${s.site.name} · email ${s.email.configured ? 'via ' + s.email.source : 'off'}${s.email.dry_run ? ' · DRY RUN' : ''}`
+  })
+  await step('PUT /settings quotes.default_currency=eur → EUR', async () => (await api('/settings', { method: 'PUT', body: { quotes: { default_currency: 'eur' } } })).quotes.default_currency)
+  await step('PUT /settings rejects a bad From', () => refused(() => api('/settings', { method: 'PUT', body: { email: { from: 'not an address' } } }), /From must/, 'bad from'))
+  await step('MCP token: generate → works on /mcp → revoke', async () => {
+    const r = await api('/settings/mcp/token', { method: 'POST' })
+    if (!/^[0-9a-f]{64}$/.test(r.token)) throw new Error('token shape')
+    const s = await api('/settings'); if (s.mcp.token_hint !== r.token.slice(-4)) throw new Error('hint mismatch')
+    const m = await fetch(`${API}/mcp`, { method: 'POST', headers: { Authorization: `Bearer ${r.token}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) })
+    if (m.status !== 200) throw new Error(`/mcp with panel token → ${m.status}`)
+    const bad = await fetch(`${API}/mcp`, { method: 'POST', headers: { Authorization: 'Bearer ' + r.token.replace(/./, c => c === 'a' ? 'b' : 'a'), 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) })
+    if (bad.status !== 401) throw new Error(`wrong token → ${bad.status}`)
+    await api('/settings/mcp/token', { method: 'DELETE' }); return 'hash only; 200 with token, 401 without ✓'
+  })
+  await step('POST /quote-fields (select, required)', () => api('/quote-fields', { method: 'POST', body: { label: 'E2E Incoterm', key: 'e2e_incoterm', type: 'select', options: ['FOB', 'CIF'], required: true } }))
+  const client2 = await step('POST /clients (phase 3 client)', () => api('/clients', { method: 'POST', body: { name: 'e2e-client-p3-' + Date.now(), data: { email: 'buyer3@e2e.invalid' } } }))
+
+  await step('POST /documents rejects an .exe', () => refused(() => api('/documents', { method: 'POST', body: { client_id: client2.id, name: 'x.exe', content_type: 'application/x-msdownload', bytes: 10 } }), /not allowed/, 'exe'))
+  const doc = await step('document: create → signed upload → complete', async () => {
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
+    const { document, upload } = await api('/documents', { method: 'POST', body: { client_id: client2.id, name: 'e2e-photo.png', content_type: 'image/png', bytes: png.length } })
+    const { error } = await anon.storage.from('documents').uploadToSignedUrl(upload.path, upload.token, png, { contentType: 'image/png' })
+    if (error) throw new Error('signed upload: ' + error.message)
+    const d = await api(`/documents/${document.id}/complete`, { method: 'POST' })
+    if (d.status !== 'ready' || d.kind !== 'image') throw new Error('status=' + d.status)
+    docPath = d.path; return d
+  })
+  await step('GET /documents/:id/url → signed link answers 200', async () => { const { url } = await api(`/documents/${doc.id}/url`); const r = await fetch(url); if (r.status !== 200) throw new Error('signed url → ' + r.status); return 'HTTP 200 ✓' })
+  await step('private bucket: anon key cannot read it', async () => { const { data, error } = await anon.storage.from('documents').download(docPath); if (data && !error) throw new Error('anon read a private document'); return 'blocked ✓' })
+  await step('POST /client-fields (image)', () => api('/client-fields', { method: 'POST', body: { label: 'E2E Photo', key: 'e2e_photo', type: 'image' } }))
+  await step('image field stores {id,name} after verifying the file', async () => { const c = await api(`/clients/${client2.id}`, { method: 'PATCH', body: { data: { e2e_photo: { id: doc.id } } } }); if (c.data.e2e_photo?.name !== 'e2e-photo.png') throw new Error(JSON.stringify(c.data.e2e_photo)); return c.data.e2e_photo.name })
+  await step('image field rejects a missing file', () => refused(() => api(`/clients/${client2.id}`, { method: 'PATCH', body: { data: { e2e_photo: { id: 999999999 } } } }), /no longer exists/, 'missing doc'))
+
+  await step('quote needs its required field', () => refused(() => api('/quotes', { method: 'POST', body: { client_id: client2.id, items: [{ description: 'x', unit_price: 1 }] } }), /required/, 'missing incoterm'))
+  const quote = await step('POST /quotes (number, snapshot, totals)', async () => {
+    const q = await api('/quotes', { method: 'POST', body: { client_id: client2.id, title: 'e2e-quote', items: [{ description: 'Cocoa beans', quantity: 20, unit: 'MT', unit_price: 2400 }, { description: 'Bagging', quantity: 1, unit_price: 500 }], discount: 500, tax_rate: 7.5, data: { e2e_incoterm: 'FOB' } } })
+    if (!/^VQ-\d{4}-\d{4}$/.test(q.number)) throw new Error('number ' + q.number)
+    if (Number(q.subtotal) !== 48500 || Number(q.total) !== 51600) throw new Error(`subtotal ${q.subtotal} total ${q.total}`)
+    if (q.client_email !== 'buyer3@e2e.invalid' || q.currency !== 'EUR' || q.status !== 'draft') throw new Error('snapshot/currency/status')
+    return `${q.number} · ${q.total} ${q.currency}`
+  })
+  await step('PATCH /quotes/:id recomputes totals', async () => { const q = await api(`/quotes/${quote.id}`, { method: 'PATCH', body: { discount: 0 } }); if (Number(q.total) !== 52137.5) throw new Error('total ' + q.total); return q.total })
+  await step('GET /quotes/:id/pdf is a PDF', async () => { const r = await fetch(`${API}/api/admin/quotes/${quote.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } }); const b = Buffer.from(await r.arrayBuffer()); if (r.status !== 200 || b.subarray(0, 4).toString() !== '%PDF') throw new Error('status ' + r.status); return `${b.length} bytes` })
+  await step('public link is 404 while draft', async () => { const r = await fetch(`${API}/api/q/${quote.token}`); if (r.status !== 404) throw new Error('got ' + r.status); return '404 ✓' })
+
+  if (S.email.dry_run) {
+    await step('POST /quotes/:id/send (dry run: PDF attached, logged, → sent)', async () => {
+      const r = await api(`/quotes/${quote.id}/send`, { method: 'POST', body: { subject: 'e2e-quote send' } })
+      if (r.message.status !== 'sent' || r.quote.status !== 'sent' || !r.message.attachments?.some(a => a.name === `${quote.number}.pdf`)) throw new Error(JSON.stringify(r.message).slice(0, 120))
+      if (!r.message.html.includes(`/q/${quote.token}`)) throw new Error('link missing from email')
+      return `msg #${r.message.id} ${r.message.provider_id}`
+    })
+    const enq2 = await step('seed enquiry, reply via POST /messages (dry run)', async () => {
+      const { data, error } = await svc.from('enquiries').insert({ kind: 'quote', name: 'e2e-enquirer2', email: 'q2@e2e.invalid', commodity: 'Sesame' }).select().single(); if (error) throw error
+      const m = await api('/messages', { method: 'POST', body: { enquiry_id: data.id, to: data.email, subject: 'e2e-reply', body: 'Hello from the e2e test.' } })
+      if (m.status !== 'sent' || m.enquiry_id !== data.id) throw new Error(JSON.stringify(m).slice(0, 100)); return data.id
+    })
+    await step('reply moved the enquiry new → contacted', async () => { const e = await api(`/enquiries/${enq2}`); if (e.status !== 'contacted') throw new Error(e.status); return e.status })
+  } else {
+    results.push(['·', 'send steps SKIPPED', 'live sending is off for this test (set EMAIL_DRY_RUN=1 on the backend to run them)'])
+    await step('PATCH /quotes/:id status=sent (manual)', async () => (await api(`/quotes/${quote.id}`, { method: 'PATCH', body: { status: 'sent' } })).status)
+  }
+
+  await step('public GET /api/q/:token → viewed, no internals', async () => {
+    const r = await fetch(`${API}/api/q/${quote.token}`); const d = await r.json()
+    if (r.status !== 200 || d.status !== 'viewed' || d.internal_notes !== undefined || d.token !== undefined || d.client_id !== undefined) throw new Error(JSON.stringify(d).slice(0, 100))
+    return `viewed · ${d.items.length} items · ${d.fields.map(f => f.label + '=' + f.value).join(',')}`
+  })
+  await step('public PDF download', async () => { const r = await fetch(`${API}/api/q/${quote.token}/pdf?download=1`); if (r.status !== 200 || !/pdf/.test(r.headers.get('content-type'))) throw new Error(r.status); return r.headers.get('content-disposition') })
+  await step('client accepts online', async () => { const r = await fetch(`${API}/api/q/${quote.token}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'accept', note: 'e2e ok' }) }); const d = await r.json(); if (d.status !== 'accepted') throw new Error(JSON.stringify(d)); return d.status })
+  await step('a second answer is refused', async () => { const r = await fetch(`${API}/api/q/${quote.token}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'decline' }) }); if (r.status !== 409) throw new Error(r.status); return '409 ✓' })
+  await step('accepted quote locks prices', () => refused(() => api(`/quotes/${quote.id}`, { method: 'PATCH', body: { discount: 1 } }), /locked/, 'edit accepted'))
+  const purchase = await step('POST /quotes/:id/convert → purchase', async () => { const p = await api(`/quotes/${quote.id}/convert`, { method: 'POST' }); if (Number(p.amount) !== 52137.5 || p.reference !== quote.number || p.client_id !== client2.id) throw new Error(JSON.stringify(p).slice(0, 100)); return `#${p.id} ${p.amount} ${p.currency}` })
+  await step('converting twice is refused', () => refused(() => api(`/quotes/${quote.id}/convert`, { method: 'POST' }), /already converted/, 'double convert'))
+  await step('PATCH /purchases/:id → paid', async () => (await api(`/purchases/${purchase.id}`, { method: 'PATCH', body: { status: 'paid' } })).status)
+  await step('bad purchase status rejected', () => refused(() => api(`/purchases/${purchase.id}`, { method: 'PATCH', body: { status: 'lost' } }), /must be one of/, 'bad status'))
+  await step('GET /purchases?client_id lists it', async () => { const l = await api(`/purchases?client_id=${client2.id}`); if (!l.some(p => p.id === purchase.id)) throw new Error('missing'); return l.length })
+  await step('GET /stats counts quotes & purchases', async () => { const s = await api('/stats'); if (typeof s.quotesOpen !== 'number' || typeof s.purchasesPending !== 'number') throw new Error('missing counts'); return `open=${s.quotesOpen} pending=${s.purchasesPending}` })
+  await step('DELETE /documents/:id removes the object too', async () => { await api(`/documents/${doc.id}`, { method: 'DELETE' }); const { data } = await svc.storage.from('documents').download(docPath); if (data) throw new Error('object still in storage'); docPath = null; return 'row + object gone ✓' })
+
   // Role and active flag are re-read from the profile on EVERY request — the
   // token stays valid, yet access must change immediately.
   await step('role downgrade applies without re-login', async () => {
     await svc.from('profiles').update({ role: 'sales' }).eq('id', userId)
     return refused(() => api('/products'), /^403/, 'sales reading products')
   })
+  await step('sales cannot change settings', () => refused(() => api('/settings', { method: 'PUT', body: { site: { name: 'x' } } }), /^403/, 'sales settings'))
   await step('deactivation applies without re-login', async () => {
     await svc.from('profiles').update({ active: false, role: 'admin' }).eq('id', userId)
     return refused(() => api('/me'), /^403/, 'inactive /me')
@@ -136,6 +228,16 @@ finally {
   await svc.from('enquiries').delete().like('name', 'e2e-%')
   await svc.from('clients').delete().like('name', 'e2e-client-%')
   await svc.from('client_fields').delete().like('key', 'e2e_%')
+  // Phase 3
+  if (docPath) await svc.storage.from('documents').remove([docPath]).catch(() => {})
+  await svc.from('purchases').delete().like('description', 'e2e-%')
+  await svc.from('messages').delete().like('subject', 'e2e-%')
+  await svc.from('documents').delete().like('name', 'e2e-%')
+  await svc.from('quotes').delete().like('title', 'e2e-%')
+  await svc.from('quote_fields').delete().like('key', 'e2e_%')
+  for (const [key, value] of Object.entries(settingsBefore)) {
+    if (value) await svc.from('settings').upsert({ key, value }, { onConflict: 'key' })
+  }
   if (userId) {
     await svc.from('audit_log').delete().eq('actor_label', EMAIL)
     await svc.auth.admin.deleteUser(userId).catch(() => {})

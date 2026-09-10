@@ -1,4 +1,5 @@
 import Turnstile from '../components/Turnstile'
+import { useSite, phoneHref, waHref } from '../lib/site'
 import { useEnquiryForm } from '../lib/useEnquiryForm'
 import { useApi } from '../lib/api'
 import { Clock, Mail, MapPin, MessageCircle, Phone, RotateCw, Send, ShieldCheck } from 'lucide-react'
@@ -9,6 +10,7 @@ const QUOTE_FIELDS = {
 }
 
 export default function Quote() {
+  const site = useSite()
   const { field, setToken, submit, status, error } = useEnquiryForm('quote', QUOTE_FIELDS)
   const { data: products, loading: productsLoading } = useApi('/products')
 
@@ -28,7 +30,7 @@ export default function Quote() {
       </div>
       <div>
       <p className="text-xs text-muted-foreground uppercase font-medium">Phone</p>
-      <p className="text-sm font-semibold text-foreground">+234 913 500 9001</p>
+      <p className="text-sm font-semibold text-foreground">{site.phone}</p>
       </div>
       </div>
       <div className="bg-card border border-border p-5 rounded-2xl flex items-start gap-3">
@@ -37,7 +39,7 @@ export default function Quote() {
       </div>
       <div>
       <p className="text-xs text-muted-foreground uppercase font-medium">Email</p>
-      <p className="text-sm font-semibold text-foreground">sales@vertocagro.com</p>
+      <p className="text-sm font-semibold text-foreground">{site.email}</p>
       </div>
       </div>
       <div className="bg-card border border-border p-5 rounded-2xl flex items-start gap-3">
@@ -46,7 +48,7 @@ export default function Quote() {
       </div>
       <div>
       <p className="text-xs text-muted-foreground uppercase font-medium">Address</p>
-      <p className="text-sm font-semibold text-foreground">Akala Express Way, Ibadan</p>
+      <p className="text-sm font-semibold text-foreground">{site.address}</p>
       </div>
       </div>
       <div className="bg-card border border-border p-5 rounded-2xl flex items-start gap-3">
@@ -142,10 +144,10 @@ export default function Quote() {
       <div className="bg-primary text-primary-foreground p-6 rounded-2xl">
       <h3 className="text-lg font-bold mb-3">Need Help?</h3>
       <p className="text-sm text-primary-foreground/80 mb-4">Not sure which commodity fits your needs? Our trading team is happy to advise.</p>
-      <a href="tel:+2349135009001" className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border hover:text-accent-foreground h-9 px-4 py-2 w-full bg-transparent border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 font-semibold rounded-full">
+      <a href={phoneHref(site.phone)} className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border hover:text-accent-foreground h-9 px-4 py-2 w-full bg-transparent border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 font-semibold rounded-full">
       <Phone className="w-4 h-4 mr-2" />Call Now</a>
       </div>
-      <a href="https://wa.me/2349135009001" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-[#25D366] text-white p-4 rounded-2xl hover:opacity-90 transition-opacity">
+      <a href={waHref(site.whatsapp)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-[#25D366] text-white p-4 rounded-2xl hover:opacity-90 transition-opacity">
       <MessageCircle className="w-6 h-6" />
       <div>
       <p className="text-sm font-semibold">Chat on WhatsApp</p>

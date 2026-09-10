@@ -13,12 +13,15 @@ import Gallery from './pages/Gallery'
 import Contact from './pages/Contact'
 import Quote from './pages/Quote'
 import NotFound from './pages/NotFound'
+import QuoteView from './pages/QuoteView'
+import { SiteProvider } from './lib/site'
 
 // Code-split: public visitors never download the admin panel.
 const AdminApp = lazy(() => import('./admin/AdminApp'))
 
 export default function App() {
   return (
+    <SiteProvider>
     <Routes>
       <Route
         path="/admin/*"
@@ -36,8 +39,10 @@ export default function App() {
         <Route path="/gallery" element={<Gallery />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/quote" element={<Quote />} />
+        <Route path="/q/:token" element={<QuoteView />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
+    </SiteProvider>
   )
 }

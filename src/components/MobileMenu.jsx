@@ -1,9 +1,11 @@
 import { useEffect } from 'react'
+import { useSite } from '../lib/site'
 import { Link, useLocation } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { NAV_LINKS } from '../lib/nav'
 
 export default function MobileMenu({ open, onClose }) {
+  const site = useSite()
   const { pathname } = useLocation()
 
   // Close on route change, and lock body scroll while open.
@@ -39,7 +41,7 @@ export default function MobileMenu({ open, onClose }) {
         }`}
       >
         <div className="flex items-center justify-between mb-8">
-          <img src="/assets/img/logo.png" alt="Vertoc Agro Products" className="h-8 w-auto object-contain" />
+          <img src={site.logo} alt={site.name} className="h-8 w-auto object-contain" />
           <button
             type="button"
             onClick={onClose}

@@ -1,33 +1,27 @@
 import { Link } from 'react-router-dom'
 import { AtSign, Facebook, Instagram, Linkedin, Mail, MapPin, Phone, Twitter } from 'lucide-react'
+import { useSite } from '../lib/site'
+
+const SOCIAL = [['facebook', Facebook, 'Facebook'], ['twitter', Twitter, 'X'], ['instagram', Instagram, 'Instagram'], ['linkedin', Linkedin, 'LinkedIn'], ['threads', AtSign, 'Threads']]
 
 export default function Footer() {
+  const site = useSite()
   return (
     <footer className="bg-primary text-primary-foreground">
       <div className="container mx-auto px-4 md:px-6 py-14 md:py-20">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
       <div>
       <div className="mb-5">
-      <img src="/assets/img/logo.png" alt="Vertoc Agro Products" className="h-10 object-contain brightness-0 invert" />
+      <img src={site.logo} alt={site.name} className="h-10 object-contain brightness-0 invert" />
       </div>
-      <p className="text-primary-foreground/70 text-sm leading-relaxed mb-5">Cultivation of crops, sourcing, processing, storage, logistics, and export of premium agricultural commodities across Nigeria and beyond.</p>
+      <p className="text-primary-foreground/70 text-sm leading-relaxed mb-5">{site.description}</p>
       <p className="text-primary-foreground/50 text-xs leading-relaxed mb-4">Registered with the Corporate Affairs Commission of Nigeria — RC No: 8464264. Licensed by the Nigerian Export Promotion Council (NEPC) — License No: 0044255.</p>
       <div className="flex items-center gap-3">
-      <a href="https://facebook.com/VertocAgro" target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="w-9 h-9 bg-primary-foreground/10 rounded-2xl flex items-center justify-center hover:bg-accent hover:text-foreground transition-all duration-200">
-      <Facebook className="w-4 h-4" />
+      {SOCIAL.filter(([k]) => site[k]).map(([k, Icon, label]) => (
+      <a key={k} href={site[k]} target="_blank" rel="noopener noreferrer" aria-label={label} className="w-9 h-9 bg-primary-foreground/10 rounded-2xl flex items-center justify-center hover:bg-accent hover:text-foreground transition-all duration-200">
+      <Icon className="w-4 h-4" />
       </a>
-      <a href="https://x.com/vertocagro" target="_blank" rel="noopener noreferrer" aria-label="X" className="w-9 h-9 bg-primary-foreground/10 rounded-2xl flex items-center justify-center hover:bg-accent hover:text-foreground transition-all duration-200">
-      <Twitter className="w-4 h-4" />
-      </a>
-      <a href="https://instagram.com/vertocagro" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="w-9 h-9 bg-primary-foreground/10 rounded-2xl flex items-center justify-center hover:bg-accent hover:text-foreground transition-all duration-200">
-      <Instagram className="w-4 h-4" />
-      </a>
-      <a href="https://linkedin.com/company/vertocagro" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" className="w-9 h-9 bg-primary-foreground/10 rounded-2xl flex items-center justify-center hover:bg-accent hover:text-foreground transition-all duration-200">
-      <Linkedin className="w-4 h-4" />
-      </a>
-      <a href="https://www.threads.com/@vertocagro" target="_blank" rel="noopener noreferrer" aria-label="Threads" className="w-9 h-9 bg-primary-foreground/10 rounded-2xl flex items-center justify-center hover:bg-accent hover:text-foreground transition-all duration-200">
-      <AtSign className="w-4 h-4" />
-      </a>
+      ))}
       </div>
       </div>
       <div>
@@ -144,15 +138,15 @@ export default function Footer() {
       <ul className="space-y-3.5">
       <li className="flex items-start gap-3">
       <Phone className="w-4 h-4 mt-0.5 text-accent shrink-0" />
-      <span className="text-sm text-primary-foreground/70">+234 913 500 9001</span>
+      <span className="text-sm text-primary-foreground/70">{site.phone}</span>
       </li>
       <li className="flex items-start gap-3">
       <Mail className="w-4 h-4 mt-0.5 text-accent shrink-0" />
-      <span className="text-sm text-primary-foreground/70">sales@vertocagro.com</span>
+      <span className="text-sm text-primary-foreground/70">{site.email}</span>
       </li>
       <li className="flex items-start gap-3">
       <MapPin className="w-4 h-4 mt-0.5 text-accent shrink-0" />
-      <span className="text-sm text-primary-foreground/70">Vertoc Agro, Akala Express Way, Ibadan, Oyo State, Nigeria</span>
+      <span className="text-sm text-primary-foreground/70">{site.name}, {site.address}</span>
       </li>
       </ul>
       </div>
@@ -160,7 +154,7 @@ export default function Footer() {
       </div>
       <div className="border-t border-primary-foreground/10">
       <div className="container mx-auto px-4 md:px-6 py-5 flex flex-col md:flex-row items-center justify-between gap-3">
-      <p className="text-xs text-primary-foreground/50">© 2026 Vertoc Agro Products Limited. All rights reserved.</p>
+      <p className="text-xs text-primary-foreground/50">© {new Date().getFullYear()} {site.legal_name}. All rights reserved.</p>
       <div className="flex items-center gap-5 flex-wrap justify-center">
       <Link className="text-xs text-primary-foreground/50 hover:text-accent transition-colors" to="/privacy-policy">Privacy Policy</Link>
       <Link className="text-xs text-primary-foreground/50 hover:text-accent transition-colors" to="/terms-of-service">Terms of Service</Link>

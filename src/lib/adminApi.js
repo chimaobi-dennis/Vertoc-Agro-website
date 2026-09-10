@@ -17,3 +17,11 @@ export async function adminFetch(path, { method = 'GET', body } = {}) {
   if (!res.ok) throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status })
   return data
 }
+
+/** Same, for binary responses (PDF preview). Returns a Blob. */
+export async function adminFetchBlob(path) {
+  const { data: { session } = {} } = supabase ? await supabase.auth.getSession() : {}
+  const res = await fetch(`${BASE}/api/admin${path}`, { headers: session ? { Authorization: `Bearer ${session.access_token}` } : {} })
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `Request failed (${res.status})`) }
+  return res.blob()
+}

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Link2, Mail, Phone, UserPlus } from 'lucide-react'
+import Composer from './Composer'
+import { fmtDateTime, messageTone } from './format'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Field, Select, Textarea, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
@@ -12,11 +14,14 @@ export default function EnquiryDetail() {
   const [clients, setClients] = useState([])
   const [err, setErr] = useState(null)
   const [notes, setNotes] = useState('')
+  const [replies, setReplies] = useState(null)
+  const [compose, setCompose] = useState(false)
   const [toast, toastEl] = useToast()
 
   useEffect(() => {
     adminFetch(`/enquiries/${id}`).then(x => { setE(x); setNotes(x.notes || '') }).catch(er => setErr(er.message))
     adminFetch('/clients?status=active').then(setClients).catch(() => {})
+    adminFetch(`/messages?enquiry_id=${id}`).then(setReplies).catch(() => setReplies([]))
   }, [id])
 
   const patch = async (body, msg) => {
@@ -63,9 +68,24 @@ export default function EnquiryDetail() {
                 <div key={k} className="grid sm:grid-cols-[180px_1fr] gap-1 py-3 text-sm"><dt className="text-muted-foreground">{k}</dt><dd className="whitespace-pre-wrap">{v || '—'}</dd></div>
               ))}
             </dl>
-            <div className="mt-6">
-              <a href={`mailto:${e.email}?subject=${encodeURIComponent('Re: your enquiry to Vertoc Agro')}`}><Button variant="accent"><Mail className="w-4 h-4" />Reply by email</Button></a>
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <Button variant="accent" onClick={() => setCompose(true)}><Mail className="w-4 h-4" />Reply by email</Button>
+              <a href={`mailto:${e.email}?subject=${encodeURIComponent('Re: your enquiry to Vertoc Agro')}`} className="text-xs text-muted-foreground hover:text-foreground">or use your own mail app</a>
             </div>
+          </Card>
+
+          <Card className="animate-fade-up" style={{ animationDelay: '60ms' }}>
+            <div className="px-5 py-3.5 border-b border-border"><h2 className="text-sm font-semibold">Replies sent</h2></div>
+            <ul className="divide-y divide-border">
+              {!replies && <li className="px-5 py-4"><Bone className="h-4 w-56" /></li>}
+              {replies?.map(m => (
+                <li key={m.id} className="px-5 py-3 text-sm">
+                  <div className="flex items-center gap-2"><span className="font-medium truncate flex-1">{m.subject}</span><Badge tone={messageTone(m.status)}>{m.status}</Badge></div>
+                  <p className="text-xs text-muted-foreground">{fmtDateTime(m.created_at)}{m.status === 'failed' ? ` · ${m.error}` : ''}</p>
+                </li>
+              ))}
+              {replies?.length === 0 && <li className="px-5 py-6 text-center text-xs text-muted-foreground">No replies sent from the panel yet.</li>}
+            </ul>
           </Card>
 
           <Card className="p-6 animate-fade-up" style={{ animationDelay: '80ms' }}>
@@ -101,6 +121,10 @@ export default function EnquiryDetail() {
           </Card>
         </div>
       </div>
+      <Composer open={compose} onClose={() => setCompose(false)} title={`Reply to ${e.name}`} to={e.email}
+        subject={`Re: your ${isQuote ? 'quote request' : 'enquiry'} to Vertoc Agro`} body={`Dear ${e.name},\n\nThank you for your ${isQuote ? `enquiry about ${e.commodity || 'our commodities'}` : 'message'}.\n\n`}
+        clientId={e.client_id} enquiryId={e.id}
+        onSent={() => { toast('Reply sent'); adminFetch(`/enquiries/${id}`).then(setE).catch(() => {}); adminFetch(`/messages?enquiry_id=${id}`).then(setReplies).catch(() => {}) }} />
       {toastEl}
     </>
   )

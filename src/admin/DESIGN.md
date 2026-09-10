@@ -22,3 +22,11 @@ What every admin screen — Phase 2 onward included — is built on.
 - **Empty states.** One line of plain language plus the primary action.
 - **Auth screens** use `AuthShell`: brand panel left (photo under the
   navy→green gradient), form right.
+- **Dialogs** use `Modal` from `ui.jsx`: navy scrim with blur, a card that is
+  a bottom sheet on phones and centred on desktop, Escape and backdrop close.
+- **Tabs** (`Tabs` in `ui.jsx`) are underline tabs with the accent bar; the
+  active tab lives in the URL (`?tab=`) so links can deep-link into a record.
+- **Uploads** are dashed `rounded-2xl` drop zones that accept click and drag;
+  in-flight files show as pulsing rows, never a progress spinner.
+- **Money** is always formatted with the record's own currency (`fmtMoney`),
+  tabular figures, totals in navy and bold.

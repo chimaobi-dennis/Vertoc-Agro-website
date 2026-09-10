@@ -1,7 +1,8 @@
 import { Field, Input, Select, Textarea } from './ui'
+import FileField from './FileField'
 
-/** Renders one user-defined client field by its type. */
-export default function DynamicField({ field, value, onChange }) {
+/** Renders one user-defined field by its type. `scope` ties uploads to the owning record. */
+export default function DynamicField({ field, value, onChange, scope }) {
   const label = field.required ? `${field.label} *` : field.label
   if (field.type === 'checkbox') {
     return (
@@ -10,6 +11,9 @@ export default function DynamicField({ field, value, onChange }) {
         {field.label}
       </label>
     )
+  }
+  if (field.type === 'image' || field.type === 'file') {
+    return <Field label={label}><FileField field={field} value={value} onChange={onChange} scope={scope} /></Field>
   }
   const common = { value: value ?? '', onChange: e => onChange(e.target.value), required: field.required }
   if (field.type === 'textarea') return <Field label={label} className="md:col-span-2"><Textarea rows={3} {...common} /></Field>
@@ -25,4 +29,11 @@ export default function DynamicField({ field, value, onChange }) {
   }
   const type = { email: 'email', phone: 'tel', number: 'number', date: 'date', url: 'url' }[field.type] || 'text'
   return <Field label={label}><Input type={type} {...common} /></Field>
+}
+
+/** Plain-text rendering of a field value for tables and exports. */
+export const displayValue = (f, v) => {
+  if (f.type === 'checkbox') return v ? 'Yes' : 'No'
+  if (v && typeof v === 'object') return v.name || ''
+  return v ?? ''
 }

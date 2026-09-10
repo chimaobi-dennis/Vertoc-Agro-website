@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSite } from '../lib/site'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Menu, Moon, Sun } from 'lucide-react'
 import { NAV_LINKS } from '../lib/nav'
@@ -6,6 +7,7 @@ import { useTheme } from '../lib/useTheme'
 import MobileMenu from './MobileMenu'
 
 export default function Header() {
+  const site = useSite()
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const { isDark, toggle } = useTheme()
@@ -35,8 +37,8 @@ export default function Header() {
         <div className="container mx-auto px-4 md:px-6 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3 shrink-0">
             <img
-              src="/assets/img/logo.png"
-              alt="Vertoc Agro Products"
+              src={site.logo}
+              alt={site.name}
               className={`object-contain transition-all duration-300 h-9 ${
                 solid ? '' : 'brightness-0 invert'
               }`}

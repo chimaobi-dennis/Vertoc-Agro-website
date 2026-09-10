@@ -24,3 +24,6 @@ server/data/
 *.log
 npm-debug.log*
 .DS_Store
+
+# Local dev launch config for the in-app browser
+.claude/

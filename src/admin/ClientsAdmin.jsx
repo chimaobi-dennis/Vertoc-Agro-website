@@ -4,6 +4,7 @@ import { Download, FileText, Plus, Search, Settings2 } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Button, Card, Input, PageHeader, Table, Td } from './ui'
 import { Bone } from '../components/Skeleton'
+import { displayValue as display } from './DynamicField'
 
 // jsPDF is ~650 KB; pull the export module in only when someone actually
 // exports, so it never ships with the admin chunk itself.
@@ -11,8 +12,6 @@ const exportAs = (kind, cols, rows) =>
   import('./exports').then(m => kind === 'csv'
     ? m.downloadCsv('vertoc-clients.csv', cols, rows)
     : m.downloadPdf('vertoc-clients.pdf', 'Vertoc Agro — Clients', cols, rows))
-
-const display = (f, v) => (f.type === 'checkbox' ? (v ? 'Yes' : 'No') : (v ?? ''))
 
 export default function ClientsAdmin() {
   const [fields, setFields] = useState(null)
