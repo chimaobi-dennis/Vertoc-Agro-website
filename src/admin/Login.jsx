@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
-import { supabase, authConfigured } from '../lib/supabase'
+import { supabase, authConfigured, missingAuthVars } from '../lib/supabase'
 import { useAuth } from './AuthContext'
 import { Button, Card, Field, Input, Alert } from './ui'
 
@@ -28,7 +28,11 @@ export default function Login() {
         <h1 className="font-serif text-2xl font-bold text-foreground mb-1">Admin sign in</h1>
         <p className="text-sm text-muted-foreground mb-6">Accounts are invite-only.</p>
         {!authConfigured ? (
-          <Alert>Sign-in isn't configured: set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code>.</Alert>
+          <Alert>
+            Sign-in isn't configured. Missing at build time:{' '}
+            {missingAuthVars.map((v, i) => <span key={v}>{i > 0 && ' and '}<code>{v}</code></span>)}.
+            Set {missingAuthVars.length > 1 ? 'them' : 'it'} in the deployment's environment variables, then redeploy.
+          </Alert>
         ) : (
           <form onSubmit={submit} className="space-y-4">
             <Field label="Email"><Input type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} /></Field>

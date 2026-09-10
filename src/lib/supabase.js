@@ -10,3 +10,10 @@ const key = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 export const supabase = url && key ? createClient(url, key) : null
 export const authConfigured = Boolean(supabase)
+
+/** Env vars absent at build time. Surfaced on the login page so a
+ *  misconfigured deployment explains itself instead of just failing. */
+export const missingAuthVars = [
+  !url && 'VITE_SUPABASE_URL',
+  !key && 'VITE_SUPABASE_ANON_KEY',
+].filter(Boolean)
