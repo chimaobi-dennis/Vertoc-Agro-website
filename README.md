@@ -126,6 +126,9 @@ enquiries at all — so even a leaked anon key cannot expose customer details.
 Lives at `/admin`, code-split so public visitors never download it. Accounts
 are **invite-only** — there is no signup page.
 
+The visual language every admin screen follows is documented in
+`src/admin/DESIGN.md` — read it before adding a screen.
+
 ### Roles
 
 | Role | Can manage |

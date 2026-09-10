@@ -78,6 +78,11 @@ export default {
           from: { height: 'var(--radix-accordion-content-height)' },
           to: { height: '0' },
         },
+        float: {
+          '0%, 100%': { transform: 'translateY(0) scale(1)' },
+          '50%': { transform: 'translateY(-16px) scale(1.04)' },
+        },
+        'fade-in': { from: { opacity: '0' }, to: { opacity: '1' } },
         'fade-up': {
           from: { opacity: '0', transform: 'translateY(1rem)' },
           to: { opacity: '1', transform: 'none' },
@@ -87,6 +92,9 @@ export default {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
         'fade-up': 'fade-up 0.5s ease-out both',
+        'fade-in': 'fade-in 0.35s ease-out both',
+        float: 'float 8s ease-in-out infinite',
+        'float-slow': 'float 13s ease-in-out infinite',
       },
     },
   },

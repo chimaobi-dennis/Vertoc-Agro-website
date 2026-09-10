@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ArrowRight, Lock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
-import { Button, Card, Field, Input, Alert } from './ui'
+import AuthShell from './AuthShell'
+import { Button, Field, IconInput, Alert } from './ui'
+import { Bone } from '../components/Skeleton'
 
-/** Landing page for invite links: the link signs the user in, this sets their password. */
+/** Landing page for invite links; also the change-password page for anyone signed in. */
 export default function SetPassword() {
   const { session, loading } = useAuth()
   const nav = useNavigate()
@@ -23,21 +26,32 @@ export default function SetPassword() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-6">
-      <Card className="w-full max-w-sm p-8">
-        <h1 className="font-serif text-2xl font-bold text-foreground mb-1">Set your password</h1>
-        {loading ? <p className="text-sm text-muted-foreground">Checking your invite…</p>
-        : !session ? <Alert>This invite link has expired or was already used. Ask an admin to send a new one.</Alert>
-        : (
-          <form onSubmit={submit} className="space-y-4 mt-4">
-            <p className="text-sm text-muted-foreground">Signed in as <b>{session.user.email}</b>.</p>
-            <Field label="New password"><Input type="password" autoComplete="new-password" required value={pw} onChange={e => setPw(e.target.value)} /></Field>
-            <Field label="Confirm password"><Input type="password" autoComplete="new-password" required value={pw2} onChange={e => setPw2(e.target.value)} /></Field>
+    <AuthShell>
+      <img src="/assets/img/logo.png" alt="Vertoc Agro" className="h-9 mb-10 lg:hidden" />
+      <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">Account</p>
+      <h1 className="font-serif text-3xl md:text-4xl font-bold text-foreground tracking-tight mb-2">Set your password</h1>
+
+      {loading ? (
+        <div className="space-y-4 mt-6"><Bone className="h-4 w-2/3" /><Bone className="h-11 w-full" /><Bone className="h-11 w-full" /><Bone className="h-12 w-full" /></div>
+      ) : !session ? (
+        <div className="mt-6"><Alert>This link has expired or was already used. Ask an admin to send a new one.</Alert></div>
+      ) : (
+        <>
+          <p className="text-muted-foreground mb-8">Signed in as <b className="text-foreground">{session.user.email}</b>.</p>
+          <form onSubmit={submit} className="space-y-5">
+            <Field label="New password" hint="At least 10 characters.">
+              <IconInput icon={Lock} type="password" autoComplete="new-password" required value={pw} onChange={e => setPw(e.target.value)} />
+            </Field>
+            <Field label="Confirm password">
+              <IconInput icon={Lock} type="password" autoComplete="new-password" required value={pw2} onChange={e => setPw2(e.target.value)} />
+            </Field>
             {err && <Alert>{err}</Alert>}
-            <Button type="submit" className="w-full" disabled={busy}>{busy ? 'Saving…' : 'Save and continue'}</Button>
+            <Button type="submit" variant="accent" className="w-full h-12 text-base" disabled={busy}>
+              {busy ? 'Saving…' : <>Save and continue <ArrowRight className="w-4 h-4" /></>}
+            </Button>
           </form>
-        )}
-      </Card>
-    </div>
+        </>
+      )}
+    </AuthShell>
   )
 }

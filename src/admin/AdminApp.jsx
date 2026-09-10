@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './AuthContext'
+import { AdminThemeProvider } from './AdminTheme'
 import AdminLayout from './AdminLayout'
 import Login from './Login'
 import SetPassword from './SetPassword'
@@ -12,7 +13,11 @@ import UsersAdmin from './UsersAdmin'
 import AuditLog from './AuditLog'
 import { Button, Card, Alert } from './ui'
 
-const Splash = () => <div className="min-h-screen bg-background flex items-center justify-center text-sm text-muted-foreground">Loading…</div>
+const Splash = () => (
+  <div className="min-h-screen bg-background flex items-center justify-center">
+    <div className="w-12 h-12 rounded-2xl bg-accent/20 animate-pulse" />
+  </div>
+)
 
 /* Signed in, but the backend refused the profile (inactive, or created outside the panel). */
 function Blocked({ reason }) {
@@ -45,6 +50,7 @@ const P = (perm, el) => <RequireRole perm={perm}>{el}</RequireRole>
 
 export default function AdminApp() {
   return (
+    <AdminThemeProvider>
     <AuthProvider>
       <Routes>
         <Route path="login" element={<Login />} />
@@ -63,5 +69,6 @@ export default function AdminApp() {
         </Route>
       </Routes>
     </AuthProvider>
+    </AdminThemeProvider>
   )
 }

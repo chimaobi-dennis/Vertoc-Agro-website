@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Button, Card, Field, Input, Textarea, Select, PageHeader, Alert } from './ui'
 import ImageUpload from './ImageUpload'
+import { Bone } from '../components/Skeleton'
 
 const slugify = s => String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 const toList = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean)
@@ -41,7 +42,14 @@ export default function ProductForm() {
     } catch (e) { setErr(e.message); setBusy(false) }
   }
 
-  if (loading) return <p className="text-muted-foreground">Loading…</p>
+  if (loading) return (
+    <div className="max-w-4xl space-y-6 animate-fade-in">
+      <Bone className="h-4 w-24" /><Bone className="h-9 w-64" />
+      <div className="bg-card border border-border rounded-2xl p-6 grid md:grid-cols-2 gap-5">
+        {[0, 1, 2, 3, 4, 5].map(i => <div key={i} className={i < 2 ? 'md:col-span-2' : ''}><Bone className="h-4 w-24 mb-2" /><Bone className="h-11 w-full" /></div>)}
+      </div>
+    </div>
+  )
 
   return (
     <>

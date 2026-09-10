@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
+import { ArrowRight, Lock, Mail } from 'lucide-react'
 import { supabase, authConfigured, missingAuthVars } from '../lib/supabase'
 import { useAuth } from './AuthContext'
-import { Button, Card, Field, Input, Alert } from './ui'
+import AuthShell from './AuthShell'
+import { Button, Field, IconInput, Alert } from './ui'
 
 export default function Login() {
   const { session, me, error: authErr, loading } = useAuth()
@@ -22,26 +24,36 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-6">
-      <Card className="w-full max-w-sm p-8">
-        <img src="/assets/img/logo.png" alt="Vertoc Agro" className="h-9 mb-6" />
-        <h1 className="font-serif text-2xl font-bold text-foreground mb-1">Admin sign in</h1>
-        <p className="text-sm text-muted-foreground mb-6">Accounts are invite-only.</p>
-        {!authConfigured ? (
-          <Alert>
-            Sign-in isn't configured. Missing at build time:{' '}
-            {missingAuthVars.map((v, i) => <span key={v}>{i > 0 && ' and '}<code>{v}</code></span>)}.
-            Set {missingAuthVars.length > 1 ? 'them' : 'it'} in the deployment's environment variables, then redeploy.
-          </Alert>
-        ) : (
-          <form onSubmit={submit} className="space-y-4">
-            <Field label="Email"><Input type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} /></Field>
-            <Field label="Password"><Input type="password" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} /></Field>
-            {(err || (session && authErr)) && <Alert>{err || authErr}</Alert>}
-            <Button type="submit" className="w-full" disabled={busy || loading}>{busy ? 'Signing in…' : 'Sign in'}</Button>
-          </form>
-        )}
-      </Card>
-    </div>
+    <AuthShell>
+      <img src="/assets/img/logo.png" alt="Vertoc Agro" className="h-9 mb-10 lg:hidden" />
+      <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">Admin</p>
+      <h1 className="font-serif text-3xl md:text-4xl font-bold text-foreground tracking-tight mb-2">Welcome back</h1>
+      <p className="text-muted-foreground mb-8">Sign in to manage products, posts and enquiries.</p>
+
+      {!authConfigured ? (
+        <Alert>
+          Sign-in isn't configured. Missing at build time:{' '}
+          {missingAuthVars.map((v, i) => <span key={v}>{i > 0 && ' and '}<code>{v}</code></span>)}.
+          Set {missingAuthVars.length > 1 ? 'them' : 'it'} in the deployment's environment variables, then redeploy.
+        </Alert>
+      ) : (
+        <form onSubmit={submit} className="space-y-5">
+          <Field label="Email">
+            <IconInput icon={Mail} type="email" autoComplete="email" required placeholder="you@company.com"
+              value={email} onChange={e => setEmail(e.target.value)} />
+          </Field>
+          <Field label="Password">
+            <IconInput icon={Lock} type="password" autoComplete="current-password" required placeholder="••••••••••"
+              value={password} onChange={e => setPassword(e.target.value)} />
+          </Field>
+          {(err || (session && authErr)) && <Alert>{err || authErr}</Alert>}
+          <Button type="submit" variant="accent" className="w-full h-12 text-base" disabled={busy || loading}>
+            {busy ? 'Signing in…' : <>Sign in <ArrowRight className="w-4 h-4" /></>}
+          </Button>
+        </form>
+      )}
+
+      <p className="text-xs text-muted-foreground mt-8">Accounts are invite-only. Ask an administrator for access.</p>
+    </AuthShell>
   )
 }
