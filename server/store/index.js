@@ -34,5 +34,7 @@ const store = hasSupabase
 export const {
   listProducts, getProduct, createProduct, updateProduct, deleteProduct,
   listPosts, getPost, createPost, updatePost, deletePost,
-  createEnquiry, getEnquiry, listEnquiries, updateEnquiryStatus,
+  createEnquiry, getEnquiry, listEnquiries, updateEnquiryStatus, updateEnquiry,
+  listClientFields, getClientField, createClientField, updateClientField, deleteClientField, reorderClientFields,
+  listClients, getClient, createClient, updateClient, deleteClient, listClientEnquiries,
 } = store

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ArrowRight, Inbox, Newspaper, Package, Plus, UserPlus, Users } from 'lucide-react'
+import { Activity, ArrowRight, Briefcase, Inbox, Newspaper, Package, Plus, UserPlus, Users } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { Alert, Badge, Button, Card } from './ui'
@@ -9,7 +9,8 @@ import { Bone } from '../components/Skeleton'
 const TILES = [
   { key: 'products', label: 'Products', icon: Package, to: '/admin/products', perm: 'products', tone: 'bg-primary/10 text-primary' },
   { key: 'posts', label: 'Blog posts', icon: Newspaper, to: '/admin/posts', perm: 'posts', tone: 'bg-accent/15 text-accent' },
-  { key: 'enquiriesNew', label: 'New enquiries', icon: Inbox, to: '/admin', perm: null, tone: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  { key: 'enquiriesNew', label: 'New enquiries', icon: Inbox, to: '/admin/enquiries', perm: 'quotes', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  { key: 'clients', label: 'Clients', icon: Briefcase, to: '/admin/clients', perm: 'clients', tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
   { key: 'users', label: 'Active users', icon: Users, to: '/admin/users', perm: 'users', tone: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300' },
 ]
 const TONE = { create: 'green', update: 'blue', delete: 'red', invite: 'amber', upload: 'muted' }
@@ -49,7 +50,7 @@ export default function Dashboard() {
 
       {err && <Alert>{err}</Alert>}
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-5">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 lg:gap-5">
         {tiles.map(({ key, label, icon: Icon, to, tone }, i) => (
           <Link key={key} to={to} className="animate-fade-up" style={{ animationDelay: `${i * 70}ms` }}>
             <Card hover className="p-5 lg:p-6 h-full">

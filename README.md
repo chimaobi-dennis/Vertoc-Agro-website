@@ -174,6 +174,24 @@ very next request, with no re-login. The frontend only hides menus.
 - Images upload to the `media` storage bucket via the backend (8 MB cap,
   images only); nothing writes to storage from the browser.
 
+### Clients and enquiries (Phase 2)
+
+- **Clients** (`/admin/clients`) — admin and `sales`. The table columns, the
+  form and the exports all follow the fields you define under **Fields**
+  (`/admin/clients/fields`): add, reorder, rename, mark required, choose which
+  appear in the table. Values are validated server-side against those
+  definitions — required, email, number, date, URL, select options. CSV and
+  PDF download the current filtered view; the PDF library loads only on click.
+- **Enquiries** (`/admin/enquiries`) — quote requests and contact messages on
+  separate tabs, each with its own pipeline: quotes move new → contacted →
+  quoted → won or lost; messages new → replied; either can be archived. Each
+  enquiry carries internal notes and can be linked to a client or spawn one.
+  Deleting a client unlinks its enquiries rather than deleting them.
+- Claude has the same reach through MCP: `list_client_fields`, `list_clients`,
+  `get_client`, `create_client`, `update_client`, `update_enquiry`.
+- Needs `server/migrations/003_clients_quotes.sql` (seeds seven starting
+  fields). Supabase-only; the SQLite dev fallback stubs these features.
+
 ### Testing
 
 With the backend running and steps 1–2 done:

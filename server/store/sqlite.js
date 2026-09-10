@@ -217,3 +217,11 @@ export async function updateEnquiryStatus(id, status) {
   db.prepare('UPDATE enquiries SET status = ? WHERE id = ?').run(status, existing.id)
   return await getEnquiry(id)
 }
+
+/* Phase 2 (clients, enquiry pipeline) is Supabase-only. The SQLite driver is a
+   credential-less dev fallback for the public site and basic content. */
+const needsSupabase = () => { throw new Error('Clients and the enquiry pipeline require Supabase (set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)') }
+export const listClientFields = needsSupabase, getClientField = needsSupabase, createClientField = needsSupabase,
+  updateClientField = needsSupabase, deleteClientField = needsSupabase, reorderClientFields = needsSupabase,
+  listClients = needsSupabase, getClient = needsSupabase, createClient = needsSupabase, updateClient = needsSupabase,
+  deleteClient = needsSupabase, listClientEnquiries = needsSupabase, updateEnquiry = needsSupabase

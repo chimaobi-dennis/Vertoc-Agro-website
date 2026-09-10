@@ -44,6 +44,7 @@ router.get('/stats', h(async (_req, res) => {
     return (await q).count ?? 0
   }
   res.json({
+    clients: await count('clients', ['status', 'active']),
     products: await count('products'),
     posts: await count('posts'),
     enquiriesNew: await count('enquiries', ['status', 'new']),
@@ -205,6 +206,92 @@ router.post('/upload', express.json({ limit: '12mb' }), requireRole(...PERMISSIO
 
   await audit({ actor: req.user, action: 'upload', entity: 'media', entityId: path, after: { url: pub.publicUrl, bytes: buffer.length } })
   res.status(201).json({ url: pub.publicUrl, path })
+}))
+
+/* ================================================ PHASE 2: CRM + INBOX ==== */
+
+const crm   = requireRole(...PERMISSIONS.clients)
+const inbox = requireRole(...PERMISSIONS.quotes)
+
+/* client fields */
+router.get('/client-fields', crm, h(async (_req, res) => res.json(await content.listClientFields())))
+
+router.post('/client-fields', crm, h(async (req, res) => {
+  const after = await exposing(content.createClientField)(req.body)
+  await audit({ actor: req.user, action: 'create', entity: 'client_field', entityId: after.key, after })
+  res.status(201).json(after)
+}))
+
+router.put('/client-fields/order', crm, h(async (req, res) => {
+  res.json(await exposing(content.reorderClientFields)(req.body?.ids))
+}))
+
+router.patch('/client-fields/:id', crm, h(async (req, res) => {
+  const before = await content.getClientField(req.params.id)
+  if (!before) throw bad('field not found', 404)
+  const after = await exposing(content.updateClientField)(req.params.id, req.body)
+  await audit({ actor: req.user, action: 'update', entity: 'client_field', entityId: after.key, before, after })
+  res.json(after)
+}))
+
+router.delete('/client-fields/:id', crm, h(async (req, res) => {
+  const before = await content.getClientField(req.params.id)
+  if (!before) throw bad('field not found', 404)
+  const r = await content.deleteClientField(req.params.id)
+  await audit({ actor: req.user, action: 'delete', entity: 'client_field', entityId: before.key, before })
+  res.json(r)
+}))
+
+/* clients */
+router.get('/clients', crm, h(async (req, res) => {
+  res.json(await content.listClients({ status: req.query.status || 'active' }))
+}))
+
+router.get('/clients/:id', crm, h(async (req, res) => {
+  const c = await content.getClient(req.params.id)
+  if (!c) throw bad('client not found', 404)
+  res.json({ ...c, enquiries: await content.listClientEnquiries(c.id) })
+}))
+
+router.post('/clients', crm, h(async (req, res) => {
+  const after = await exposing(content.createClient)(req.body, req.user.id)
+  await audit({ actor: req.user, action: 'create', entity: 'client', entityId: after.id, after })
+  res.status(201).json(after)
+}))
+
+router.patch('/clients/:id', crm, h(async (req, res) => {
+  const before = await content.getClient(req.params.id)
+  if (!before) throw bad('client not found', 404)
+  const after = await exposing(content.updateClient)(req.params.id, req.body)
+  await audit({ actor: req.user, action: 'update', entity: 'client', entityId: after.id, before, after })
+  res.json(after)
+}))
+
+router.delete('/clients/:id', crm, h(async (req, res) => {
+  const before = await content.getClient(req.params.id)
+  if (!before) throw bad('client not found', 404)
+  const r = await content.deleteClient(req.params.id)
+  await audit({ actor: req.user, action: 'delete', entity: 'client', entityId: before.id, before })
+  res.json(r)
+}))
+
+/* enquiries (quote requests + contact messages) */
+router.get('/enquiries', inbox, h(async (req, res) => {
+  res.json(await content.listEnquiries({ kind: req.query.kind || 'all', status: req.query.status || 'all', limit: 500 }))
+}))
+
+router.get('/enquiries/:id', inbox, h(async (req, res) => {
+  const e = await content.getEnquiry(req.params.id)
+  if (!e) throw bad('enquiry not found', 404)
+  res.json(e)
+}))
+
+router.patch('/enquiries/:id', inbox, h(async (req, res) => {
+  const before = await content.getEnquiry(req.params.id)
+  if (!before) throw bad('enquiry not found', 404)
+  const after = await exposing(content.updateEnquiry)(req.params.id, req.body)
+  await audit({ actor: req.user, action: 'update', entity: 'enquiry', entityId: after.id, before, after })
+  res.json(after)
 }))
 
 export default router

@@ -29,8 +29,11 @@ const PASS  = 'E2e-Test-Passw0rd!'
 const results = []
 let userId = null, token = '', uploadPath = null
 
+const show = v => (v && typeof v === 'object')
+  ? (v.key ?? v.slug ?? (v.name != null ? `${v.name} (#${v.id})` : JSON.stringify(v).slice(0, 48)))
+  : (v ?? '')
 const step = async (name, fn) => {
-  try { const v = await fn(); results.push(['✓', name, v ?? '']); return v }
+  try { const v = await fn(); results.push(['✓', name, show(v)]); return v }
   catch (e) { results.push(['✗', name, e.message]); throw e }
 }
 const api = async (path, { method = 'GET', body } = {}) => {
@@ -96,6 +99,25 @@ try {
     return `${rows.length} rows: ${[...new Set(rows.map(r => r.action))].join(', ')}`
   })
 
+  // ------------------------------------------------- Phase 2: CRM + inbox
+  await step('GET /client-fields (seeded)', async () => { const f = await api('/client-fields'); if (f.length < 7) throw new Error('only ' + f.length); return f.map(x => x.key).join(',') })
+  const fkey = 'e2e_terms'
+  const field = await step('POST /client-fields (select, required)', () => api('/client-fields', { method: 'POST', body: { label: 'E2E Terms', key: fkey, type: 'select', options: ['Net 30', 'Prepaid'], required: true } }))
+  await step('required field enforced', () => refused(() => api('/clients', { method: 'POST', body: { name: 'e2e-client-x', data: {} } }), /required/, 'missing required'))
+  await step('select option validated', () => refused(() => api('/clients', { method: 'POST', body: { name: 'e2e-client-x', data: { [fkey]: 'Net 90' } } }), /must be one of/, 'bad option'))
+  await step('email field validated', () => refused(() => api('/clients', { method: 'POST', body: { name: 'e2e-client-x', data: { [fkey]: 'Net 30', email: 'nope' } } }), /valid email/, 'bad email'))
+  const client = await step('POST /clients', () => api('/clients', { method: 'POST', body: { name: 'e2e-client-' + Date.now(), data: { [fkey]: 'Net 30', email: 'buyer@e2e.invalid' } } }))
+  await step('PATCH /clients/:id merges data', async () => (await api(`/clients/${client.id}`, { method: 'PATCH', body: { data: { country: 'Nigeria' } } })).data.country)
+  await step('GET /clients lists it', async () => { const l = await api('/clients'); if (!l.some(c => c.id === client.id)) throw new Error('missing'); return l.length + ' active' })
+  const enqId = await step('seed a quote enquiry (direct insert)', async () => { const { data, error } = await svc.from('enquiries').insert({ kind: 'quote', name: 'e2e-enquirer', email: 'q@e2e.invalid', commodity: 'Cocoa Beans', quantity: '20 MT' }).select().single(); if (error) throw error; return data.id })
+  await step('PATCH /enquiries/:id -> contacted', async () => (await api(`/enquiries/${enqId}`, { method: 'PATCH', body: { status: 'contacted' } })).status)
+  await step('wrong-kind stage rejected', () => refused(() => api(`/enquiries/${enqId}`, { method: 'PATCH', body: { status: 'replied' } }), /must be one of/, 'replied on a quote'))
+  await step('link enquiry to client + notes', async () => (await api(`/enquiries/${enqId}`, { method: 'PATCH', body: { client_id: client.id, notes: 'e2e note' } })).client_id)
+  await step('GET /clients/:id includes it', async () => { const c = await api(`/clients/${client.id}`); if (!c.enquiries?.some(x => x.id === enqId)) throw new Error('not linked'); return c.enquiries.length + ' linked' })
+  await step('GET /enquiries?kind=quote&status=contacted', async () => { const l = await api('/enquiries?kind=quote&status=contacted'); if (!l.some(x => x.id === enqId)) throw new Error('missing'); return l.length })
+  await step('DELETE /clients/:id unlinks enquiry', async () => { await api(`/clients/${client.id}`, { method: 'DELETE' }); const x = await api(`/enquiries/${enqId}`); if (x.client_id !== null) throw new Error('still linked'); return 'client_id -> null' })
+  await step('DELETE /client-fields/:id', async () => (await api(`/client-fields/${field.id}`, { method: 'DELETE' })).deleted)
+
   // Role and active flag are re-read from the profile on EVERY request — the
   // token stays valid, yet access must change immediately.
   await step('role downgrade applies without re-login', async () => {
@@ -111,6 +133,9 @@ finally {
   if (uploadPath) await svc.storage.from('media').remove([uploadPath]).catch(() => {})
   await svc.from('products').delete().like('slug', 'e2e-test-%')
   await svc.from('posts').delete().like('slug', 'e2e-test-%')
+  await svc.from('enquiries').delete().like('name', 'e2e-%')
+  await svc.from('clients').delete().like('name', 'e2e-client-%')
+  await svc.from('client_fields').delete().like('key', 'e2e_%')
   if (userId) {
     await svc.from('audit_log').delete().eq('actor_label', EMAIL)
     await svc.auth.admin.deleteUser(userId).catch(() => {})

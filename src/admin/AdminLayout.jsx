@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { LayoutDashboard, LogOut, Menu, Moon, Newspaper, Package, ScrollText, Sun, Users, X } from 'lucide-react'
+import { Briefcase, Inbox, LayoutDashboard, LogOut, Menu, Moon, Newspaper, Package, ScrollText, Sun, Users, X } from 'lucide-react'
 import { useAuth } from './AuthContext'
 import { useAdminTheme } from './AdminTheme'
 
@@ -8,6 +8,8 @@ const NAV = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/admin/products', label: 'Products', icon: Package, perm: 'products' },
   { to: '/admin/posts', label: 'Blog', icon: Newspaper, perm: 'posts' },
+  { to: '/admin/enquiries', label: 'Enquiries', icon: Inbox, perm: 'quotes' },
+  { to: '/admin/clients', label: 'Clients', icon: Briefcase, perm: 'clients' },
   { to: '/admin/users', label: 'Users', icon: Users, perm: 'users' },
   { to: '/admin/audit', label: 'Audit log', icon: ScrollText, perm: 'audit' },
 ]

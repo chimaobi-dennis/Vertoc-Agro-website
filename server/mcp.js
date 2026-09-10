@@ -160,9 +160,77 @@ export function buildServer() {
     description: 'Mark an enquiry as new, read, or archived.',
     inputSchema: {
       id: z.number().describe('Enquiry id'),
-      status: z.enum(['new', 'read', 'archived']),
+      status: z.string().describe('quote: new|contacted|quoted|won|lost|archived. contact: new|replied|archived'),
     },
   }, run(async a => { const before = await content.getEnquiry(a.id); const after = await content.updateEnquiryStatus(a.id, a.status); await audit({ actor: MCP_ACTOR, action: 'update', entity: 'enquiry', entityId: a.id, before, after }); return after }))
+
+  /* ------------------------------------------------------- clients (CRM) */
+
+  server.registerTool('list_client_fields', {
+    title: 'List client fields',
+    description: 'The user-defined fields tracked for each client: key, label, type, options, required.',
+    inputSchema: {},
+  }, run(() => content.listClientFields()))
+
+  server.registerTool('list_clients', {
+    title: 'List clients',
+    inputSchema: { status: z.enum(['active', 'archived', 'all']).optional() },
+  }, run(a => content.listClients(a)))
+
+  server.registerTool('get_client', {
+    title: 'Get a client',
+    description: 'One client with all field values and their linked enquiries.',
+    inputSchema: { id: z.number() },
+  }, run(async a => {
+    const c = await content.getClient(a.id)
+    if (!c) throw new Error(`no client with id ${a.id}`)
+    return { ...c, enquiries: await content.listClientEnquiries(c.id) }
+  }))
+
+  server.registerTool('create_client', {
+    title: 'Create a client',
+    description: 'Add a client. `data` holds values keyed by the client field keys from list_client_fields.',
+    inputSchema: {
+      name: z.string().describe('Company or person name'),
+      data: z.record(z.any()).optional().describe('e.g. { "email": "...", "country": "Nigeria" }'),
+      status: z.enum(['active', 'archived']).optional(),
+    },
+  }, run(async a => {
+    const after = await content.createClient(a)
+    await audit({ actor: MCP_ACTOR, action: 'create', entity: 'client', entityId: after.id, after })
+    return after
+  }))
+
+  server.registerTool('update_client', {
+    title: 'Update a client',
+    inputSchema: {
+      id: z.number(),
+      name: z.string().optional(),
+      data: z.record(z.any()).optional().describe('Merged into existing values'),
+      status: z.enum(['active', 'archived']).optional(),
+    },
+  }, run(async ({ id, ...patch }) => {
+    const before = await content.getClient(id)
+    const after = await content.updateClient(id, patch)
+    await audit({ actor: MCP_ACTOR, action: 'update', entity: 'client', entityId: id, before, after })
+    return after
+  }))
+
+  server.registerTool('update_enquiry', {
+    title: 'Update an enquiry',
+    description: 'Move a quote request or message through the pipeline, link it to a client, or add internal notes.',
+    inputSchema: {
+      id: z.number(),
+      status: z.string().optional().describe('quote: new|contacted|quoted|won|lost|archived. contact: new|replied|archived'),
+      client_id: z.number().nullable().optional(),
+      notes: z.string().optional(),
+    },
+  }, run(async ({ id, ...patch }) => {
+    const before = await content.getEnquiry(id)
+    const after = await content.updateEnquiry(id, patch)
+    await audit({ actor: MCP_ACTOR, action: 'update', entity: 'enquiry', entityId: id, before, after })
+    return after
+  }))
 
   return server
 }

@@ -11,6 +11,11 @@ import PostsAdmin from './PostsAdmin'
 import PostForm from './PostForm'
 import UsersAdmin from './UsersAdmin'
 import AuditLog from './AuditLog'
+import ClientsAdmin from './ClientsAdmin'
+import ClientForm from './ClientForm'
+import ClientFieldsAdmin from './ClientFieldsAdmin'
+import EnquiriesAdmin from './EnquiriesAdmin'
+import EnquiryDetail from './EnquiryDetail'
 import { Button, Card, Alert } from './ui'
 
 const Splash = () => (
@@ -64,6 +69,12 @@ export default function AdminApp() {
           <Route path="posts/new" element={P('posts', <PostForm />)} />
           <Route path="posts/:slug" element={P('posts', <PostForm />)} />
           <Route path="users" element={P('users', <UsersAdmin />)} />
+          <Route path="clients" element={P('clients', <ClientsAdmin />)} />
+          <Route path="clients/new" element={P('clients', <ClientForm />)} />
+          <Route path="clients/fields" element={P('clients', <ClientFieldsAdmin />)} />
+          <Route path="clients/:id" element={P('clients', <ClientForm />)} />
+          <Route path="enquiries" element={P('quotes', <EnquiriesAdmin />)} />
+          <Route path="enquiries/:id" element={P('quotes', <EnquiryDetail />)} />
           <Route path="audit" element={P('audit', <AuditLog />)} />
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>
