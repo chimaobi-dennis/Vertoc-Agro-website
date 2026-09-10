@@ -146,7 +146,7 @@ very next request, with no re-login. The frontend only hides menus.
    into `.env` as `VITE_SUPABASE_ANON_KEY`. This key is public by design and
    is only used to sign in; all data still goes through the backend.
 3. **Auth URLs.** Supabase → Authentication → URL Configuration:
-   - Site URL: your deployed origin, e.g. `https://vertoc-agro.vercel.app`
+   - Site URL: your deployed origin, e.g. `https://vertoc-agromain.vercel.app`
    - Redirect URLs: add `<origin>/admin/set-password` for every origin you
      use (production and `http://localhost:5173`). Invite links land there.
 4. **`ADMIN_URL`** in `server/.env` / Vercel: the same origin, used to build
