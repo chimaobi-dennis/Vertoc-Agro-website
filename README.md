@@ -123,7 +123,7 @@ enquiries at all — so even a leaked anon key cannot expose customer details.
 
 ## Admin panel
 
-Lives at `/admin`, code-split so public visitors never download it. Accounts
+Lives at `/staff360` (formerly `/staff360`; old links redirect), code-split so public visitors never download it. Accounts
 are **invite-only** — there is no signup page.
 
 The visual language every admin screen follows is documented in
@@ -150,7 +150,7 @@ very next request, with no re-login. The frontend only hides menus.
    is only used to sign in; all data still goes through the backend.
 3. **Auth URLs.** Supabase → Authentication → URL Configuration:
    - Site URL: your deployed origin, e.g. `https://vertoc-agromain.vercel.app`
-   - Redirect URLs: add `<origin>/admin/set-password` for every origin you
+   - Redirect URLs: add `<origin>/staff360/set-password` for every origin you
      use (production and `http://localhost:5173`). Invite links land there.
 4. **`ADMIN_URL`** in `server/.env` / Vercel: the same origin, used to build
    invite links.
@@ -179,13 +179,13 @@ very next request, with no re-login. The frontend only hides menus.
 
 ### Clients and enquiries (Phase 2)
 
-- **Clients** (`/admin/clients`) — admin and `sales`. The table columns, the
+- **Clients** (`/staff360/clients`) — admin and `sales`. The table columns, the
   form and the exports all follow the fields you define under **Fields**
-  (`/admin/clients/fields`): add, reorder, rename, mark required, choose which
+  (`/staff360/clients/fields`): add, reorder, rename, mark required, choose which
   appear in the table. Values are validated server-side against those
   definitions — required, email, number, date, URL, select options. CSV and
   PDF download the current filtered view; the PDF library loads only on click.
-- **Enquiries** (`/admin/enquiries`) — quote requests and contact messages on
+- **Enquiries** (`/staff360/enquiries`) — quote requests and contact messages on
   separate tabs, each with its own pipeline: quotes move new → contacted →
   quoted → won or lost; messages new → replied; either can be archived. Each
   enquiry carries internal notes and can be linked to a client or spawn one.
@@ -208,7 +208,7 @@ Purchases** — and the site's own identity moves out of the code.
   a signed link that expires in an hour; the public anon key can read nothing.
   Client and quote fields gain two types, **Image** and **File**, whose values
   are verified references to uploaded documents.
-- **Quotes** (`/admin/quotes`) — a builder with line items, discount, tax,
+- **Quotes** (`/staff360/quotes`) — a builder with line items, discount, tax,
   notes, terms, internal notes and **your own quote fields** (Incoterm, port,
   payment terms… managed under Quotes → Fields, same engine as client
   fields). Numbers are `VQ-YYYY-NNNN` from an atomic per-year counter. The PDF
@@ -229,7 +229,7 @@ Purchases** — and the site's own identity moves out of the code.
 - **Purchases** — manual entries or converted quotes, moving pending → paid →
   shipped → delivered (or cancelled), with a lifetime total per currency on the
   client.
-- **Settings** (`/admin/settings`, admins) — *Site*: name, tagline, logo,
+- **Settings** (`/staff360/settings`, admins) — *Site*: name, tagline, logo,
   favicon, contact details, hours, social links (the public site reads these
   live from `/api/site`, with the old hard-coded values as fallback). *Company*:
   the block printed on quotes. *Quotes*: default currency, validity, terms and
@@ -249,11 +249,49 @@ Environment for this phase (server side, never `VITE_`):
 | `RESEND_API_KEY` | optional if the key is saved in Settings → Email (the panel key wins) |
 | `SITE_URL` | public origin used in quote links and emails; falls back to `ADMIN_URL` |
 | `EMAIL_DRY_RUN=1` | log messages as sent without calling Resend — local testing only |
+| `RESEND_WEBHOOK_SECRET` | optional if saved in Settings → Email → Inbound; verifies `email.received` webhooks |
 
 Resend only delivers from a **verified domain**. Until `vertocagro.com` has its
 DNS records added at resend.com → Domains, set the From address to
 `Vertoc Agro <onboarding@resend.dev>`; Resend then delivers only to the account
 owner's own address.
+
+### Email templates, inbound email, staff panel URL (Phase 4)
+
+Needs `server/migrations/005_templates_inbound.sql`.
+
+- **Email templates** (`/staff360/templates`, admins) — every email the panel
+  sends starts from an editable template: quotation to client, reply to an
+  enquiry, email to a client, staff invitation, and two team notifications
+  (quote answered, email received). Subject and body are plain text with
+  `{{placeholders}}` and optional `{{#if var}}…{{/if}}` blocks; the editor
+  shows the placeholders, a live preview with sample data, and a reset to the
+  built-in default. Compose screens are pre-filled from the rendered template
+  and remain editable before sending; a disabled template starts them empty
+  and switches its notification off.
+- **Staff invitations** are now sent by the panel through Resend using the
+  "Staff invitation" template, with the set-password link generated from
+  Supabase (`generateLink`). Without a Resend key the previous Supabase
+  mailer is used, so invites always work.
+- **Inbound email** — Resend can receive mail for your domain and POST an
+  `email.received` event to `/api/webhooks/resend`. The handler verifies the
+  Svix signature (secret from Settings → Email or `RESEND_WEBHOOK_SECRET`),
+  fetches the body and attachments from Resend, files the email under the
+  client whose email matches the sender, links it to a quote when the subject
+  carries a quote number or the sender was last emailed about one, stores the
+  attachments in the private `documents` bucket, and notifies the team. It
+  appears in **Messages** (`/staff360/messages`, with unread badge) and on the
+  client's Messages tab, where it can be answered in place. Retries are
+  idempotent. Setup: enable *Receiving* on a domain in Resend and add the MX
+  record it shows — use a subdomain such as `reply.vertocagro.com` so the
+  existing `sales@` mailbox keeps working — then add a webhook for
+  `email.received` pointing at the URL shown in Settings, paste its signing
+  secret there, and set the *Inbound address* so replies are routed to it.
+- The staff panel moved from `/admin` to **`/staff360`**; old links and
+  already-sent invite emails redirect. Update the Supabase redirect URL to
+  `<origin>/staff360/set-password`.
+- MCP: `list_email_templates`, `update_email_template`, `get_message`,
+  `mark_message_read`; `list_messages` filters by direction and unread.
 
 ### Testing
 

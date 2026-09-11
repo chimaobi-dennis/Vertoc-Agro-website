@@ -42,6 +42,7 @@ export const {
   getSettings, updateSettings, readSecrets, writeSecret,
   createDocument, completeDocument, getDocument, listDocuments, documentUrl, downloadDocument, deleteDocument,
   listQuotes, getQuote, getQuoteByToken, createQuote, updateQuote, deleteQuote, markQuoteSent, markQuoteViewed, respondToQuote, publicQuote, convertQuoteToPurchase,
-  createMessage, updateMessage, getMessage, listMessages,
+  createMessage, updateMessage, getMessage, listMessages, markMessageRead, getMessageByProviderId, latestOutboundTo, countUnreadInbound, findClientByEmail, getQuoteByNumber,
+  listTemplates, getTemplate, upsertTemplate, updateTemplate, createDocumentFromBuffer,
   listPurchases, getPurchase, createPurchase, updatePurchase, deletePurchase,
 } = store

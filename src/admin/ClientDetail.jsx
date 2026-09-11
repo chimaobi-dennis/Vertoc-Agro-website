@@ -51,7 +51,7 @@ export default function ClientDetail() {
       else {
         const c = await adminFetch('/clients', { method: 'POST', body: { name, data } })
         if (linkEnquiry) await adminFetch(`/enquiries/${linkEnquiry}`, { method: 'PATCH', body: { client_id: c.id } }).catch(() => {})
-        nav(`/admin/clients/${c.id}`, { replace: true }); return
+        nav(`/staff360/clients/${c.id}`, { replace: true }); return
       }
     } catch (x) { setErr(x.message) } finally { setBusy(false) }
   }
@@ -61,7 +61,7 @@ export default function ClientDetail() {
   }
   const remove = async () => {
     if (!confirmDelete(client.name)) return
-    try { await adminFetch(`/clients/${id}`, { method: 'DELETE' }); nav('/admin/clients') } catch (x) { toast(x.message, 'error') }
+    try { await adminFetch(`/clients/${id}`, { method: 'DELETE' }); nav('/staff360/clients') } catch (x) { toast(x.message, 'error') }
   }
   const email = client?.data?.email || ''
   const openCompose = () => setCompose({ to: email, subject: '', body: '' })
@@ -70,14 +70,14 @@ export default function ClientDetail() {
 
   return (
     <>
-      <Link to="/admin/clients" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Clients</Link>
+      <Link to="/staff360/clients" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Clients</Link>
       <PageHeader eyebrow="CRM" title={editing ? (client?.name || ' ') : 'New client'}
         description={editing && client ? `Added ${client.created_at.slice(0, 10)}${email ? ` · ${email}` : ''}` : 'Only the name is required.'}
         action={editing && client && (
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={client.status === 'active' ? 'green' : 'muted'}>{client.status}</Badge>
             <Button variant="outline" onClick={openCompose}><Mail className="w-4 h-4" />Send email</Button>
-            <Link to={`/admin/quotes/new?client=${client.id}`}><Button variant="accent"><Plus className="w-4 h-4" />New quote</Button></Link>
+            <Link to={`/staff360/quotes/new?client=${client.id}`}><Button variant="accent"><Plus className="w-4 h-4" />New quote</Button></Link>
           </div>
         )} />
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
@@ -95,7 +95,7 @@ export default function ClientDetail() {
               <Field label="Name *" className="md:col-span-2"><Input required value={name} onChange={e => setName(e.target.value)} placeholder="Company or person" /></Field>
               {fields.map(f => <DynamicField key={f.key} field={f} value={data[f.key]} scope={{ client_id: client?.id }} onChange={v => setData(d => ({ ...d, [f.key]: v }))} />)}
               {!fields.length && (
-                <p className="md:col-span-2 text-sm text-muted-foreground">No custom fields yet — <Link to="/admin/clients/fields" className="text-accent font-semibold">define what you want to track</Link>.</p>
+                <p className="md:col-span-2 text-sm text-muted-foreground">No custom fields yet — <Link to="/staff360/clients/fields" className="text-accent font-semibold">define what you want to track</Link>.</p>
               )}
             </Card>
             <div className="flex flex-wrap gap-3">
@@ -117,7 +117,7 @@ export default function ClientDetail() {
                     <Td className="capitalize">{e.kind}</Td>
                     <Td>{e.commodity || e.subject || '—'}</Td>
                     <Td><Badge tone={tone(e.status)}>{e.status}</Badge></Td>
-                    <Td className="text-right"><Link to={`/admin/enquiries/${e.id}`} className="text-xs font-semibold text-accent">Open →</Link></Td>
+                    <Td className="text-right"><Link to={`/staff360/enquiries/${e.id}`} className="text-xs font-semibold text-accent">Open →</Link></Td>
                   </tr>
                 ))}
                 {!enqs.length && <tr><Td colSpan={5} className="text-center py-8 text-sm text-muted-foreground">No enquiries linked yet.</Td></tr>}
@@ -129,12 +129,12 @@ export default function ClientDetail() {
 
       {editing && client && tab === 'documents' && <DocumentsPanel clientId={client.id} />}
       {editing && client && tab === 'quotes' && <QuotesPanel clientId={client.id} />}
-      {editing && client && tab === 'messages' && <MessagesPanel clientId={client.id} refreshKey={msgKey} onCompose={openCompose} />}
+      {editing && client && tab === 'messages' && <MessagesPanel clientId={client.id} refreshKey={msgKey} onCompose={openCompose} onReply={m => setCompose({ to: m.from_email, subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`, body: `\n\n\nOn ${new Date(m.created_at).toLocaleString('en-GB')}, ${m.from_name || m.from_email} wrote:\n${String(m.body || '').split('\n').map(l => '> ' + l).join('\n')}` })} />}
       {editing && client && tab === 'purchases' && <PurchasesPanel clientId={client.id} />}
 
       {client && (
         <Composer open={Boolean(compose)} onClose={() => setCompose(null)} title={`Email ${client.name}`}
-          to={compose?.to || ''} subject={compose?.subject || ''} body={compose?.body || ''} clientId={client.id}
+          to={compose?.to || ''} subject={compose?.subject || ''} body={compose?.body || ''} clientId={client.id} template={{ key: 'blank', client_id: client.id }}
           onSent={() => { toast('Email sent'); setMsgKey(k => k + 1); setTab('messages') }} />
       )}
       {toastEl}

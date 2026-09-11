@@ -30,3 +30,7 @@ What every admin screen — Phase 2 onward included — is built on.
   in-flight files show as pulsing rows, never a progress spinner.
 - **Money** is always formatted with the record's own currency (`fmtMoney`),
   tabular figures, totals in navy and bold.
+- **Inbox rows**: a round direction chip (accent arrow-in for received, navy
+  arrow-out for sent), bold subject plus an accent dot while unread.
+- **Email previews** render in a `sandbox=""` iframe (no scripts, no
+  navigation) — inbound HTML is untrusted.

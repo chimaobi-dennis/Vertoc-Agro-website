@@ -38,7 +38,7 @@ export default function ProductForm() {
     try {
       if (editing) await adminFetch(`/products/${slug}`, { method: 'PATCH', body })
       else await adminFetch('/products', { method: 'POST', body })
-      nav('/admin/products')
+      nav('/staff360/products')
     } catch (e) { setErr(e.message); setBusy(false) }
   }
 
@@ -53,7 +53,7 @@ export default function ProductForm() {
 
   return (
     <>
-      <Link to="/admin/products" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Products</Link>
+      <Link to="/staff360/products" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Products</Link>
       <PageHeader title={editing ? `Edit ${f.name}` : 'New product'} />
       <form onSubmit={submit} className="space-y-6 max-w-4xl">
         {err && <Alert>{err}</Alert>}
@@ -82,7 +82,7 @@ export default function ProductForm() {
         </Card>
         <div className="flex gap-3">
           <Button type="submit" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Create product'}</Button>
-          <Link to="/admin/products"><Button type="button" variant="outline">Cancel</Button></Link>
+          <Link to="/staff360/products"><Button type="button" variant="outline">Cancel</Button></Link>
         </div>
       </form>
     </>

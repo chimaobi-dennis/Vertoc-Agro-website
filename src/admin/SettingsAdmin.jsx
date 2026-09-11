@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Building2, Check, Copy, FileText, Globe, KeyRound, Mail, Plug, RefreshCw, Trash2 } from 'lucide-react'
+import { Building2, Check, Copy, FileText, Globe, Inbox, KeyRound, LayoutTemplate, Mail, Plug, RefreshCw, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Field, Input, PageHeader, Tabs, Textarea, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
@@ -121,9 +122,20 @@ export default function SettingsAdmin() {
 
 function EmailSettings({ settings, onSaved, reload }) {
   const [key, setKey] = useState('')
+  const [wh, setWh] = useState('')
   const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [toast, toastEl] = useToast()
-  const e = settings.email, stored = settings.secrets?.resend_api_key
+  const e = settings.email, stored = settings.secrets?.resend_api_key, storedWh = settings.secrets?.resend_webhook_secret
+  const copy = text => navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
+  const saveWh = async ev => {
+    ev.preventDefault(); setBusy(true)
+    try { await adminFetch('/settings/secrets/resend_webhook_secret', { method: 'PUT', body: { value: wh } }); setWh(''); toast('Webhook secret saved'); reload() } catch (x) { toast(x.message, 'error') } finally { setBusy(false) }
+  }
+  const removeWh = async () => {
+    if (!window.confirm('Remove the webhook signing secret? Received emails will be rejected until a new one is saved.')) return
+    try { await adminFetch('/settings/secrets/resend_webhook_secret', { method: 'DELETE' }); toast('Secret removed'); reload() } catch (x) { toast(x.message, 'error') }
+  }
   const saveKey = async ev => {
     ev.preventDefault(); setBusy(true)
     try { await adminFetch('/settings/secrets/resend_api_key', { method: 'PUT', body: { value: key } }); setKey(''); toast('Resend key saved'); reload() } catch (x) { toast(x.message, 'error') } finally { setBusy(false) }
@@ -149,15 +161,44 @@ function EmailSettings({ settings, onSaved, reload }) {
         <p className="text-xs text-muted-foreground mt-4">The From address below must be on a domain verified at resend.com → Domains. Until <strong>vertocagro.com</strong> is verified there, use <code>Vertoc Agro &lt;onboarding@resend.dev&gt;</code> to test — Resend then only delivers to your own account email.</p>
       </Card>
 
-      <Group group="email" settings={settings} onSaved={onSaved} title="Sender & signature" description="Every email the team sends uses these.">
-        {({ bind }) => (
+      <Group group="email" settings={settings} onSaved={onSaved} title="Sender, signature & notifications" description="Every email the team sends uses these.">
+        {({ form, setForm, bind }) => (
           <div className="grid md:grid-cols-2 gap-5">
             <Field label="From" hint='Format: Name <address@domain>'><Input {...bind('from')} /></Field>
-            <Field label="Reply-to" hint="Where client replies land"><Input type="email" {...bind('reply_to')} /></Field>
+            <Field label="Reply-to" hint="Where client replies land when inbound is not set up"><Input type="email" {...bind('reply_to')} /></Field>
             <Field label="Signature" hint="Appended under every message" className="md:col-span-2"><Textarea rows={4} {...bind('signature')} /></Field>
+            <Field label="Inbound address" hint="Once Resend receiving is connected (below): replies go here and land in Messages. Used as Reply-To when set."><Input type="email" {...bind('inbound_address')} placeholder="sales@reply.vertocagro.com" /></Field>
+            <Field label="Notify the team at" hint="Defaults to the Reply-to address"><Input type="email" {...bind('notify_to')} /></Field>
+            <div className="md:col-span-2 flex flex-wrap gap-6 text-sm">
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_responses !== false} onChange={ev => setForm({ ...form, notify_responses: ev.target.checked })} />Email the team when a client accepts or declines a quote</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_inbound !== false} onChange={ev => setForm({ ...form, notify_inbound: ev.target.checked })} />Email the team when a client's email arrives</label>
+            </div>
+            <p className="md:col-span-2 text-xs text-muted-foreground flex items-center gap-1.5"><LayoutTemplate className="w-3.5 h-3.5 text-accent" />The wording of every email lives under <Link to="/staff360/templates" className="font-semibold text-accent">Email templates</Link>.</p>
           </div>
         )}
       </Group>
+
+      <Card className="p-6 animate-fade-up" style={{ animationDelay: '140ms' }}>
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+          <div><h2 className="font-semibold flex items-center gap-2"><Inbox className="w-4 h-4 text-accent" />Inbound email (replies into Messages)</h2><p className="text-sm text-muted-foreground mt-0.5">Resend can receive mail for your domain and hand it to the panel. Client replies then appear in Messages and on the client's record, with attachments.</p></div>
+          <Badge tone={e.inbound_configured ? 'green' : 'amber'}>{e.inbound_configured ? `connected · ${e.inbound_source === 'panel' ? 'panel secret' : 'server env'}` : 'not connected'}</Badge>
+        </div>
+        <ol className="text-sm space-y-2 mb-5 list-decimal pl-5 text-foreground/90">
+          <li>In Resend → <strong>Domains</strong>, enable <em>Receiving</em> on a domain and add the MX record it shows to your DNS. Use a subdomain such as <code>reply.vertocagro.com</code> so your existing <code>sales@vertocagro.com</code> mailbox keeps working; the root domain would route all its mail to Resend.</li>
+          <li>In Resend → <strong>Webhooks</strong> → Add endpoint: paste the URL below and select the <code>email.received</code> event. Copy the signing secret it gives you into the box underneath.</li>
+          <li>Set the <em>Inbound address</em> above (e.g. <code>sales@reply.vertocagro.com</code>). Replies to your emails will then go to Resend, and into the panel.</li>
+        </ol>
+        <Field label="Webhook URL">
+          <div className="flex gap-2"><Input readOnly value={e.webhook_url || ''} /><Button type="button" variant="outline" className="shrink-0" onClick={() => copy(e.webhook_url)}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}</Button></div>
+        </Field>
+        <div className="mt-4">
+          {storedWh && <p className="text-sm mb-3">Signing secret ends with <code className="font-mono">····{storedWh.hint}</code>, set {fmtDateTime(storedWh.set_at)}. <button type="button" onClick={removeWh} className="text-destructive font-semibold text-xs ml-2 inline-flex items-center gap-1"><Trash2 className="w-3 h-3" />Remove</button></p>}
+          <form onSubmit={saveWh} className="flex flex-col sm:flex-row gap-2">
+            <Input type="password" autoComplete="off" value={wh} onChange={ev => setWh(ev.target.value)} placeholder={storedWh ? 'Paste a new signing secret to replace it' : 'whsec_…'} />
+            <Button type="submit" variant="accent" className="shrink-0" disabled={!wh || busy}>{busy ? 'Saving…' : storedWh ? 'Replace secret' : 'Save secret'}</Button>
+          </form>
+        </div>
+      </Card>
       {toastEl}
     </>
   )

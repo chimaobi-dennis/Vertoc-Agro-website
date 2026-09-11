@@ -2,7 +2,7 @@
    the first time it is shown, and renders Bone skeletons while it does. */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, ChevronRight, Download, ExternalLink, FileText, Mail, Plus, Trash2, Upload } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronRight, Download, ExternalLink, FileText, Mail, Plus, Reply, Trash2, Upload } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Badge, Button, Card, Empty, Field, Input, Select, Table, Td, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
@@ -92,18 +92,18 @@ export function QuotesPanel({ clientId }) {
     <Card className="animate-fade-up">
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <h2 className="font-semibold">Quotes</h2>
-        <Link to={`/admin/quotes/new?client=${clientId}`}><Button variant="accent" className="h-9"><Plus className="w-4 h-4" />New quote</Button></Link>
+        <Link to={`/staff360/quotes/new?client=${clientId}`}><Button variant="accent" className="h-9"><Plus className="w-4 h-4" />New quote</Button></Link>
       </div>
       <Table head={['Number', 'Title', 'Total', 'Status', 'Valid until', '']}>
         {!rows && [0, 1].map(i => <tr key={i}>{[...Array(6)].map((_, j) => <Td key={j}><Bone className="h-4 w-20" /></Td>)}</tr>)}
         {rows?.map(q => (
           <tr key={q.id} className="hover:bg-muted/40">
-            <Td><Link to={`/admin/quotes/${q.id}`} className="font-medium hover:text-accent">{q.number}</Link></Td>
+            <Td><Link to={`/staff360/quotes/${q.id}`} className="font-medium hover:text-accent">{q.number}</Link></Td>
             <Td className="text-muted-foreground">{q.title || '—'}</Td>
             <Td className="font-medium whitespace-nowrap">{fmtMoney(q.total, q.currency)}</Td>
             <Td><Badge tone={quoteTone(q.status)}>{q.status}</Badge></Td>
             <Td className="text-muted-foreground whitespace-nowrap">{fmtDate(q.valid_until)}</Td>
-            <Td className="text-right"><Link to={`/admin/quotes/${q.id}`} className="text-xs font-semibold text-accent">Open →</Link></Td>
+            <Td className="text-right"><Link to={`/staff360/quotes/${q.id}`} className="text-xs font-semibold text-accent">Open →</Link></Td>
           </tr>
         ))}
         {rows?.length === 0 && <tr><Td colSpan={6}><Empty>No quotes for this client yet.</Empty></Td></tr>}
@@ -114,14 +114,14 @@ export function QuotesPanel({ clientId }) {
 
 /* ----------------------------------------------------------- messages --- */
 
-export function MessagesPanel({ clientId, onCompose, refreshKey = 0 }) {
+export function MessagesPanel({ clientId, onCompose, onReply, refreshKey = 0 }) {
   const [rows, setRows] = useState(null)
   const [openId, setOpenId] = useState(null)
   useEffect(() => { setRows(null); adminFetch(`/messages?client_id=${clientId}`).then(setRows).catch(() => setRows([])) }, [clientId, refreshKey])
   return (
     <Card className="animate-fade-up">
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-        <h2 className="font-semibold">Emails sent</h2>
+        <h2 className="font-semibold">Emails</h2>
         <Button variant="accent" className="h-9" onClick={onCompose}><Mail className="w-4 h-4" />New email</Button>
       </div>
       <ul className="divide-y divide-border">
@@ -130,9 +130,10 @@ export function MessagesPanel({ clientId, onCompose, refreshKey = 0 }) {
           <li key={m.id}>
             <button onClick={() => setOpenId(openId === m.id ? null : m.id)} className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-muted/40">
               {openId === m.id ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
+              <span className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${m.direction === 'in' ? 'bg-accent/15 text-accent' : 'bg-primary/10 text-primary'}`}>{m.direction === 'in' ? <ArrowDownLeft className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5" />}</span>
               <div className="min-w-0 flex-1">
-                <p className="font-medium truncate">{m.subject}</p>
-                <p className="text-xs text-muted-foreground truncate">to {m.to_email} · {fmtDateTime(m.created_at)}{m.attachments?.length ? ` · ${m.attachments.length} attachment${m.attachments.length > 1 ? 's' : ''}` : ''}{m.quote_id ? ' · quote' : ''}</p>
+                <p className={`truncate ${m.direction === 'in' && !m.read_at ? 'font-bold' : 'font-medium'}`}>{m.subject}</p>
+                <p className="text-xs text-muted-foreground truncate">{m.direction === 'in' ? `from ${m.from_name || m.from_email}` : `to ${m.to_email}`} · {fmtDateTime(m.created_at)}{m.attachments?.length ? ` · ${m.attachments.length} attachment${m.attachments.length > 1 ? 's' : ''}` : ''}{m.quote_id ? ' · quote' : ''}</p>
               </div>
               <Badge tone={messageTone(m.status)}>{m.status}</Badge>
             </button>
@@ -141,6 +142,10 @@ export function MessagesPanel({ clientId, onCompose, refreshKey = 0 }) {
                 {m.status === 'failed' && <p className="mb-3 rounded-xl bg-destructive/10 text-destructive px-3 py-2 text-xs">{m.error}</p>}
                 <p className="whitespace-pre-wrap text-foreground/90">{m.body}</p>
                 {m.attachments?.length > 0 && <p className="mt-3 text-xs text-muted-foreground">Attached: {m.attachments.map(a => a.name).join(', ')}</p>}
+                <div className="mt-3 flex gap-2">
+                  {m.direction === 'in' && onReply && <Button variant="outline" className="h-8 px-3 text-xs" onClick={() => onReply(m)}><Reply className="w-3.5 h-3.5" />Reply</Button>}
+                  <Link to={`/staff360/messages/${m.id}`} className="inline-flex items-center h-8 px-3 rounded-xl text-xs font-semibold text-accent hover:bg-muted">Open →</Link>
+                </div>
               </div>
             )}
           </li>

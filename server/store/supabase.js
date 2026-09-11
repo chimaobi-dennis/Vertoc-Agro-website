@@ -432,7 +432,12 @@ export const DEFAULT_SETTINGS = {
   },
   company: { name: 'Vertoc Agro', address: 'Akala Express Way, Ibadan, Oyo State, Nigeria', phone: '+234 913 500 9001', email: 'sales@vertocagro.com', website: 'https://vertocagro.com' },
   quotes: { default_currency: 'USD', valid_days: 14, terms: '', payment_text: '' },
-  email: { from: 'Vertoc Agro <sales@vertocagro.com>', reply_to: 'sales@vertocagro.com', signature: 'Vertoc Agro\n+234 913 500 9001\nsales@vertocagro.com' },
+  email: {
+    from: 'Vertoc Agro <sales@vertocagro.com>', reply_to: 'sales@vertocagro.com', signature: 'Vertoc Agro\n+234 913 500 9001\nsales@vertocagro.com',
+    inbound_address: '',        // address clients reply to once Resend receiving is set up; used as Reply-To when set
+    notify_to: '',              // team address for notifications; falls back to reply_to
+    notify_inbound: true, notify_responses: true,
+  },
   mcp: { enabled: true, token_hash: '', token_hint: '', rotated_at: null },
 }
 const SETTING_GROUPS = Object.keys(DEFAULT_SETTINGS)
@@ -565,6 +570,19 @@ export async function deleteDocument(id) {
   await supabase.storage.from('documents').remove([doc.path])
   unwrap(await supabase.from('documents').delete().eq('id', doc.id), 'deleteDocument')
   return { deleted: true, id: doc.id, name: doc.name }
+}
+
+/** A file the server already holds (inbound attachment): store it and record it as ready. */
+export async function createDocumentFromBuffer({ client_id = null, quote_id = null, name, content_type, content, folder = 'inbound' }, actorId = null) {
+  const ct = String(content_type || '').toLowerCase().split(';')[0].trim()
+  if (!DOC_TYPES[ct]) throw new Error(`attachment type not allowed: ${ct}`)
+  if (!content?.length) throw new Error('empty attachment')
+  if (content.length > DOC_MAX_BYTES) throw new Error('attachment over 20 MB')
+  const clean = safeName(name)
+  const path = `${folder}/${Date.now()}-${randomBytes(4).toString('hex')}-${clean.toLowerCase().replace(/[^a-z0-9.]+/g, '-')}`
+  unwrap(await supabase.storage.from('documents').upload(path, content, { contentType: ct, upsert: false }), 'createDocumentFromBuffer:upload')
+  const row = { client_id: idOrNull(client_id), quote_id: idOrNull(quote_id), name: clean, path, content_type: ct, bytes: content.length, kind: ct.startsWith('image/') ? 'image' : 'file', status: 'ready', uploaded_by: actorId }
+  return unwrap(await supabase.from('documents').insert(row).select().single(), 'createDocumentFromBuffer')
 }
 
 /** Attach still-unowned documents (uploaded before the record existed) to it. */
@@ -762,12 +780,57 @@ export async function updateMessage(id, patch) {
 export async function getMessage(id) {
   return (unwrap(await supabase.from('messages').select('*').eq('id', Number(id)).limit(1), 'getMessage'))?.[0] ?? null
 }
-export async function listMessages({ client_id, quote_id, enquiry_id, limit = 200 } = {}) {
-  let q = supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(limit)
-  if (client_id != null) q = q.eq('client_id', Number(client_id))
-  if (quote_id != null) q = q.eq('quote_id', Number(quote_id))
-  if (enquiry_id != null) q = q.eq('enquiry_id', Number(enquiry_id))
-  return unwrap(await q, 'listMessages') ?? []
+export async function listMessages({ client_id, quote_id, enquiry_id, direction = 'all', unread = false, q = '', limit = 200 } = {}) {
+  let qry = supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(limit)
+  if (client_id != null) qry = qry.eq('client_id', Number(client_id))
+  if (quote_id != null) qry = qry.eq('quote_id', Number(quote_id))
+  if (enquiry_id != null) qry = qry.eq('enquiry_id', Number(enquiry_id))
+  if (direction === 'in' || direction === 'out') qry = qry.eq('direction', direction)
+  if (unread) qry = qry.eq('direction', 'in').is('read_at', null)
+  const term = String(q || '').trim().replace(/[%,()]/g, '')
+  if (term) qry = qry.or(`subject.ilike.%${term}%,from_email.ilike.%${term}%,to_email.ilike.%${term}%,from_name.ilike.%${term}%`)
+  return unwrap(await qry, 'listMessages') ?? []
+}
+export async function markMessageRead(id, read = true) {
+  return unwrap(await supabase.from('messages').update({ read_at: read ? new Date().toISOString() : null }).eq('id', Number(id)).select().single(), 'markMessageRead')
+}
+export async function getMessageByProviderId(providerId, direction = 'in') {
+  return (unwrap(await supabase.from('messages').select('*').eq('provider_id', String(providerId)).eq('direction', direction).limit(1), 'getMessageByProviderId'))?.[0] ?? null
+}
+/** The most recent email we sent to this address — a reply usually belongs to that conversation. */
+export async function latestOutboundTo(email) {
+  return (unwrap(await supabase.from('messages').select('*').eq('direction', 'out').ilike('to_email', String(email)).order('created_at', { ascending: false }).limit(1), 'latestOutboundTo'))?.[0] ?? null
+}
+export async function countUnreadInbound() {
+  const { count, error } = await supabase.from('messages').select('*', { count: 'exact', head: true }).eq('direction', 'in').is('read_at', null)
+  return error ? 0 : (count ?? 0)
+}
+export async function findClientByEmail(email) {
+  const e = String(email || '').trim(); if (!e) return null
+  return (unwrap(await supabase.from('clients').select('*').ilike('data->>email', e).order('status').limit(1), 'findClientByEmail'))?.[0] ?? null
+}
+export async function getQuoteByNumber(number) {
+  return (unwrap(await supabase.from('quotes').select('*').eq('number', String(number)).limit(1), 'getQuoteByNumber'))?.[0] ?? null
+}
+
+/* ---------------------------------------------------- email templates --- */
+
+const TEMPLATE_PATCHABLE = ['name', 'description', 'subject', 'body', 'cta_label', 'enabled']
+export async function listTemplates() {
+  return unwrap(await supabase.from('email_templates').select('*').order('key'), 'listTemplates') ?? []
+}
+export async function getTemplate(key) {
+  return (unwrap(await supabase.from('email_templates').select('*').eq('key', String(key)).limit(1), 'getTemplate'))?.[0] ?? null
+}
+export async function upsertTemplate(row) {
+  return unwrap(await supabase.from('email_templates').upsert(row, { onConflict: 'key' }).select().single(), 'upsertTemplate')
+}
+export async function updateTemplate(key, patch) {
+  const row = {}
+  for (const k of TEMPLATE_PATCHABLE) if (patch[k] !== undefined) row[k] = k === 'enabled' ? Boolean(patch[k]) : str(patch[k], k === 'body' ? 20000 : 300)
+  if (row.name === '') throw new Error('name cannot be empty')
+  if (!Object.keys(row).length) return getTemplate(key)
+  return unwrap(await supabase.from('email_templates').update(row).eq('key', String(key)).select().single(), 'updateTemplate')
 }
 
 /* ---------------------------------------------------------- purchases --- */

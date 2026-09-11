@@ -20,6 +20,10 @@ import QuotesAdmin from './QuotesAdmin'
 import QuoteForm from './QuoteForm'
 import QuoteFieldsAdmin from './QuoteFieldsAdmin'
 import SettingsAdmin from './SettingsAdmin'
+import MessagesAdmin from './MessagesAdmin'
+import MessageDetail from './MessageDetail'
+import TemplatesAdmin from './TemplatesAdmin'
+import TemplateEditor from './TemplateEditor'
 import { Button, Card, Alert } from './ui'
 
 const Splash = () => (
@@ -45,7 +49,7 @@ function Blocked({ reason }) {
 function RequireAuth({ children }) {
   const { session, me, loading, error } = useAuth(); const loc = useLocation()
   if (loading) return <Splash />
-  if (!session) return <Navigate to="/admin/login" state={{ from: loc.pathname + loc.search }} replace />
+  if (!session) return <Navigate to="/staff360/login" state={{ from: loc.pathname + loc.search }} replace />
   if (!me) return <Blocked reason={error} />
   return children
 }
@@ -81,11 +85,15 @@ export default function AdminApp() {
           <Route path="quotes/new" element={P('quotes', <QuoteForm />)} />
           <Route path="quotes/fields" element={P('quotes', <QuoteFieldsAdmin />)} />
           <Route path="quotes/:id" element={P('quotes', <QuoteForm />)} />
+          <Route path="messages" element={P('email', <MessagesAdmin />)} />
+          <Route path="messages/:id" element={P('email', <MessageDetail />)} />
+          <Route path="templates" element={P('settings', <TemplatesAdmin />)} />
+          <Route path="templates/:key" element={P('settings', <TemplateEditor />)} />
           <Route path="settings" element={P('settings', <SettingsAdmin />)} />
           <Route path="enquiries" element={P('quotes', <EnquiriesAdmin />)} />
           <Route path="enquiries/:id" element={P('quotes', <EnquiryDetail />)} />
           <Route path="audit" element={P('audit', <AuditLog />)} />
-          <Route path="*" element={<Navigate to="/admin" replace />} />
+          <Route path="*" element={<Navigate to="/staff360" replace />} />
         </Route>
       </Routes>
     </AuthProvider>

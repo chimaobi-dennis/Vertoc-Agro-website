@@ -21,7 +21,7 @@ export default function PostsAdmin() {
     <>
       <PageHeader title="Blog" description={rows ? `${rows.length} posts` : ' '} />
       <div className="-mt-6 mb-6 flex justify-end">
-        <Link to="/admin/posts/new"><Button><Plus className="w-4 h-4" />New post</Button></Link>
+        <Link to="/staff360/posts/new"><Button><Plus className="w-4 h-4" />New post</Button></Link>
       </div>
       {err && <Alert>{err}</Alert>}
       <Card>
@@ -35,7 +35,7 @@ export default function PostsAdmin() {
               <Td><Badge tone={p.status === 'published' ? 'green' : 'muted'}>{p.status}</Badge></Td>
               <Td className="text-muted-foreground text-xs">{p.published_at}</Td>
               <Td className="text-right whitespace-nowrap">
-                <Link to={`/admin/posts/${p.slug}`} className="inline-flex p-2 rounded-md hover:bg-muted" title="Edit"><Pencil className="w-4 h-4" /></Link>
+                <Link to={`/staff360/posts/${p.slug}`} className="inline-flex p-2 rounded-md hover:bg-muted" title="Edit"><Pencil className="w-4 h-4" /></Link>
                 <button onClick={() => remove(p)} className="inline-flex p-2 rounded-md hover:bg-muted text-destructive" title="Delete"><Trash2 className="w-4 h-4" /></button>
               </Td>
             </tr>

@@ -11,6 +11,7 @@ import { z } from 'zod'
 import * as content from './content.js'
 import { audit, MCP_ACTOR } from './audit.js'
 import { deliver, sendQuote, quoteLink } from './messaging.js'
+import { TEMPLATE_KEYS, templateFor } from './templates.js'
 
 const ok = data => ({ content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] })
 const fail = err => ({
@@ -54,7 +55,7 @@ const postShape = {
 }
 
 export function buildServer() {
-  const server = new McpServer({ name: 'vertoc-agro-content', version: '1.2.0' })
+  const server = new McpServer({ name: 'vertoc-agro-content', version: '1.3.0' })
 
   /* ------------------------------------------------------------ products */
 
@@ -348,10 +349,40 @@ export function buildServer() {
   }))
 
   server.registerTool('list_messages', {
-    title: 'List sent emails',
-    description: 'Emails sent to a client, for a quote, or in reply to an enquiry, with delivery status.',
-    inputSchema: { client_id: z.number().optional(), quote_id: z.number().optional(), enquiry_id: z.number().optional() },
+    title: 'List emails',
+    description: 'Emails sent to and received from clients. direction "in" = received (inbox), "out" = sent; unread lists only unread received mail.',
+    inputSchema: { client_id: z.number().optional(), quote_id: z.number().optional(), enquiry_id: z.number().optional(), direction: z.enum(['in', 'out', 'all']).optional(), unread: z.boolean().optional(), q: z.string().optional().describe('Search subject / addresses') },
   }, run(a => content.listMessages(a)))
+
+  server.registerTool('get_message', {
+    title: 'Get an email',
+    description: 'One sent or received email in full (body, attachments, links to client / quote / enquiry).',
+    inputSchema: { id: z.number() },
+  }, run(async a => { const m = await content.getMessage(a.id); if (!m) throw new Error(`no message with id ${a.id}`); return m }))
+
+  server.registerTool('mark_message_read', {
+    title: 'Mark a received email read or unread',
+    inputSchema: { id: z.number(), read: z.boolean().optional().describe('default true') },
+  }, run(async a => { const m = await content.getMessage(a.id); if (!m) throw new Error(`no message with id ${a.id}`); return content.markMessageRead(a.id, a.read !== false) }))
+
+  /* ----------------------------------------------------- email templates */
+
+  server.registerTool('list_email_templates', {
+    title: 'List email templates',
+    description: 'The editable templates behind quotes, enquiry replies, staff invitations and team notifications, with their placeholders.',
+    inputSchema: {},
+  }, run(async () => Promise.all(TEMPLATE_KEYS.map(templateFor))))
+
+  server.registerTool('update_email_template', {
+    title: 'Update an email template',
+    description: 'Change the subject, body or button text of a template. Placeholders use {{name}}; optional blocks use {{#if name}}…{{/if}}.',
+    inputSchema: { key: z.enum(TEMPLATE_KEYS), subject: z.string().optional(), body: z.string().optional(), cta_label: z.string().optional(), enabled: z.boolean().optional() },
+  }, run(async ({ key, ...patch }) => {
+    const before = await templateFor(key)
+    const after = await content.upsertTemplate({ key, name: before.name, description: before.description, subject: patch.subject ?? before.subject, body: patch.body ?? before.body, cta_label: patch.cta_label ?? before.cta_label, enabled: patch.enabled ?? before.enabled, variables: before.variables })
+    await audit({ actor: MCP_ACTOR, action: 'update', entity: 'email_template', entityId: key, before, after })
+    return after
+  }))
 
   /* ---------------------------------------------------------- purchases */
 

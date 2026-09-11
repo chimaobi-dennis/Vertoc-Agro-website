@@ -42,10 +42,10 @@ export default function ClientsAdmin() {
       <PageHeader eyebrow="CRM" title="Clients" description={ready ? `${visible.length} of ${rows.length} ${status}` : ' '}
         action={
           <div className="flex flex-wrap gap-2">
-            <Link to="/admin/clients/fields"><Button variant="outline"><Settings2 className="w-4 h-4" />Fields</Button></Link>
+            <Link to="/staff360/clients/fields"><Button variant="outline"><Settings2 className="w-4 h-4" />Fields</Button></Link>
             <Button variant="outline" disabled={!visible.length} onClick={() => exportAs('csv', exportCols, visible)}><Download className="w-4 h-4" />CSV</Button>
             <Button variant="outline" disabled={!visible.length} onClick={() => exportAs('pdf', exportCols, visible)}><FileText className="w-4 h-4" />PDF</Button>
-            <Link to="/admin/clients/new"><Button variant="accent"><Plus className="w-4 h-4" />New client</Button></Link>
+            <Link to="/staff360/clients/new"><Button variant="accent"><Plus className="w-4 h-4" />New client</Button></Link>
           </div>
         } />
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
@@ -69,9 +69,9 @@ export default function ClientsAdmin() {
           ))}
           {ready && visible.map(r => (
             <tr key={r.id} className="hover:bg-muted/40">
-              <Td><Link to={`/admin/clients/${r.id}`} className="font-medium hover:text-accent">{r.name}</Link></Td>
+              <Td><Link to={`/staff360/clients/${r.id}`} className="font-medium hover:text-accent">{r.name}</Link></Td>
               {cols.map(c => <Td key={c.key} className="text-muted-foreground">{display(c, r.data?.[c.key])}</Td>)}
-              <Td className="text-right"><Link to={`/admin/clients/${r.id}`} className="text-xs font-semibold text-accent">Open →</Link></Td>
+              <Td className="text-right"><Link to={`/staff360/clients/${r.id}`} className="text-xs font-semibold text-accent">Open →</Link></Td>
             </tr>
           ))}
           {ready && !visible.length && (

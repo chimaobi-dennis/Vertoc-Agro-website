@@ -1,5 +1,5 @@
 /* Shared admin primitives. See DESIGN.md for the language they implement. */
-import { useEffect, useState } from 'react'
+import { forwardRef, useEffect, useState } from 'react'
 import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react'
 
 const VARIANTS = {
@@ -19,7 +19,8 @@ export const Button = ({ variant = 'primary', className = '', ...p }) => (
 const control =
   'w-full rounded-xl border border-border bg-card px-3.5 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 disabled:opacity-50'
 export const Input = ({ className = '', ...p }) => <input {...p} className={`${control} h-11 ${className}`} />
-export const Textarea = ({ className = '', ...p }) => <textarea {...p} className={`${control} min-h-[110px] py-2.5 ${className}`} />
+export const Textarea = forwardRef(({ className = '', ...p }, ref) => <textarea ref={ref} {...p} className={`${control} min-h-[110px] py-2.5 ${className}`} />)
+Textarea.displayName = 'Textarea'
 export const Select = ({ className = '', ...p }) => <select {...p} className={`${control} h-11 ${className}`} />
 
 /** Input with a leading icon — used on the auth screens. */

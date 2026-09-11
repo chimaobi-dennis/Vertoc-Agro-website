@@ -1,19 +1,22 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Briefcase, FileText, Inbox, LayoutDashboard, LogOut, Menu, Moon, Newspaper, Package, ScrollText, Settings, Sun, Users, X } from 'lucide-react'
+import { Briefcase, FileText, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Menu, Moon, Newspaper, Package, ScrollText, Settings, Sun, Users, X } from 'lucide-react'
+import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { useAdminTheme } from './AdminTheme'
 
 const NAV = [
-  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true, group: 'Manage' },
-  { to: '/admin/products', label: 'Products', icon: Package, perm: 'products', group: 'Manage' },
-  { to: '/admin/posts', label: 'Blog', icon: Newspaper, perm: 'posts', group: 'Manage' },
-  { to: '/admin/enquiries', label: 'Enquiries', icon: Inbox, perm: 'quotes', group: 'Sales' },
-  { to: '/admin/quotes', label: 'Quotes', icon: FileText, perm: 'quotes', group: 'Sales' },
-  { to: '/admin/clients', label: 'Clients', icon: Briefcase, perm: 'clients', group: 'Sales' },
-  { to: '/admin/users', label: 'Users', icon: Users, perm: 'users', group: 'System' },
-  { to: '/admin/audit', label: 'Audit log', icon: ScrollText, perm: 'audit', group: 'System' },
-  { to: '/admin/settings', label: 'Settings', icon: Settings, perm: 'settings', group: 'System' },
+  { to: '/staff360', label: 'Dashboard', icon: LayoutDashboard, end: true, group: 'Manage' },
+  { to: '/staff360/products', label: 'Products', icon: Package, perm: 'products', group: 'Manage' },
+  { to: '/staff360/posts', label: 'Blog', icon: Newspaper, perm: 'posts', group: 'Manage' },
+  { to: '/staff360/enquiries', label: 'Enquiries', icon: Inbox, perm: 'quotes', group: 'Sales' },
+  { to: '/staff360/quotes', label: 'Quotes', icon: FileText, perm: 'quotes', group: 'Sales' },
+  { to: '/staff360/messages', label: 'Messages', icon: Mail, perm: 'email', group: 'Sales', badge: 'inboundUnread' },
+  { to: '/staff360/clients', label: 'Clients', icon: Briefcase, perm: 'clients', group: 'Sales' },
+  { to: '/staff360/users', label: 'Users', icon: Users, perm: 'users', group: 'System' },
+  { to: '/staff360/audit', label: 'Audit log', icon: ScrollText, perm: 'audit', group: 'System' },
+  { to: '/staff360/templates', label: 'Email templates', icon: LayoutTemplate, perm: 'settings', group: 'System' },
+  { to: '/staff360/settings', label: 'Settings', icon: Settings, perm: 'settings', group: 'System' },
 ]
 const GROUPS = ['Manage', 'Sales', 'System']
 
@@ -23,7 +26,15 @@ export default function AdminLayout() {
   const { me, signOut } = useAuth()
   const { isDark, toggle } = useAdminTheme()
   const [open, setOpen] = useState(false)
+  const [stats, setStats] = useState({})
   const { pathname } = useLocation()
+
+  // Unread-mail badge: refreshed on every route change and once a minute.
+  useEffect(() => {
+    if (!me?.permissions?.email) return
+    const load = () => adminFetch('/stats').then(setStats).catch(() => {})
+    load(); const t = setInterval(load, 60000); return () => clearInterval(t)
+  }, [pathname, me?.permissions?.email])
 
   const items = NAV.filter(n => !n.perm || me?.permissions?.[n.perm])
   const current = [...NAV].reverse().find(n => (n.end ? pathname === n.to : pathname.startsWith(n.to)))?.label || 'Admin'
@@ -41,7 +52,7 @@ export default function AdminLayout() {
       <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
         {GROUPS.filter(g => items.some(n => n.group === g)).map(g => (<div key={g} className="space-y-1 [&+&]:mt-5">
         <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{g}</p>
-        {items.filter(n => n.group === g).map(({ to, label, icon: Icon, end }) => (
+        {items.filter(n => n.group === g).map(({ to, label, icon: Icon, end, badge }) => (
           <NavLink
             key={to} to={to} end={end} onClick={() => setOpen(false)}
             className={({ isActive }) =>
@@ -52,6 +63,7 @@ export default function AdminLayout() {
               <>
                 {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-accent" />}
                 <Icon className="w-4 h-4 shrink-0" />{label}
+                {badge && stats[badge] > 0 && <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-accent text-accent-foreground text-[11px] font-bold flex items-center justify-center">{stats[badge]}</span>}
               </>
             )}
           </NavLink>

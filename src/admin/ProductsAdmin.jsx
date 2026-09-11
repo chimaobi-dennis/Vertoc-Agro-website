@@ -23,7 +23,7 @@ export default function ProductsAdmin() {
       <PageHeader title="Products" description={rows ? `${rows.length} products` : ' '}
         action={<Button as={Link} onClick={() => {}} className="hidden" />} />
       <div className="-mt-6 mb-6 flex justify-end">
-        <Link to="/admin/products/new"><Button><Plus className="w-4 h-4" />New product</Button></Link>
+        <Link to="/staff360/products/new"><Button><Plus className="w-4 h-4" />New product</Button></Link>
       </div>
       {err && <Alert>{err}</Alert>}
       <Card>
@@ -39,7 +39,7 @@ export default function ProductsAdmin() {
               <Td><Badge tone={p.status === 'published' ? 'green' : 'muted'}>{p.status}</Badge></Td>
               <Td className="text-muted-foreground text-xs">{new Date(p.updated_at).toLocaleDateString()}</Td>
               <Td className="text-right whitespace-nowrap">
-                <Link to={`/admin/products/${p.slug}`} className="inline-flex p-2 rounded-md hover:bg-muted" title="Edit"><Pencil className="w-4 h-4" /></Link>
+                <Link to={`/staff360/products/${p.slug}`} className="inline-flex p-2 rounded-md hover:bg-muted" title="Edit"><Pencil className="w-4 h-4" /></Link>
                 <button onClick={() => remove(p)} className="inline-flex p-2 rounded-md hover:bg-muted text-destructive" title="Delete"><Trash2 className="w-4 h-4" /></button>
               </Td>
             </tr>

@@ -46,7 +46,7 @@ export default function EnquiriesAdmin() {
               <Td>{isQuote ? (r.commodity || '—') : (r.subject || '—')}</Td>
               <Td className="text-muted-foreground">{isQuote ? (r.quantity || '—') : ''}</Td>
               <Td><Badge tone={stageTone(r.status)}>{r.status}</Badge></Td>
-              <Td className="text-right"><Link to={`/admin/enquiries/${r.id}`} className="text-xs font-semibold text-accent">Open →</Link></Td>
+              <Td className="text-right"><Link to={`/staff360/enquiries/${r.id}`} className="text-xs font-semibold text-accent">Open →</Link></Td>
             </tr>
           ))}
           {rows?.length === 0 && <tr><Td colSpan={6} className="text-center py-12 text-muted-foreground">Nothing here yet.</Td></tr>}

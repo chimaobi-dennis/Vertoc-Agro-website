@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
 import Home from './pages/Home'
 import About from './pages/About'
@@ -19,14 +19,21 @@ import { SiteProvider } from './lib/site'
 // Code-split: public visitors never download the admin panel.
 const AdminApp = lazy(() => import('./admin/AdminApp'))
 
+function LegacyAdminRedirect() {
+  const { pathname, search, hash } = useLocation()
+  return <Navigate to={pathname.replace(/^\/admin/, '/staff360') + search + hash} replace />
+}
+
 export default function App() {
   return (
     <SiteProvider>
     <Routes>
       <Route
-        path="/admin/*"
+        path="/staff360/*"
         element={<Suspense fallback={<div className="min-h-screen bg-background" />}><AdminApp /></Suspense>}
       />
+      {/* The panel used to live at /admin; keep old links (and already-sent invite emails) working. */}
+      <Route path="/admin/*" element={<LegacyAdminRedirect />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
         <Route path="/about" element={<About />} />

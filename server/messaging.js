@@ -7,20 +7,24 @@
  * the two can never lose the fact that a send was attempted, and a failure
  * is stored with Resend's reason for the panel to show.
  *
- * Sending can be disabled without touching code: EMAIL_DRY_RUN=1 records the
- * message as sent with a `dry-run` provider id and never contacts Resend.
+ * Subjects and bodies come from the editable templates (templates.js) when
+ * the caller does not supply them. Sending can be disabled without touching
+ * code: EMAIL_DRY_RUN=1 records the message as sent with a `dry-run`
+ * provider id and never contacts Resend.
  */
 import * as content from './content.js'
 import { audit } from './audit.js'
 import { sendEmail, renderEmailHtml } from './email.js'
 import { decryptSecret } from './secrets.js'
 import { renderQuotePdf } from './quote-pdf.js'
+import { renderKey } from './templates.js'
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 const bad = (message, status = 400) => Object.assign(new Error(message), { expose: true, status })
 const MAX_ATTACH = 25 * 1024 * 1024
 
 export const dryRun = () => process.env.EMAIL_DRY_RUN === '1'
+export const SYSTEM_ACTOR = { id: null, label: 'system' }
 
 /** Panel-stored key first (the owner's choice), then the environment. */
 export async function resolveResendKey() {
@@ -29,18 +33,25 @@ export async function resolveResendKey() {
   if (process.env.RESEND_API_KEY) return { key: process.env.RESEND_API_KEY, source: 'env' }
   return { key: null, source: null }
 }
+export async function resolveWebhookSecret() {
+  const stored = decryptSecret((await content.readSecrets()).resend_webhook_secret)
+  if (stored) return { secret: stored, source: 'panel' }
+  if (process.env.RESEND_WEBHOOK_SECRET) return { secret: process.env.RESEND_WEBHOOK_SECRET, source: 'env' }
+  return { secret: null, source: null }
+}
 
 export const publicUrl = () => (process.env.SITE_URL || process.env.ADMIN_URL || '').replace(/\/$/, '')
 export const quoteLink = q => `${publicUrl()}/q/${q.token}`
+export const panelLink = path => `${publicUrl()}/staff360${path}`
 
 /**
  * Send one email to one person and log it.
  * @param {object} o
- * @param {object} o.actor            req.user or MCP_ACTOR
+ * @param {object} o.actor            req.user, MCP_ACTOR or SYSTEM_ACTOR
  * @param {string} o.to
  * @param {string} [o.toName]
  * @param {string} o.subject
- * @param {string} o.body             plain text written by the sender
+ * @param {string} o.body             plain text
  * @param {number[]} [o.attachmentIds] document ids to attach
  * @param {{filename:string, content:Buffer}[]} [o.extraAttachments] generated files (quote PDF)
  * @param {object} [o.cta]            { label, url } button under the text
@@ -58,8 +69,8 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
 
   const settings = await content.getSettings()
   const html = renderEmailHtml({ body, signature: settings.email.signature, company: settings.company, cta })
+  const replyTo = settings.email.inbound_address || settings.email.reply_to
 
-  // Attachments: uploaded documents by id, plus any generated files.
   const attachments = [...extraAttachments]
   const meta = extraAttachments.map(a => ({ document_id: null, name: a.filename }))
   for (const id of attachmentIds.map(Number).filter(Boolean)) {
@@ -81,7 +92,7 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
     else {
       const { key } = await resolveResendKey()
       if (!key) throw bad('Email is not set up yet. Add your Resend API key under Settings → Email.', 503)
-      sent = await sendEmail({ apiKey: key, from: settings.email.from, to, replyTo: settings.email.reply_to, subject, text: body, html, attachments })
+      sent = await sendEmail({ apiKey: key, from: settings.email.from, to, replyTo, subject, text: body, html, attachments })
     }
   } catch (e) {
     const failed = await content.updateMessage(msg.id, { status: 'failed', error: String(e.message).slice(0, 1000) })
@@ -111,12 +122,12 @@ export async function sendQuote(id, { actor, to, subject, body, attachmentIds = 
   const link = quoteLink(q)
   const pdf = renderQuotePdf(q, settings, fields, link)
   const recipient = to || q.client_email
+  const tpl = await renderKey('quote', { quote: q, link, settings, actor })
   const msg = await deliver({
     actor, to: recipient, toName: q.client_name,
-    subject: subject || `Quotation ${q.number} from ${settings.company.name}${q.title ? ` — ${q.title}` : ''}`,
-    body: body || defaultQuoteBody(q, settings),
+    subject: subject || tpl.subject, body: body || tpl.body,
     attachmentIds, extraAttachments: [{ filename: `${q.number}.pdf`, content: pdf }],
-    cta: { label: 'View and respond online', url: link },
+    cta: tpl.cta || { label: 'View and respond online', url: link },
     clientId: q.client_id, quoteId: q.id,
   })
   const quote = await content.markQuoteSent(q.id, { to: recipient })
@@ -131,7 +142,46 @@ export async function sendQuote(id, { actor, to, subject, body, attachmentIds = 
   return { quote, message: msg }
 }
 
-function defaultQuoteBody(q, settings) {
-  const days = q.valid_until ? ` It is valid until ${new Date(q.valid_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}.` : ''
-  return `Dear ${q.client_name || 'Sir/Madam'},\n\nThank you for your interest in ${settings.company.name}. Please find attached our quotation ${q.number}${q.title ? ` for ${q.title}` : ''}.${days}\n\nYou can review the quotation and accept or decline it online using the button below. If you have any questions, simply reply to this email.\n\nKind regards,`
+/**
+ * Notification to the team (quote answered, email received). Best effort:
+ * never throws, never blocks the action that triggered it.
+ */
+export async function notifyTeam(key, ctx) {
+  try {
+    const settings = ctx.settings || (await content.getSettings())
+    const flag = key === 'inbound_notice' ? settings.email.notify_inbound : settings.email.notify_responses
+    const to = settings.email.notify_to || settings.email.reply_to
+    if (!flag || !EMAIL_RE.test(to)) return null
+    const tpl = await renderKey(key, { ...ctx, settings })
+    if (!tpl.subject || !tpl.body) return null
+    return await deliver({ actor: SYSTEM_ACTOR, to, subject: tpl.subject, body: tpl.body, cta: tpl.cta, clientId: ctx.quote?.client_id ?? ctx.message?.client_id ?? null, quoteId: ctx.quote?.id ?? null })
+  } catch (e) { console.error(`[notify:${key}]`, e.message); return null }
+}
+
+/**
+ * Invite a team member. With email configured, the set-password link is
+ * generated here and sent through Resend with the "Staff invitation"
+ * template; otherwise Supabase's own mailer is used as before.
+ */
+export async function inviteUser({ actor, email, name = '', role = 'editor', supabase, redirectTo }) {
+  const { key } = await resolveResendKey()
+  const useResend = Boolean(key) || dryRun()
+  if (!useResend) {
+    const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, { data: { name }, redirectTo })
+    if (error) throw bad(error.message.includes('already') ? 'That email already has an account.' : error.message)
+    return { user: data.user, via: 'supabase', message: null }
+  }
+  const { data, error } = await supabase.auth.admin.generateLink({ type: 'invite', email, options: { data: { name }, redirectTo } })
+  if (error) throw bad(error.message.includes('already') ? 'That email already has an account.' : error.message)
+  const link = data.properties?.action_link
+  if (!link) throw new Error('Supabase returned no invite link')
+  const tpl = await renderKey('user_invite', { name, email, role, link, actor })
+  try {
+    const message = await deliver({ actor, to: email, toName: name, subject: tpl.subject, body: tpl.body, cta: tpl.cta || { label: 'Set your password', url: link } })
+    return { user: data.user, via: 'resend', message }
+  } catch (e) {
+    // The account exists but the mail did not go out: remove it so the admin can retry cleanly.
+    await supabase.auth.admin.deleteUser(data.user.id).catch(() => {})
+    throw e
+  }
 }

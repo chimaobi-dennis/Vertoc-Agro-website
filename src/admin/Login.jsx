@@ -12,7 +12,7 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [err, setErr] = useState(null)
   const [busy, setBusy] = useState(false)
-  const from = useLocation().state?.from || '/admin'
+  const from = useLocation().state?.from || '/staff360'
 
   if (session && me) return <Navigate to={from} replace />
 

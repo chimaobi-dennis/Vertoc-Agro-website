@@ -22,7 +22,7 @@ export default function SetPassword() {
     const { error } = await supabase.auth.updateUser({ password: pw })
     setBusy(false)
     if (error) return setErr(error.message)
-    nav('/admin', { replace: true })
+    nav('/staff360', { replace: true })
   }
 
   return (

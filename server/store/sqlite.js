@@ -230,5 +230,6 @@ export const listClientFields = needsSupabase, getClientField = needsSupabase, c
   getSettings = needsSupabase, updateSettings = needsSupabase, readSecrets = needsSupabase, writeSecret = needsSupabase,
   createDocument = needsSupabase, completeDocument = needsSupabase, getDocument = needsSupabase, listDocuments = needsSupabase, documentUrl = needsSupabase, downloadDocument = needsSupabase, deleteDocument = needsSupabase,
   listQuotes = needsSupabase, getQuote = needsSupabase, getQuoteByToken = needsSupabase, createQuote = needsSupabase, updateQuote = needsSupabase, deleteQuote = needsSupabase, markQuoteSent = needsSupabase, markQuoteViewed = needsSupabase, respondToQuote = needsSupabase, publicQuote = needsSupabase, convertQuoteToPurchase = needsSupabase,
-  createMessage = needsSupabase, updateMessage = needsSupabase, getMessage = needsSupabase, listMessages = needsSupabase,
+  createMessage = needsSupabase, updateMessage = needsSupabase, getMessage = needsSupabase, listMessages = needsSupabase, markMessageRead = needsSupabase, getMessageByProviderId = needsSupabase, latestOutboundTo = needsSupabase, countUnreadInbound = needsSupabase, findClientByEmail = needsSupabase, getQuoteByNumber = needsSupabase,
+  listTemplates = needsSupabase, getTemplate = needsSupabase, upsertTemplate = needsSupabase, updateTemplate = needsSupabase, createDocumentFromBuffer = needsSupabase,
   listPurchases = needsSupabase, getPurchase = needsSupabase, createPurchase = needsSupabase, updatePurchase = needsSupabase, deletePurchase = needsSupabase

@@ -72,7 +72,7 @@ export default function QuoteForm() {
     const body = { ...form, client_id: form.client_id || null, items: items.filter(it => it.description.trim()) }
     try {
       if (editing) { const q = await adminFetch(`/quotes/${id}`, { method: 'PATCH', body }); setQuote(x => ({ ...x, ...q })); setDirty(false); toast('Saved'); return q }
-      const q = await adminFetch('/quotes', { method: 'POST', body }); nav(`/admin/quotes/${q.id}`, { replace: true }); return q
+      const q = await adminFetch('/quotes', { method: 'POST', body }); nav(`/staff360/quotes/${q.id}`, { replace: true }); return q
     } catch (x) { setErr(x.message); throw x } finally { setBusy(false) }
   }
   const submit = e => { e.preventDefault(); save().catch(() => {}) }
@@ -81,17 +81,17 @@ export default function QuoteForm() {
   const copyLink = () => navigator.clipboard.writeText(quote.link).then(() => toast('Link copied')).catch(() => toast(quote.link))
   const setStatus = async status => { try { const q = await adminFetch(`/quotes/${id}`, { method: 'PATCH', body: { status } }); setQuote(x => ({ ...x, ...q })); toast('Status updated') } catch (x) { toast(x.message, 'error') } }
   const convert = async () => {
-    try { const p = await adminFetch(`/quotes/${id}/convert`, { method: 'POST' }); toast(`Purchase #${p.id} recorded`); if (quote.client_id) nav(`/admin/clients/${quote.client_id}?tab=purchases`) }
+    try { const p = await adminFetch(`/quotes/${id}/convert`, { method: 'POST' }); toast(`Purchase #${p.id} recorded`); if (quote.client_id) nav(`/staff360/clients/${quote.client_id}?tab=purchases`) }
     catch (x) { toast(x.message, 'error') }
   }
-  const remove = async () => { if (!confirmDelete(quote.number)) return; try { await adminFetch(`/quotes/${id}`, { method: 'DELETE' }); nav('/admin/quotes') } catch (x) { toast(x.message, 'error') } }
+  const remove = async () => { if (!confirmDelete(quote.number)) return; try { await adminFetch(`/quotes/${id}`, { method: 'DELETE' }); nav('/staff360/quotes') } catch (x) { toast(x.message, 'error') } }
 
   const loading = !fields || !clients || (editing && !quote)
   const cur = form.currency || 'USD'
 
   return (
     <>
-      <Link to="/admin/quotes" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Quotes</Link>
+      <Link to="/staff360/quotes" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Quotes</Link>
       <PageHeader eyebrow="Sales" title={editing ? (quote?.number || ' ') : 'New quote'}
         description={editing && quote ? (quote.title || 'Untitled quotation') : 'Build a priced quotation, then email it as a PDF with a unique link the client can accept online.'}
         action={editing && quote && <Badge tone={quoteTone(quote.status)}>{quote.status}</Badge>} />
@@ -149,7 +149,7 @@ export default function QuoteForm() {
             </Card>
 
             <Card className="p-6 animate-fade-up" style={{ animationDelay: '140ms' }}>
-              <div className="flex items-center justify-between mb-4"><h2 className="font-semibold">Details</h2><Link to="/admin/quotes/fields" className="text-xs font-semibold text-accent">Manage fields</Link></div>
+              <div className="flex items-center justify-between mb-4"><h2 className="font-semibold">Details</h2><Link to="/staff360/quotes/fields" className="text-xs font-semibold text-accent">Manage fields</Link></div>
               {fields.length ? (
                 <div className="grid md:grid-cols-2 gap-5">
                   {fields.map(f => <DynamicField key={f.key} field={f} value={form.data[f.key]} scope={{ quote_id: quote?.id, client_id: form.client_id || undefined }} onChange={v => set({ data: { ...form.data, [f.key]: v } })} />)}
@@ -215,7 +215,7 @@ export default function QuoteForm() {
 
       {editing && quote && settings && (
         <Composer open={compose} onClose={() => setCompose(false)} title={`Send ${quote.number}`} quoteId={quote.id} clientId={quote.client_id}
-          to={form.client_email} subject={`Quotation ${quote.number} from ${settings.company?.name || 'Vertoc Agro'}${form.title ? ` — ${form.title}` : ''}`} body=""
+          to={form.client_email} template={{ key: 'quote', quote_id: quote.id }}
           onSent={() => { toast('Quote sent'); load() }} />
       )}
       {toastEl}

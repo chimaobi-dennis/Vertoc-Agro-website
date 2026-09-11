@@ -40,7 +40,7 @@ export default function PostForm() {
     try {
       if (editing) await adminFetch(`/posts/${slug}`, { method: 'PATCH', body })
       else await adminFetch('/posts', { method: 'POST', body })
-      nav('/admin/posts')
+      nav('/staff360/posts')
     } catch (e) { setErr(e.message); setBusy(false) }
   }
 
@@ -55,7 +55,7 @@ export default function PostForm() {
 
   return (
     <>
-      <Link to="/admin/posts" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Blog</Link>
+      <Link to="/staff360/posts" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Blog</Link>
       <PageHeader title={editing ? 'Edit post' : 'New post'} />
       <form onSubmit={submit} className="space-y-6 max-w-4xl">
         {err && <Alert>{err}</Alert>}
@@ -85,7 +85,7 @@ export default function PostForm() {
         </Card>
         <div className="flex gap-3">
           <Button type="submit" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Publish post'}</Button>
-          <Link to="/admin/posts"><Button type="button" variant="outline">Cancel</Button></Link>
+          <Link to="/staff360/posts"><Button type="button" variant="outline">Cancel</Button></Link>
         </div>
       </form>
     </>

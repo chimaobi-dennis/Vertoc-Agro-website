@@ -12,7 +12,11 @@ import { fmtBytes } from './format'
  * /quotes/:id/send when `quoteId` is given — then the quote PDF and its
  * unique link are added by the server and the body may be left empty.
  */
-export default function Composer({ open, onClose, title = 'Send email', to = '', subject = '', body = '', clientId = null, enquiryId = null, quoteId = null, onSent }) {
+/**
+ * `template` = { key, quote_id?, enquiry_id?, client_id? } pre-fills subject
+ * and body from the editable email templates when the caller gives none.
+ */
+export default function Composer({ open, onClose, title = 'Send email', to = '', subject = '', body = '', clientId = null, enquiryId = null, quoteId = null, template = null, onSent }) {
   const { me } = useAuth()
   const fileRef = useRef(null)
   const [form, setForm] = useState({ to, subject, body })
@@ -26,10 +30,16 @@ export default function Composer({ open, onClose, title = 'Send email', to = '',
   useEffect(() => {
     if (!open) return
     setForm({ to, subject, body }); setPicked(new Set()); setErr(null)
+    if (template?.key && (!subject || !body)) {
+      const qs = Object.entries(template).filter(([k, v]) => k !== 'key' && v != null).map(([k, v]) => `${k}=${v}`).join('&')
+      adminFetch(`/templates/${template.key}/render${qs ? '?' + qs : ''}`)
+        .then(r => setForm(f => ({ ...f, subject: subject || r.subject || f.subject, body: body || r.body || f.body })))
+        .catch(() => {})
+    }
     adminFetch('/settings').then(setSettings).catch(() => setSettings({ email: {} }))
     if (clientId) adminFetch(`/documents?client_id=${clientId}`).then(setDocs).catch(() => setDocs([]))
     else setDocs([])
-  }, [open, to, subject, body, clientId])
+  }, [open, to, subject, body, clientId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = id => setPicked(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
   const addFile = async e => {
@@ -59,16 +69,16 @@ export default function Composer({ open, onClose, title = 'Send email', to = '',
       </>}>
       <form id="composer" onSubmit={send} className="space-y-4">
         {settings && !configured && (
-          <Alert tone="info">Email isn't connected yet.{me?.permissions?.settings ? <> Add your Resend API key under <Link to="/admin/settings?tab=email" className="font-semibold text-accent">Settings → Email</Link>.</> : ' Ask an admin to add the Resend API key in Settings.'}</Alert>
+          <Alert tone="info">Email isn't connected yet.{me?.permissions?.settings ? <> Add your Resend API key under <Link to="/staff360/settings?tab=email" className="font-semibold text-accent">Settings → Email</Link>.</> : ' Ask an admin to add the Resend API key in Settings.'}</Alert>
         )}
-        {quoteId && <Alert tone="info">The quotation PDF and its unique online link are attached automatically. Leave the message empty to use the standard covering letter.</Alert>}
+        {quoteId && <Alert tone="info">The quotation PDF and its unique online link are attached automatically. The text comes from the "Quotation to client" template — edit it here before sending.</Alert>}
         {err && <Alert>{err}</Alert>}
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="To"><Input type="email" required value={form.to} onChange={e => setForm({ ...form, to: e.target.value })} placeholder="client@company.com" /></Field>
           <Field label="Subject"><Input required value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} /></Field>
         </div>
         <Field label="Message" hint="Plain text. It is sent inside the Vertoc Agro template with your signature from Settings.">
-          <Textarea rows={quoteId ? 7 : 10} required={!quoteId} value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} placeholder={quoteId ? 'Optional — a covering letter is used when empty.' : 'Dear …'} />
+          <Textarea rows={quoteId ? 7 : 10} required={!quoteId} value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} placeholder={quoteId ? 'Optional — the template text is used when empty.' : 'Dear …'} />
         </Field>
         <div>
           <div className="flex items-center justify-between mb-2">

@@ -24,6 +24,8 @@ import adminRouter from './admin-routes.js'
 import { driver } from './store/index.js'
 import { renderQuotePdf } from './quote-pdf.js'
 import { authorised } from './mcp-auth.js'
+import { verifySvix, ingestReceived } from './inbound.js'
+import { resolveResendKey, resolveWebhookSecret, notifyTeam, dryRun, panelLink } from './messaging.js'
 import { audit } from './audit.js'
 
 const PORT = process.env.PORT || 8787
@@ -55,6 +57,8 @@ app.use(cors({
 app.use(express.json({
   limit: '2mb',
   type: req => req.path !== '/api/admin/upload' && /json/i.test(req.get('content-type') || ''),
+  // The Resend webhook signature covers the exact bytes received.
+  verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8') },
 }))
 
 // Small in-memory throttle. Enough to stop naive floods; a real deployment
@@ -143,6 +147,7 @@ app.post('/api/q/:token/respond', async (req, res) => {
     if (!q) return res.status(404).json({ error: 'not found' })
     await audit({ actor: { id: null, label: 'client' }, action: q.status, entity: 'quote', entityId: q.id, after: { number: q.number, note: q.response_note } })
     res.json((await quoteView(q)).view)
+    notifyTeam('quote_response', { quote: q, link: panelLink(`/quotes/${q.id}`) })
   } catch (e) {
     // respondToQuote's messages are written for the client to read.
     res.status(409).json({ error: e.message })
@@ -198,6 +203,28 @@ app.post('/api/enquiries', async (req, res) => {
   } catch (e) {
     console.error('[enquiries]', e.message)
     res.status(500).json({ error: 'Could not save your message. Please try again.' })
+  }
+})
+
+/* ------------------------------------------------- inbound email webhook */
+// Resend POSTs `email.received` here. The signature is checked against the
+// secret from Settings → Email (or RESEND_WEBHOOK_SECRET); the body and
+// attachments are then fetched from Resend and filed under the client.
+app.post('/api/webhooks/resend', async (req, res) => {
+  try {
+    const { secret } = await resolveWebhookSecret()
+    if (!secret) return res.status(503).json({ error: 'Inbound email is not set up: add the webhook signing secret under Settings → Email.' })
+    if (!verifySvix(req.rawBody || '', req.headers, secret)) return res.status(401).json({ error: 'Invalid signature.' })
+    const ev = req.body || {}
+    if (ev.type !== 'email.received') return res.json({ ignored: ev.type || 'unknown' })
+    const { key } = await resolveResendKey()
+    const { message, created } = await ingestReceived(ev.data, { apiKey: key, dryRun: dryRun() })
+    res.json({ ok: true, id: message.id, created })
+    if (created) notifyTeam('inbound_notice', { message, link: panelLink(`/messages/${message.id}`) })
+  } catch (e) {
+    console.error('[inbound]', e.message)
+    // 5xx makes Resend retry later rather than drop the email.
+    if (!res.headersSent) res.status(500).json({ error: 'Could not store the received email.' })
   }
 })
 

@@ -9,7 +9,9 @@ import express, { Router } from 'express'
 import { authenticate, requireRole, PERMISSIONS } from './auth.js'
 import { audit } from './audit.js'
 import * as content from './content.js'
-import { deliver, sendQuote, resolveResendKey, dryRun, quoteLink, publicUrl } from './messaging.js'
+import { deliver, sendQuote, inviteUser, resolveResendKey, resolveWebhookSecret, dryRun, quoteLink, publicUrl, panelLink } from './messaging.js'
+import { DEFAULT_TEMPLATES, TEMPLATE_KEYS, SAMPLE_VARS, renderTemplate, renderKey, templateFor } from './templates.js'
+import { renderEmailHtml } from './email.js'
 import { renderQuotePdf } from './quote-pdf.js'
 import { encryptSecret, sha256, newToken } from './secrets.js'
 import { refreshMcpSettings } from './mcp-auth.js'
@@ -59,6 +61,7 @@ router.get('/stats', h(async (_req, res) => {
     users: await count('profiles', q => q.eq('active', true)),
     quotesOpen: await count('quotes', q => q.in('status', ['sent', 'viewed'])),
     purchasesPending: await count('purchases', q => q.eq('status', 'pending')),
+    inboundUnread: await count('messages', q => q.eq('direction', 'in').is('read_at', null)),
   })
 }))
 
@@ -135,17 +138,16 @@ router.post('/users/invite', requireRole('admin'), h(async (req, res) => {
   if (!ROLES.includes(role)) throw bad(`Role must be one of: ${ROLES.join(', ')}.`)
 
   const sb = await supabase()
-  const redirectTo = `${process.env.ADMIN_URL || ''}/admin/set-password`
-  const { data, error } = await sb.auth.admin.inviteUserByEmail(email, { data: { name }, redirectTo })
-  if (error) throw bad(error.message.includes('already') ? 'That email already has an account.' : error.message)
+  const redirectTo = `${process.env.ADMIN_URL || ''}/staff360/set-password`
+  const { user, via, message } = await inviteUser({ actor: req.user, email, name, role, supabase: sb, redirectTo })
 
   // The auth trigger created an INACTIVE profile; this upsert activates it with the chosen role.
   const { error: pErr } = await sb.from('profiles')
-    .upsert({ id: data.user.id, email, name, role, active: true }, { onConflict: 'id' })
+    .upsert({ id: user.id, email, name, role, active: true }, { onConflict: 'id' })
   if (pErr) throw new Error(pErr.message)
 
-  await audit({ actor: req.user, action: 'invite', entity: 'user', entityId: data.user.id, after: { email, name, role } })
-  res.status(201).json({ id: data.user.id, email, name, role, active: true })
+  await audit({ actor: req.user, action: 'invite', entity: 'user', entityId: user.id, after: { email, name, role, via } })
+  res.status(201).json({ id: user.id, email, name, role, active: true, via, message_id: message?.id ?? null })
 }))
 
 router.patch('/users/:id', requireRole('admin'), h(async (req, res) => {
@@ -307,7 +309,7 @@ router.patch('/enquiries/:id', inbox, h(async (req, res) => {
 const mail = requireRole(...PERMISSIONS.email)
 const settingsAdmin = requireRole(...PERMISSIONS.settings)
 const idOrNull = v => (v == null || v === '' ? null : Number(v))
-const SECRET_NAMES = { resend_api_key: /^re_[A-Za-z0-9_]{10,}$/ }
+const SECRET_NAMES = { resend_api_key: /^re_[A-Za-z0-9_]{10,}$/, resend_webhook_secret: /^whsec_[A-Za-z0-9+/=_-]{16,}$/ }
 
 /** Settings as the panel may see them: no token hash, no secret values. */
 function safeSettings(s) {
@@ -318,7 +320,8 @@ function safeSettings(s) {
 router.get('/settings', h(async (req, res) => {
   const s = await content.getSettings()
   const { source } = await resolveResendKey()
-  const out = { ...safeSettings(s), email: { ...s.email, configured: Boolean(source), source, dry_run: dryRun() }, public_url: publicUrl() }
+  const { source: whSource } = await resolveWebhookSecret()
+  const out = { ...safeSettings(s), email: { ...s.email, configured: Boolean(source), source, dry_run: dryRun(), inbound_configured: Boolean(whSource), inbound_source: whSource, webhook_url: `${publicUrl()}/api/webhooks/resend` }, public_url: publicUrl() }
   if (req.user.role === 'admin') {
     const secrets = await content.readSecrets()
     out.secrets = Object.fromEntries(Object.entries(secrets).map(([k, v]) => [k, { hint: v.hint, set_at: v.set_at }]))
@@ -362,7 +365,7 @@ router.put('/settings/secrets/:name', settingsAdmin, h(async (req, res) => {
   if (!SECRET_NAMES[name]) throw bad('Unknown secret.', 404)
   const value = String(req.body?.value || '').trim()
   if (!value) throw bad('Enter a value.')
-  if (!SECRET_NAMES[name].test(value)) throw bad(name === 'resend_api_key' ? 'That does not look like a Resend API key (they start with re_).' : 'Invalid value.')
+  if (!SECRET_NAMES[name].test(value)) throw bad(name === 'resend_api_key' ? 'That does not look like a Resend API key (they start with re_).' : 'That does not look like a Resend webhook signing secret (they start with whsec_).')
   const list = await content.writeSecret(name, encryptSecret(value))
   await audit({ actor: req.user, action: 'update', entity: 'secret', entityId: name, after: { hint: value.slice(-4) } })
   res.json(list)
@@ -449,7 +452,15 @@ router.post('/quotes/:id/convert', crm, h(async (req, res) => {
 
 /* messages (one-to-one email) */
 router.get('/messages', mail, h(async (req, res) => {
-  res.json(await content.listMessages({ client_id: idOrNull(req.query.client_id), quote_id: idOrNull(req.query.quote_id), enquiry_id: idOrNull(req.query.enquiry_id) }))
+  res.json(await content.listMessages({
+    client_id: idOrNull(req.query.client_id), quote_id: idOrNull(req.query.quote_id), enquiry_id: idOrNull(req.query.enquiry_id),
+    direction: req.query.direction || 'all', unread: req.query.unread === '1', q: req.query.q || '', limit: Math.min(Number(req.query.limit) || 200, 500),
+  }))
+}))
+router.post('/messages/:id/read', mail, h(async (req, res) => {
+  const m = await content.getMessage(req.params.id)
+  if (!m) throw bad('message not found', 404)
+  res.json(await content.markMessageRead(m.id, req.body?.read !== false))
 }))
 router.get('/messages/:id', mail, h(async (req, res) => {
   const m = await content.getMessage(req.params.id)
@@ -487,6 +498,61 @@ router.delete('/purchases/:id', crm, h(async (req, res) => {
   const r = await content.deletePurchase(before.id)
   await audit({ actor: req.user, action: 'delete', entity: 'purchase', entityId: before.id, before })
   res.json(r)
+}))
+
+/* email templates: everyone who can email may render them; admins edit them */
+const templatePublic = t => ({ key: t.key, name: t.name, description: t.description, subject: t.subject, body: t.body, cta_label: t.cta_label, variables: t.variables, enabled: t.enabled, updated_at: t.updated_at ?? null, is_default: !t.updated_at })
+
+router.get('/templates', mail, h(async (_req, res) => {
+  res.json(await Promise.all(TEMPLATE_KEYS.map(async k => templatePublic(await templateFor(k)))))
+}))
+router.get('/templates/:key', mail, h(async (req, res) => res.json(templatePublic(await templateFor(req.params.key)))))
+
+// Rendered subject/body for the composer, from the records it concerns.
+router.get('/templates/:key/render', mail, h(async (req, res) => {
+  const ctx = { actor: req.user }
+  if (req.query.quote_id) { ctx.quote = await content.getQuote(req.query.quote_id); if (!ctx.quote) throw bad('quote not found', 404); ctx.link = quoteLink(ctx.quote) }
+  if (req.query.enquiry_id) { ctx.enquiry = await content.getEnquiry(req.query.enquiry_id); if (!ctx.enquiry) throw bad('enquiry not found', 404) }
+  if (req.query.client_id) { ctx.client = await content.getClient(req.query.client_id); if (!ctx.client) throw bad('client not found', 404) }
+  const { subject, body, cta } = await renderKey(req.params.key, ctx)
+  res.json({ subject, body, cta })
+}))
+
+// Preview of an edit in progress, with sample data, as the email would look.
+router.post('/templates/:key/preview', settingsAdmin, h(async (req, res) => {
+  const t = await templateFor(req.params.key)
+  const settings = await content.getSettings()
+  const vars = { ...SAMPLE_VARS[t.key], company_name: settings.company.name, site_name: settings.site.name, sender_name: req.user.name || settings.company.name }
+  const subject = renderTemplate(req.body?.subject ?? t.subject, vars)
+  const body = renderTemplate(req.body?.body ?? t.body, vars)
+  const label = renderTemplate(req.body?.cta_label ?? t.cta_label, vars)
+  const html = renderEmailHtml({ body, signature: settings.email.signature, company: settings.company, cta: label && vars.link ? { label, url: vars.link } : null })
+  res.json({ subject, body, html })
+}))
+
+router.put('/templates/:key', settingsAdmin, h(async (req, res) => {
+  const key = req.params.key
+  if (!TEMPLATE_KEYS.includes(key)) throw bad('unknown template', 404)
+  const before = await templateFor(key)
+  const b = req.body || {}
+  if (b.subject !== undefined && !String(b.subject).trim() && key !== 'blank') throw bad('Subject cannot be empty.')
+  if (b.body !== undefined && !String(b.body).trim()) throw bad('Body cannot be empty.')
+  // Row may not exist yet (fresh install): upsert the merged result.
+  const merged = { key, name: before.name, description: b.description ?? before.description, subject: b.subject ?? before.subject, body: b.body ?? before.body, cta_label: b.cta_label ?? before.cta_label, enabled: b.enabled ?? before.enabled, variables: before.variables }
+  if (String(merged.body).length > 20000) throw bad('Body is too long.')
+  const after = await content.upsertTemplate(merged)
+  await audit({ actor: req.user, action: 'update', entity: 'email_template', entityId: key, before: templatePublic(before), after: templatePublic(after) })
+  res.json(templatePublic(after))
+}))
+
+router.post('/templates/:key/reset', settingsAdmin, h(async (req, res) => {
+  const key = req.params.key
+  if (!DEFAULT_TEMPLATES[key]) throw bad('unknown template', 404)
+  const before = await templateFor(key)
+  const d = DEFAULT_TEMPLATES[key]
+  const after = await content.upsertTemplate({ key, name: d.name, description: d.description, subject: d.subject, body: d.body, cta_label: d.cta_label, variables: d.variables, enabled: true })
+  await audit({ actor: req.user, action: 'reset', entity: 'email_template', entityId: key, before: templatePublic(before), after: templatePublic(after) })
+  res.json(templatePublic(after))
 }))
 
 export default router

@@ -29,4 +29,4 @@ const { error: pErr } = await supabase.from('profiles')
 if (pErr) { console.error('profile upsert failed:', pErr.message); process.exit(1) }
 
 console.log(`admin created: ${email} (${data.user.id})`)
-console.log('Sign in at /admin/login')
+console.log('Sign in at /staff360/login')

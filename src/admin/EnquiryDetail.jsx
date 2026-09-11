@@ -30,7 +30,7 @@ export default function EnquiryDetail() {
   }
   const createClient = () => {
     const data = {}; if (e.email) data.email = e.email; if (e.phone) data.phone = e.phone
-    nav('/admin/clients/new', { state: { prefill: { name: e.name, data }, linkEnquiry: e.id } })
+    nav('/staff360/clients/new', { state: { prefill: { name: e.name, data }, linkEnquiry: e.id } })
   }
 
   if (err) return <Alert>{err}</Alert>
@@ -48,7 +48,7 @@ export default function EnquiryDetail() {
 
   return (
     <>
-      <Link to={`/admin/enquiries?kind=${e.kind}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />{isQuote ? 'Quote requests' : 'Messages'}</Link>
+      <Link to={`/staff360/enquiries?kind=${e.kind}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />{isQuote ? 'Quote requests' : 'Messages'}</Link>
       <div className="grid lg:grid-cols-[1.5fr_1fr] gap-6 max-w-5xl">
         <div className="space-y-6">
           <Card className="p-6 animate-fade-up">
@@ -106,7 +106,7 @@ export default function EnquiryDetail() {
             <h2 className="text-sm font-semibold mb-3 flex items-center gap-2"><Link2 className="w-4 h-4 text-accent" />Client</h2>
             {e.client_id ? (
               <div className="flex items-center justify-between gap-3">
-                <Link to={`/admin/clients/${e.client_id}`} className="font-medium text-accent hover:underline">{linked?.name || `Client #${e.client_id}`}</Link>
+                <Link to={`/staff360/clients/${e.client_id}`} className="font-medium text-accent hover:underline">{linked?.name || `Client #${e.client_id}`}</Link>
                 <Button variant="ghost" className="h-8 px-2 text-xs" onClick={() => patch({ client_id: null }, 'Unlinked')}>Unlink</Button>
               </div>
             ) : (
@@ -122,7 +122,7 @@ export default function EnquiryDetail() {
         </div>
       </div>
       <Composer open={compose} onClose={() => setCompose(false)} title={`Reply to ${e.name}`} to={e.email}
-        subject={`Re: your ${isQuote ? 'quote request' : 'enquiry'} to Vertoc Agro`} body={`Dear ${e.name},\n\nThank you for your ${isQuote ? `enquiry about ${e.commodity || 'our commodities'}` : 'message'}.\n\n`}
+        template={{ key: 'enquiry_reply', enquiry_id: e.id }}
         clientId={e.client_id} enquiryId={e.id}
         onSent={() => { toast('Reply sent'); adminFetch(`/enquiries/${id}`).then(setE).catch(() => {}); adminFetch(`/messages?enquiry_id=${id}`).then(setReplies).catch(() => {}) }} />
       {toastEl}
