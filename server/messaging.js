@@ -180,8 +180,11 @@ export async function inviteUser({ actor, email, name = '', role = 'editor', sup
     const message = await deliver({ actor, to: email, toName: name, subject: tpl.subject, body: tpl.body, cta: tpl.cta || { label: 'Set your password', url: link } })
     return { user: data.user, via: 'resend', message }
   } catch (e) {
-    // The account exists but the mail did not go out: remove it so the admin can retry cleanly.
+    // Resend refused (typically: domain not verified yet). Fall back to the
+    // Supabase mailer so the invitation still goes out, and say why.
     await supabase.auth.admin.deleteUser(data.user.id).catch(() => {})
-    throw e
+    const { data: fb, error: fbErr } = await supabase.auth.admin.inviteUserByEmail(email, { data: { name }, redirectTo })
+    if (fbErr) throw e
+    return { user: fb.user, via: 'supabase', message: null, warning: `Sent with the plain Supabase email instead: ${e.message}` }
   }
 }

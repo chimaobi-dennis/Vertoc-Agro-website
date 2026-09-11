@@ -139,7 +139,7 @@ router.post('/users/invite', requireRole('admin'), h(async (req, res) => {
 
   const sb = await supabase()
   const redirectTo = `${process.env.ADMIN_URL || ''}/staff360/set-password`
-  const { user, via, message } = await inviteUser({ actor: req.user, email, name, role, supabase: sb, redirectTo })
+  const { user, via, message, warning } = await inviteUser({ actor: req.user, email, name, role, supabase: sb, redirectTo })
 
   // The auth trigger created an INACTIVE profile; this upsert activates it with the chosen role.
   const { error: pErr } = await sb.from('profiles')
@@ -147,7 +147,7 @@ router.post('/users/invite', requireRole('admin'), h(async (req, res) => {
   if (pErr) throw new Error(pErr.message)
 
   await audit({ actor: req.user, action: 'invite', entity: 'user', entityId: user.id, after: { email, name, role, via } })
-  res.status(201).json({ id: user.id, email, name, role, active: true, via, message_id: message?.id ?? null })
+  res.status(201).json({ id: user.id, email, name, role, active: true, via, message_id: message?.id ?? null, ...(warning ? { warning } : {}) })
 }))
 
 router.patch('/users/:id', requireRole('admin'), h(async (req, res) => {

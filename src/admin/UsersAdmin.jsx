@@ -18,7 +18,7 @@ export default function UsersAdmin() {
 
   const invite = async e => {
     e.preventDefault(); setBusy(true)
-    try { await adminFetch('/users/invite', { method: 'POST', body: inv }); toast(`Invite sent to ${inv.email}`); setInv({ email: '', name: '', role: 'editor' }); load() }
+    try { const r = await adminFetch('/users/invite', { method: 'POST', body: inv }); toast(r.warning ? `Invite sent to ${inv.email}. ${r.warning}` : `Invite sent to ${inv.email}${r.via === 'resend' ? ' with your template' : ''}`, r.warning ? 'error' : 'ok'); setInv({ email: '', name: '', role: 'editor' }); load() }
     catch (e) { toast(e.message, 'error') } finally { setBusy(false) }
   }
   const patch = async (u, body) => {
