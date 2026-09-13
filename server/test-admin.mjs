@@ -37,15 +37,23 @@ let userId = null, token = '', uploadPath = null, docPath = null, settingsBefore
 const show = v => (v && typeof v === 'object')
   ? (v.key ?? v.slug ?? (v.number ? `${v.number}${v.total != null ? ` · ${v.total} ${v.currency}` : ''}` : v.name != null ? `${v.name} (#${v.id})` : v.id != null ? `#${v.id}${v.amount != null ? ` · ${v.amount} ${v.currency}` : ''}` : JSON.stringify(v).slice(0, 48)))
   : (v ?? '')
+// STEP_DELAY_MS spaces the steps out (a remote target behind a rate checkpoint).
+const pause = () => (process.env.STEP_DELAY_MS ? new Promise(r => setTimeout(r, Number(process.env.STEP_DELAY_MS))) : null)
 const step = async (name, fn) => {
+  await pause()
   try { const v = await fn(); results.push(['✓', name, show(v)]); return v }
   catch (e) { results.push(['✗', name, e.message]); throw e }
 }
-const api = async (path, { method = 'GET', body } = {}) => {
-  const r = await fetch(`${API}/api/admin${path}`, {
-    method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: body && JSON.stringify(body),
-  })
+const api = async (path, { method = 'GET', body } = {}, attempt = 0) => {
+  let r
+  try {
+    r = await fetch(`${API}/api/admin${path}`, {
+      method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: body && JSON.stringify(body),
+    })
+  } catch (e) { if (attempt < 1) { await new Promise(x => setTimeout(x, 2000)); return api(path, { method, body }, 1) } throw e }
+  // One retry on upstream trouble (a remote target can hiccup); never on 4xx.
+  if ([502, 503, 504].includes(r.status) && attempt < 1) { await new Promise(x => setTimeout(x, 2000)); return api(path, { method, body }, 1) }
   const d = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(`${r.status} ${d.error || ''}`.trim())
   return d

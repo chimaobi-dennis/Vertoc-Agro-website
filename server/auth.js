@@ -18,6 +18,8 @@ function serviceClient() {
 }
 
 const deny = (res, code, error) => res.status(code).json({ error })
+// supabase-js marks network/5xx failures as retryable; 401/403 mean the token itself is bad.
+const isUpstream = e => e?.name === 'AuthRetryableFetchError' || (typeof e?.status === 'number' && e.status >= 500) || /fetch failed|ECONN|ETIMEDOUT|socket/i.test(String(e?.message))
 
 export async function authenticate(req, res, next) {
   if (driver !== 'supabase') {
@@ -28,8 +30,13 @@ export async function authenticate(req, res, next) {
 
   try {
     const supabase = await serviceClient()
-    const { data: { user }, error } = await supabase.auth.getUser(h.slice(7))
-    if (error || !user) return deny(res, 401, 'Session expired. Please sign in again.')
+    // A bad token is the caller's problem (401). A hiccup reaching the auth
+    // server is not: retry once, then say so (503) instead of signing them out.
+    let result = await supabase.auth.getUser(h.slice(7))
+    if (result.error && isUpstream(result.error)) { await new Promise(r => setTimeout(r, 400)); result = await supabase.auth.getUser(h.slice(7)) }
+    if (result.error && isUpstream(result.error)) return deny(res, 503, 'The sign-in service is unavailable right now. Please try again in a moment.')
+    const user = result.data?.user
+    if (result.error || !user) return deny(res, 401, 'Session expired. Please sign in again.')
 
     const { data: profile } = await supabase
       .from('profiles').select('id, email, name, role, active').eq('id', user.id).maybeSingle()
