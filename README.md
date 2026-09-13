@@ -48,13 +48,22 @@ than duplicating them.
 
 ## Managing content by chatting with Claude
 
-Ten tools are exposed: `list/get/create/update/delete` for both `product` and
-`post`. Both transports serve the same tools from the same content core, so it
-does not matter which one you use.
+The MCP server exposes 39 tools over the same content core the panel uses:
+products and blog posts, enquiries, clients and their fields, documents,
+quotes (create, update, send, convert), one-to-one email, the inbox, purchases,
+email templates and site settings. Every change Claude makes is written to
+the audit log as "Claude".
 
-### Claude Desktop (local — simplest, works immediately)
+What it can change: anything stored in the database — catalogue, posts,
+CRM, quotes, settings such as site name, tagline, logo, favicon, contact
+details and social links, the company block on quotes, and the email
+templates. The wording of the fixed pages (About, Industries, FAQ, policies…)
+lives in the React source, not the database, so those are code changes.
 
-Add to `claude_desktop_config.json`:
+### Claude Desktop (local — the route that works today)
+
+Add to `claude_desktop_config.json` (Claude Desktop → Settings → Developer →
+Edit Config):
 
 ```json
 {
@@ -67,28 +76,31 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-Restart Claude Desktop, then just talk to it:
+Restart Claude Desktop. The server reads `server/.env`, so it talks to the
+live Supabase database — what you change in chat is live on the site at once.
+Then just talk to it:
 
 - "Add a product: Shea Butter, unrefined Grade A, MOQ 5 tonnes, from Niger State"
 - "Write a blog post about the 2026 sesame harvest and publish it"
 - "Change the cocoa MOQ to 20 tonnes and mark it featured"
+- "Create a quote for Alessia Loghin: 20 MT cocoa beans at 2,400 USD, FOB Lagos, and send it"
+- "Change the site tagline to … and set the WhatsApp number to …"
 
-### claude.ai (remote — works from any device, including mobile)
+### claude.ai and mobile (remote)
 
-Needs the backend deployed behind public HTTPS. Set a token first:
-
-```bash
-export VERTOC_MCP_TOKEN="$(openssl rand -hex 32)"
-npm start
-```
-
-Then in Claude → Settings → Connectors → Add custom connector, point it at
-`https://your-domain.com/mcp` with that bearer token.
+The deployed endpoint is `https://www.vertocagro.com/mcp`, protected by a
+bearer token (generate one under Staff panel → Settings → MCP & API, or set
+`VERTOC_MCP_TOKEN`). claude.ai's *Add custom connector* form only accepts a
+URL plus optional OAuth credentials — there is no token field — so the
+remote endpoint currently serves token-bearing MCP clients (Claude Code,
+scripts, any client that can send an `Authorization: Bearer` header), not the
+claude.ai connector. Adding OAuth to the endpoint is the way to unlock
+claude.ai and the mobile app.
 
 **The token is the only thing standing between the open internet and write
-access to your site — do not deploy without setting it.** With no token set the
-endpoint accepts unauthenticated writes, which is fine on localhost and unsafe
-anywhere else.
+access to your site.** In production the endpoint refuses everything when no
+token is configured; on localhost with no token it is open, which is fine
+there and nowhere else.
 
 ## Database (Supabase)
 
