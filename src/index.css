@@ -35,6 +35,13 @@
     --warning: 38 90% 50%;
     --info: 200 80% 45%;
 
+    /* Accent palette for policy badges and charts (shadcn defaults). */
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+
     /* Photo scrim. Deliberately NOT --primary: the dark palette turns
        primary into a light blue, which washes out images used behind text. */
     --scrim: 220 100% 15%;
@@ -67,6 +74,12 @@
     --border: 220 20% 18%;
     --input: 220 20% 18%;
     --ring: 88 50% 55%;
+
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
 
     /* Kept dark so hero/CTA imagery stays legible in dark mode. */
     --scrim: 220 70% 9%;

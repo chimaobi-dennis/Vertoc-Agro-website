@@ -14,6 +14,14 @@ import Contact from './pages/Contact'
 import Quote from './pages/Quote'
 import NotFound from './pages/NotFound'
 import QuoteView from './pages/QuoteView'
+import Testimonials from './pages/Testimonials'
+import Industries from './pages/Industries'
+import WhyChooseUs from './pages/WhyChooseUs'
+import Process from './pages/Process'
+import Faq from './pages/Faq'
+import Disclaimer from './pages/Disclaimer'
+import TermsOfService from './pages/TermsOfService'
+import PrivacyPolicy from './pages/PrivacyPolicy'
 import { SiteProvider } from './lib/site'
 
 // Code-split: public visitors never download the admin panel.
@@ -47,6 +55,14 @@ export default function App() {
         <Route path="/contact" element={<Contact />} />
         <Route path="/quote" element={<Quote />} />
         <Route path="/q/:token" element={<QuoteView />} />
+        <Route path="/testimonials" element={<Testimonials />} />
+        <Route path="/industries" element={<Industries />} />
+        <Route path="/industries/why-choose-us" element={<WhyChooseUs />} />
+        <Route path="/process" element={<Process />} />
+        <Route path="/faq" element={<Faq />} />
+        <Route path="/disclaimer" element={<Disclaimer />} />
+        <Route path="/terms-of-service" element={<TermsOfService />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

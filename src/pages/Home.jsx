@@ -1,6 +1,9 @@
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, Award, CalendarCheck, Eye, Factory, FlaskConical, Globe, Handshake, Leaf, Package, PackageSearch, Quote, ShieldCheck, Ship, Star, Target, TrendingUp, Truck, Users, Warehouse } from 'lucide-react'
 import StatCounter from '../components/StatCounter'
+import { useApi } from '../lib/api'
+import { CardGridSkeleton, ProductCardSkeleton } from '../components/Skeleton'
 
 const STATS = [
   { icon: CalendarCheck, value: 8, label: 'Years of Experience' },
@@ -8,6 +11,51 @@ const STATS = [
   { icon: Package, value: 30, label: 'Commodities' },
   { icon: Users, value: 500, label: 'Partner Farmers' },
 ]
+
+const FILTERS = ['All Products', 'Agro Commodities', 'Solid Minerals']
+const inFilter = (p, f) => f === 'All Products' || f.toLowerCase().startsWith(String(p.category || '').toLowerCase())
+
+/* The first six products of the live catalogue, filterable by category. HOT = featured. */
+function FeaturedCommodities() {
+  const { data: products, loading } = useApi('/products')
+  const [filter, setFilter] = useState(FILTERS[0])
+  const visible = useMemo(() => (products || []).filter(p => inFilter(p, filter)).slice(0, 6), [products, filter])
+  return (
+    <>
+      <div className="flex flex-wrap items-center justify-center gap-3 mb-10">
+        {FILTERS.map(f => (
+          <button key={f} type="button" onClick={() => setFilter(f)} aria-pressed={filter === f}
+            className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${filter === f ? 'bg-primary text-primary-foreground' : 'bg-card border border-border text-foreground/70 hover:text-foreground'}`}>
+            {f}
+          </button>
+        ))}
+      </div>
+      {loading && <CardGridSkeleton card={ProductCardSkeleton} count={6} gridClassName="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10" label="Loading featured commodities" />}
+      {!loading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+          {visible.map(p => (
+            <Link key={p.slug} className="bg-card border border-border rounded-2xl overflow-hidden hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover group" to={`/products/${p.slug}`}>
+              <div className="relative aspect-[4/3] overflow-hidden">
+                <img src={p.image} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                {p.featured && (
+                  <div className="absolute top-3 left-3 flex items-center gap-1 bg-accent text-white text-xs font-bold px-3 py-1 rounded-full"><TrendingUp className="w-3 h-3" />HOT</div>
+                )}
+                <div className="absolute top-3 right-3">
+                  <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">{String(p.category || '').toUpperCase()}</span>
+                </div>
+              </div>
+              <div className="p-5">
+                <h3 className="text-lg font-bold text-foreground mb-1">{p.name}</h3>
+                <p className="text-sm text-muted-foreground">{p.grade || p.summary}</p>
+              </div>
+            </Link>
+          ))}
+          {!visible.length && <p className="sm:col-span-2 lg:col-span-3 py-12 text-center text-muted-foreground">No {filter.toLowerCase()} listed yet — new commodities are added regularly.</p>}
+        </div>
+      )}
+    </>
+  )
+}
 
 export default function Home() {
   return (
@@ -156,95 +204,7 @@ export default function Home() {
       <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground mb-4">Featured Commodities</h2>
       <p className="text-muted-foreground leading-relaxed">Premium Nigerian agricultural commodities and solid minerals, sourced directly from farms and mines, processed to international standards.</p>
       </div>
-      <div className="flex flex-wrap items-center justify-center gap-3 mb-10">
-      <button className="px-6 py-2.5 rounded-full text-sm font-semibold transition-all bg-primary text-primary-foreground">All Products</button>
-      <button className="px-6 py-2.5 rounded-full text-sm font-semibold transition-all bg-card border border-border text-foreground/70 hover:text-foreground">Agro Commodities</button>
-      <button className="px-6 py-2.5 rounded-full text-sm font-semibold transition-all bg-card border border-border text-foreground/70 hover:text-foreground">Solid Minerals</button>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-      <Link className="bg-card border border-border rounded-2xl overflow-hidden hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover group" to="/products/corn-powder">
-      <div className="relative aspect-[4/3] overflow-hidden">
-      <img src="/assets/img/img-20260802-wa0021.jpg" alt="Corn Powder" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-      <div className="absolute top-3 left-3 flex items-center gap-1 bg-accent text-white text-xs font-bold px-3 py-1 rounded-full">
-      <TrendingUp className="w-3 h-3" />HOT</div>
-      <div className="absolute top-3 right-3">
-      <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">AGRO</span>
-      </div>
-      </div>
-      <div className="p-5">
-      <h3 className="text-lg font-bold text-foreground mb-1">Corn Powder</h3>
-      <p className="text-sm text-muted-foreground">Fine Milled, 14% Moisture Max, 98% Purity</p>
-      </div>
-      </Link>
-      <Link className="bg-card border border-border rounded-2xl overflow-hidden hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover group" to="/products/soya-lecithin">
-      <div className="relative aspect-[4/3] overflow-hidden">
-      <img src="/assets/img/img-20260802-wa0011.jpg" alt="Soya Lecithin" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-      <div className="absolute top-3 left-3 flex items-center gap-1 bg-accent text-white text-xs font-bold px-3 py-1 rounded-full">
-      <TrendingUp className="w-3 h-3" />HOT</div>
-      <div className="absolute top-3 right-3">
-      <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">AGRO</span>
-      </div>
-      </div>
-      <div className="p-5">
-      <h3 className="text-lg font-bold text-foreground mb-1">Soya Lecithin</h3>
-      <p className="text-sm text-muted-foreground">Granular &amp; Liquid, Non-GMO, Min 65% Phosphatides</p>
-      </div>
-      </Link>
-      <Link className="bg-card border border-border rounded-2xl overflow-hidden hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover group" to="/products/palm-oil">
-      <div className="relative aspect-[4/3] overflow-hidden">
-      <img src="/assets/img/img-20260802-wa0014.jpg" alt="Palm Oil" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-      <div className="absolute top-3 left-3 flex items-center gap-1 bg-accent text-white text-xs font-bold px-3 py-1 rounded-full">
-      <TrendingUp className="w-3 h-3" />HOT</div>
-      <div className="absolute top-3 right-3">
-      <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">AGRO</span>
-      </div>
-      </div>
-      <div className="p-5">
-      <h3 className="text-lg font-bold text-foreground mb-1">Palm Oil</h3>
-      <p className="text-sm text-muted-foreground">CP10 / CP8, RBD &amp; Crude, 0.1% FFA Max</p>
-      </div>
-      </Link>
-      <Link className="bg-card border border-border rounded-2xl overflow-hidden hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover group" to="/products/maize">
-      <div className="relative aspect-[4/3] overflow-hidden">
-      <img src="/assets/img/kling_c61222b5-079f-40bd-be44-7df0bd614a22.jpg" alt="Maize" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-      <div className="absolute top-3 left-3 flex items-center gap-1 bg-accent text-white text-xs font-bold px-3 py-1 rounded-full">
-      <TrendingUp className="w-3 h-3" />HOT</div>
-      <div className="absolute top-3 right-3">
-      <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">AGRO</span>
-      </div>
-      </div>
-      <div className="p-5">
-      <h3 className="text-lg font-bold text-foreground mb-1">Maize</h3>
-      <p className="text-sm text-muted-foreground">White &amp; Yellow, 14% Moisture Max, 98% Purity</p>
-      </div>
-      </Link>
-      <Link className="bg-card border border-border rounded-2xl overflow-hidden hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover group" to="/products/soybeans">
-      <div className="relative aspect-[4/3] overflow-hidden">
-      <img src="/assets/img/kling_e4bbbb6d-91a9-429c-a25c-ca20f298f224.jpg" alt="Soybeans" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-      <div className="absolute top-3 right-3">
-      <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">AGRO</span>
-      </div>
-      </div>
-      <div className="p-5">
-      <h3 className="text-lg font-bold text-foreground mb-1">Soybeans</h3>
-      <p className="text-sm text-muted-foreground">Non-GMO, 38% Protein Min, 13% Moisture Max</p>
-      </div>
-      </Link>
-      <Link className="bg-card border border-border rounded-2xl overflow-hidden hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover group" to="/products/cocoa">
-      <div className="relative aspect-[4/3] overflow-hidden">
-      <img src="/assets/img/single-origin-chocolate-bar-cocoa-heart-1024x1024.jpg" alt="Cocoa Beans" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-      <div className="absolute top-3 left-3 flex items-center gap-1 bg-accent text-white text-xs font-bold px-3 py-1 rounded-full">
-      <TrendingUp className="w-3 h-3" />HOT</div>
-      <div className="absolute top-3 right-3">
-      <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">AGRO</span>
-      </div>
-      </div>
-      <div className="p-5">
-      <h3 className="text-lg font-bold text-foreground mb-1">Cocoa Beans</h3>
-      <p className="text-sm text-muted-foreground">Grade 1, Fermented &amp; Sun-Dried, 7-8% Moisture</p>
-      </div>
-      </Link>
-      </div>
+      <FeaturedCommodities />
       <div className="text-center">
       <Link className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border bg-background py-2 font-semibold rounded-full px-8 h-11 border-primary text-primary hover:bg-primary hover:text-primary-foreground" to="/products">View All Products<ArrowRight className="w-4 h-4 ml-2" />
       </Link>

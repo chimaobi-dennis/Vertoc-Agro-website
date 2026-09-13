@@ -1,4 +1,47 @@
+import { useCallback, useEffect, useState } from 'react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+
+const PHOTOS = [
+  { src: '/assets/img/file_00000000a91c71f4907a39cb638741b8.png', alt: 'Vertoc Agro factory and processing facility', title: 'Factory', caption: 'Vertoc Agro factory and processing facility' },
+  { src: '/assets/img/h11102d4d7702475faebf710f672b997dr.jpg', alt: 'Industrial processing equipment and storage tanks', title: 'Processing', caption: 'Industrial processing equipment and storage tanks' },
+  { src: '/assets/img/img-20260701-wa0028.jpg', alt: 'Warehouse with stacked commodity bags ready for shipment', title: 'Warehouse', caption: 'Warehouse with stacked commodity bags ready for shipment' },
+  { src: '/assets/img/img-20260702-wa0046.jpg', alt: 'Burlap sacks of agricultural commodities on pallets', title: 'Storage', caption: 'Burlap sacks of agricultural commodities on pallets' },
+  { src: '/assets/img/ce0b7f_8e81ef90b3ec4f219e3d24d81c544cd5-mv2.jpg', alt: 'Traditional palm oil fruit processing in large cooking pots', title: 'Palm Oil', caption: 'Traditional palm oil fruit processing in large cooking pots' },
+  { src: '/assets/img/img-20260702-wa0049.jpg', alt: 'Cocoa beans being weighed on a digital scale', title: 'Cocoa', caption: 'Cocoa beans being weighed on a digital scale' },
+  { src: '/assets/img/vertocimage11.jpg', alt: 'Soybeans packed in large bulk sacks', title: 'Soybeans', caption: 'Soybeans packed in large bulk sacks' },
+  { src: '/assets/img/vertocimage13.jpeg', alt: 'Maize harvest bagged at the farm', title: 'Maize', caption: 'Maize harvest bagged at the farm' },
+  { src: '/assets/img/vertocimage14.jpeg', alt: 'Bulk sacks of dried maize kernels', title: 'Maize', caption: 'Bulk sacks of dried maize kernels' },
+  { src: '/assets/img/vertocimage15.jpeg', alt: 'Stacked commodity bags ready for distribution', title: 'Storage', caption: 'Stacked commodity bags ready for distribution' }
+]
+
+/** Full-screen viewer: arrows, keyboard, backdrop click and Escape all work. */
+function Lightbox({ index, onClose, onStep }) {
+  const photo = PHOTOS[index]
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose(); if (e.key === 'ArrowRight') onStep(1); if (e.key === 'ArrowLeft') onStep(-1) }
+    window.addEventListener('keydown', onKey); document.body.style.overflow = 'hidden'
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
+  }, [onClose, onStep])
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4 animate-fade-in" role="dialog" aria-modal="true" aria-label={photo.title} onClick={onClose}>
+      <button type="button" onClick={onClose} aria-label="Close" className="absolute top-4 right-4 w-11 h-11 rounded-full bg-white/10 text-white hover:bg-white/20 flex items-center justify-center"><X className="w-5 h-5" /></button>
+      <button type="button" onClick={e => { e.stopPropagation(); onStep(-1) }} aria-label="Previous photo" className="absolute left-3 md:left-6 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/10 text-white hover:bg-white/20 flex items-center justify-center"><ChevronLeft className="w-5 h-5" /></button>
+      <button type="button" onClick={e => { e.stopPropagation(); onStep(1) }} aria-label="Next photo" className="absolute right-3 md:right-6 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/10 text-white hover:bg-white/20 flex items-center justify-center"><ChevronRight className="w-5 h-5" /></button>
+      <figure className="max-w-5xl w-full" onClick={e => e.stopPropagation()}>
+        <img key={photo.src} src={photo.src} alt={photo.alt} className="w-full max-h-[78vh] object-contain rounded-2xl animate-fade-in" />
+        <figcaption className="text-center mt-4">
+          <p className="text-white font-semibold">{photo.title}</p>
+          <p className="text-white/70 text-sm">{photo.caption} · {index + 1} / {PHOTOS.length}</p>
+        </figcaption>
+      </figure>
+    </div>
+  )
+}
+
 export default function Gallery() {
+  const [open, setOpen] = useState(null)   // index of the photo in the lightbox
+  const close = useCallback(() => setOpen(null), [])
+  const step = useCallback(d => setOpen(i => (i + d + PHOTOS.length) % PHOTOS.length), [])
   return (
     <main className="flex-grow">
       <div className="pt-20 pb-16 bg-background min-h-screen">
@@ -9,99 +52,21 @@ export default function Gallery() {
       <p className="text-muted-foreground mt-3 max-w-2xl mx-auto">A glimpse into our farms, facilities, logistics, and daily operations across Nigeria.</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-      <button className="relative aspect-[4/3] overflow-hidden rounded-2xl group border border-border bg-card text-left">
-      <img src="/assets/img/file_00000000a91c71f4907a39cb638741b8.png" alt="Vertoc Agro factory and processing facility" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+      {PHOTOS.map((ph, i) => (
+      <button key={ph.src} type="button" onClick={() => setOpen(i)} aria-label={`Open ${ph.title}: ${ph.alt}`} className="relative aspect-[4/3] overflow-hidden rounded-2xl group border border-border bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+      <img src={ph.src} alt={ph.alt} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
       <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/30 transition-colors duration-300">
       </div>
       <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-      <p className="text-white text-sm font-medium">Factory</p>
-      <p className="text-white/80 text-xs">Vertoc Agro factory and processing facility</p>
+      <p className="text-white text-sm font-medium">{ph.title}</p>
+      <p className="text-white/80 text-xs">{ph.caption}</p>
       </div>
       </button>
-      <button className="relative aspect-[4/3] overflow-hidden rounded-2xl group border border-border bg-card text-left">
-      <img src="/assets/img/h11102d4d7702475faebf710f672b997dr.jpg" alt="Industrial processing equipment and storage tanks" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-      <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/30 transition-colors duration-300">
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-      <p className="text-white text-sm font-medium">Processing</p>
-      <p className="text-white/80 text-xs">Industrial processing equipment and storage tanks</p>
-      </div>
-      </button>
-      <button className="relative aspect-[4/3] overflow-hidden rounded-2xl group border border-border bg-card text-left">
-      <img src="/assets/img/img-20260701-wa0028.jpg" alt="Warehouse with stacked commodity bags ready for shipment" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-      <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/30 transition-colors duration-300">
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-      <p className="text-white text-sm font-medium">Warehouse</p>
-      <p className="text-white/80 text-xs">Warehouse with stacked commodity bags ready for shipment</p>
-      </div>
-      </button>
-      <button className="relative aspect-[4/3] overflow-hidden rounded-2xl group border border-border bg-card text-left">
-      <img src="/assets/img/img-20260702-wa0046.jpg" alt="Burlap sacks of agricultural commodities on pallets" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-      <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/30 transition-colors duration-300">
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-      <p className="text-white text-sm font-medium">Storage</p>
-      <p className="text-white/80 text-xs">Burlap sacks of agricultural commodities on pallets</p>
-      </div>
-      </button>
-      <button className="relative aspect-[4/3] overflow-hidden rounded-2xl group border border-border bg-card text-left">
-      <img src="/assets/img/ce0b7f_8e81ef90b3ec4f219e3d24d81c544cd5-mv2.jpg" alt="Traditional palm oil fruit processing in large cooking pots" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-      <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/30 transition-colors duration-300">
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-      <p className="text-white text-sm font-medium">Palm Oil</p>
-      <p className="text-white/80 text-xs">Traditional palm oil fruit processing in large cooking pots</p>
-      </div>
-      </button>
-      <button className="relative aspect-[4/3] overflow-hidden rounded-2xl group border border-border bg-card text-left">
-      <img src="/assets/img/img-20260702-wa0049.jpg" alt="Cocoa beans being weighed on a digital scale" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-      <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/30 transition-colors duration-300">
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-      <p className="text-white text-sm font-medium">Cocoa</p>
-      <p className="text-white/80 text-xs">Cocoa beans being weighed on a digital scale</p>
-      </div>
-      </button>
-      <button className="relative aspect-[4/3] overflow-hidden rounded-2xl group border border-border bg-card text-left">
-      <img src="/assets/img/vertocimage11.jpg" alt="Soybeans packed in large bulk sacks" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-      <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/30 transition-colors duration-300">
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-      <p className="text-white text-sm font-medium">Soybeans</p>
-      <p className="text-white/80 text-xs">Soybeans packed in large bulk sacks</p>
-      </div>
-      </button>
-      <button className="relative aspect-[4/3] overflow-hidden rounded-2xl group border border-border bg-card text-left">
-      <img src="/assets/img/vertocimage13.jpeg" alt="Maize harvest bagged at the farm" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-      <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/30 transition-colors duration-300">
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-      <p className="text-white text-sm font-medium">Maize</p>
-      <p className="text-white/80 text-xs">Maize harvest bagged at the farm</p>
-      </div>
-      </button>
-      <button className="relative aspect-[4/3] overflow-hidden rounded-2xl group border border-border bg-card text-left">
-      <img src="/assets/img/vertocimage14.jpeg" alt="Bulk sacks of dried maize kernels" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-      <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/30 transition-colors duration-300">
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-      <p className="text-white text-sm font-medium">Maize</p>
-      <p className="text-white/80 text-xs">Bulk sacks of dried maize kernels</p>
-      </div>
-      </button>
-      <button className="relative aspect-[4/3] overflow-hidden rounded-2xl group border border-border bg-card text-left">
-      <img src="/assets/img/vertocimage15.jpeg" alt="Stacked commodity bags ready for distribution" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-      <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/30 transition-colors duration-300">
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-      <p className="text-white text-sm font-medium">Storage</p>
-      <p className="text-white/80 text-xs">Stacked commodity bags ready for distribution</p>
-      </div>
-      </button>
+      ))}
       </div>
       </div>
       </div>
+      {open !== null && <Lightbox index={open} onClose={close} onStep={step} />}
     </main>
   )
 }

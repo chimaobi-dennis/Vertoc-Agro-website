@@ -51,6 +51,7 @@ export default {
           DEFAULT: 'hsl(var(--scrim))',
           foreground: 'hsl(var(--scrim-foreground))',
         },
+        chart: { 1: 'hsl(var(--chart-1))', 2: 'hsl(var(--chart-2))', 3: 'hsl(var(--chart-3))', 4: 'hsl(var(--chart-4))', 5: 'hsl(var(--chart-5))' },
         success: 'hsl(var(--success))',
         warning: 'hsl(var(--warning))',
         info: 'hsl(var(--info))',
