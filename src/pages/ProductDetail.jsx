@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import {
-  ArrowRight, CircleCheckBig, FileCheck, MapPin, Package, ShieldCheck, TrendingUp,
+  ArrowLeft, ArrowRight, CircleCheckBig, FileCheck, MapPin, Package, ShieldCheck, TrendingUp,
 } from 'lucide-react'
 import { useApi } from '../lib/api'
 import { ErrorState } from '../components/PageState'
@@ -144,22 +144,31 @@ export default function ProductDetail() {
           </div>
 
           {!!related.length && (
-            <div>
-              <h2 className="font-serif text-2xl font-bold text-foreground mb-6">Related Products</h2>
+            <section aria-labelledby="related-heading">
+              <h2 id="related-heading" className="font-serif text-2xl md:text-3xl font-bold text-foreground text-center mb-8">Related Products</h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                 {related.map(p => (
                   <Link
                     key={p.slug}
                     to={`/products/${p.slug}`}
-                    className="bg-card border border-border rounded-2xl p-5 hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover"
+                    className="bg-card border border-border rounded-2xl overflow-hidden hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover flex flex-col group"
                   >
-                    <h4 className="text-base font-bold text-foreground mb-1">{p.name}</h4>
-                    <p className="text-sm text-muted-foreground">{p.grade || p.summary}</p>
+                    <div className="aspect-[4/3] w-full overflow-hidden bg-muted">
+                      <img src={p.image} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    </div>
+                    <div className="p-5">
+                      <h3 className="text-base font-bold text-foreground mb-1">{p.name}</h3>
+                      <p className="text-sm text-muted-foreground">{p.grade || p.summary}</p>
+                    </div>
                   </Link>
                 ))}
               </div>
-            </div>
+            </section>
           )}
+
+          <Link to="/products" className="inline-flex items-center gap-2 mt-12 text-sm font-medium text-foreground/80 hover:text-accent transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Back to All Products
+          </Link>
         </div>
       </div>
     </main>

@@ -124,15 +124,19 @@ export function ProductDetailSkeleton() {
           <ChipCardSkeleton /><ChipCardSkeleton /><ChipCardSkeleton />
         </div>
 
-        <Bone className="h-8 w-48 mb-6" />
+        <Bone className="h-8 w-56 mx-auto mb-8" />
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {[0, 1, 2].map(i => (
-            <div key={i} className="bg-card border border-border rounded-2xl p-5">
-              <Bone className="h-5 w-2/3 mb-2" />
-              <Bone className="h-4 w-full" />
+            <div key={i} className="bg-card border border-border rounded-2xl overflow-hidden">
+              <div aria-hidden="true" className="aspect-[4/3] w-full animate-pulse bg-muted" />
+              <div className="p-5">
+                <Bone className="h-5 w-2/3 mb-2" />
+                <Bone className="h-4 w-full" />
+              </div>
             </div>
           ))}
         </div>
+        <Bone className="h-4 w-40 mt-12" />
       </div>
     </div>
   )

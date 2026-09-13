@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { ArrowRight } from 'lucide-react'
 import { useApi } from '../lib/api'
 import ProductCard from '../components/ProductCard'
 import { ErrorState, Empty } from '../components/PageState'
@@ -95,6 +97,24 @@ export default function Products() {
               ))}
             </div>
           )}
+
+          {/* Scrim tokens, not primary: the dark palette turns primary light blue. */}
+          <section className="relative overflow-hidden rounded-2xl bg-scrim text-scrim-foreground px-6 py-16 text-center">
+            <div aria-hidden="true" className="absolute -top-20 -right-16 w-72 h-72 rounded-full bg-scrim-foreground/[0.04]" />
+            <div aria-hidden="true" className="absolute -bottom-24 -left-20 w-56 h-56 rounded-full bg-scrim-foreground/[0.04]" />
+            <div className="relative">
+              <h2 className="font-serif text-2xl md:text-3xl font-bold mb-3">Looking for a Specific Commodity?</h2>
+              <p className="text-scrim-foreground/75 max-w-xl mx-auto leading-relaxed mb-8">
+                We can source additional agricultural products upon request. Reach out with your requirements.
+              </p>
+              <Link
+                to="/quote"
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-accent px-8 h-12 text-sm font-semibold text-accent-foreground hover:opacity-90 transition-opacity"
+              >
+                Request a Quote <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </section>
         </div>
       </div>
     </main>
