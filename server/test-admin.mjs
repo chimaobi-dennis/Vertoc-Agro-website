@@ -252,14 +252,14 @@ try {
     const emailId = 'e2e-' + Date.now()
     const payload = JSON.stringify({ type: 'email.received', created_at: new Date().toISOString(), data: { email_id: emailId, from: 'Buyer Three <buyer3@e2e.invalid>', to: ['sales@vertocagro.com'], subject: `Re: e2e-quote ${quote.number}`, text: 'e2e inbound body', headers: { 'in-reply-to': '<x@e2e>' }, attachments: [] } })
     await step('webhook rejects a bad signature', async () => { const r = await fetch(`${API}/api/webhooks/resend`, { method: 'POST', headers: signed(payload, 'whsec_' + Buffer.from('wrong').toString('base64')), body: payload }); if (r.status !== 401) throw new Error('got ' + r.status); return '401 ✓' })
-    const inbound = await step('webhook email.received → inbox row (dry run: body from payload)', async () => {
-      if (!S.email.dry_run) throw new Error('backend not in EMAIL_DRY_RUN=1; skipping ingestion')
+    if (!S.email.dry_run) results.push(['·', 'webhook ingestion SKIPPED', 'needs EMAIL_DRY_RUN=1 on the backend (the body is read from the payload instead of Resend)'])
+    const inbound = !S.email.dry_run ? null : await step('webhook email.received → inbox row (dry run: body from payload)', async () => {
       const r = await fetch(`${API}/api/webhooks/resend`, { method: 'POST', headers: signed(payload), body: payload }); const d = await r.json()
       if (r.status !== 200 || !d.created) throw new Error(r.status + ' ' + JSON.stringify(d))
       const m = await api(`/messages/${d.id}`)
       if (m.direction !== 'in' || m.client_id !== client2.id || m.quote_id !== quote.id || m.from_name !== 'Buyer Three' || m.read_at) throw new Error(JSON.stringify(m).slice(0, 140))
       return m
-    }).catch(() => null)
+    })
     if (inbound) {
       await step('webhook retry is idempotent', async () => { const r = await fetch(`${API}/api/webhooks/resend`, { method: 'POST', headers: signed(payload), body: payload }); const d = await r.json(); if (d.created !== false || d.id !== inbound.id) throw new Error(JSON.stringify(d)); return 'same row ✓' })
       await step('GET /messages?direction=in&unread=1 lists it; stats count it', async () => { const l = await api('/messages?direction=in&unread=1'); if (!l.some(m => m.id === inbound.id)) throw new Error('missing'); const s = await api('/stats'); if (!(s.inboundUnread >= 1)) throw new Error('stats ' + s.inboundUnread); return `${l.length} unread` })
