@@ -251,9 +251,14 @@ Purchases** — and the site's own identity moves out of the code.
   the block printed on invoices, plus the RC number, TIN and footer tagline of
   the letterhead. *Invoices*: default currency, validity, terms, the payment
   instructions printed on every invoice, the letterhead logo, a signature
-  image and the signatory line. The PDF reproduces the printed letterhead:
-  logo and contact block on top, navy footer band with the address and
-  tagline, RC number in the green bar (`server/quote-pdf.js`). *Email*: sender, reply-to,
+  image and the signatory line. The PDF (`server/quote-pdf.js`) has a white
+  header with the logo, address and contacts on the left and INVOICE + number
+  on the right under a green rule; the footer line carries number · company ·
+  the clickable online link and the page count above the letterhead's green
+  bar (RC number), navy band (address, tagline) and TIN line. One font family
+  throughout: TeX Gyre Adventor (`server/fonts/`, GUST Font License), the
+  free clone of the Avant Garde design that Century Gothic matches — Century
+  Gothic itself is a Monotype font and cannot be shipped with the site. *Email*: sender, reply-to,
   signature, and the Resend API key — stored encrypted (AES-256-GCM under a
   key derived from the service-role key), write-only, shown as "ends with
   ····abcd". *MCP & API*: switch the endpoint on or off and generate or revoke
