@@ -105,6 +105,10 @@ try {
 
   await step('GET /users', async () => `${(await api('/users')).length} users`)
   await step('self-demotion blocked', () => refused(() => api(`/users/${userId}`, { method: 'PATCH', body: { role: 'editor' } }), /own admin/, 'self-demote'))
+  await step('GET /users/:id shows sign-in facts + activity', async () => { const u = await api(`/users/${userId}`); if (!u.auth || !['accepted', 'pending'].includes(u.auth.invite) || !Array.isArray(u.activity)) throw new Error(JSON.stringify(u).slice(0, 120)); return `invite ${u.auth.invite} · password ${u.auth.password} · ${u.activity.length} actions` })
+  await step('PATCH /users/:id name is mirrored to Auth', async () => { const u = await api(`/users/${userId}`, { method: 'PATCH', body: { name: 'E2E Admin' } }); if (u.name !== 'E2E Admin') throw new Error(u.name); const { data } = await svc.auth.admin.getUserById(userId); if (data?.user?.user_metadata?.name !== 'E2E Admin') throw new Error('auth metadata not updated'); return u.name })
+  await step('PATCH /users/:id rejects a bad email', () => refused(() => api(`/users/${userId}`, { method: 'PATCH', body: { email: 'nope' } }), /valid email/, 'bad email'))
+  await step('GET /users/:id unknown → 404', async () => { const r = await fetch(`${API}/api/admin/users/00000000-0000-0000-0000-000000000000`, { headers: { Authorization: `Bearer ${token}` } }); if (r.status !== 404) throw new Error(r.status); return '404 ✓' })
 
   await step('audit log recorded this run', async () => {
     const rows = (await api('/audit?limit=100')).filter(r => r.actor_label === EMAIL)
@@ -281,6 +285,8 @@ try {
         const inv = await api('/users/invite', { method: 'POST', body: { email: `e2e-invite-${Date.now()}@vertocagro.invalid`, name: 'E2E Invitee', role: 'sales' } })
         if (inv.via !== 'resend' || !inv.message_id) throw new Error(JSON.stringify(inv))
         const m = await api(`/messages/${inv.message_id}`); if (!/invited/i.test(m.subject) || !/redirect_to=/.test(m.html)) throw new Error(m.subject)
+        const again = await api(`/users/${inv.id}/send-link`, { method: 'POST' }); if (again.kind !== 'reinvite' || again.via !== 'resend' || !again.message_id) throw new Error('send-link: ' + JSON.stringify(again))
+        const d = await api(`/users/${inv.id}`); if (d.auth?.invite !== 'pending') throw new Error('expected a pending invite, got ' + d.auth?.invite)
         await svc.auth.admin.deleteUser(inv.id)
         // Supabase replaces a redirect that is not in Auth → URL configuration with its Site URL; that is a project setting, not a bug here.
         return m.html.includes('/staff360/set-password') ? `via resend, msg #${m.id}` : `via resend, msg #${m.id} (Supabase swapped the redirect for its Site URL — allow-list this API's ADMIN_URL under Auth → URL configuration to test the full link)`

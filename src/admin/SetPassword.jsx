@@ -19,7 +19,8 @@ export default function SetPassword() {
     if (pw.length < 10) return setErr('Use at least 10 characters.')
     if (pw !== pw2) return setErr("Passwords don't match.")
     setBusy(true)
-    const { error } = await supabase.auth.updateUser({ password: pw })
+    // password_set_at lets the Users page show who has actually chosen a password.
+    const { error } = await supabase.auth.updateUser({ password: pw, data: { password_set_at: new Date().toISOString() } })
     setBusy(false)
     if (error) return setErr(error.message)
     nav('/staff360', { replace: true })

@@ -34,6 +34,13 @@ export const DEFAULT_TEMPLATES = {
     cta_label: 'Set your password',
     variables: ['name', 'email', 'role', 'inviter_name', 'site_name', 'link'],
   },
+  password_link: {
+    name: 'Set-password link (to staff)', description: 'Sent from a user page when an admin sends a team member a fresh link to choose a new password.',
+    subject: 'Set a new password for the {{site_name}} staff panel',
+    body: 'Hello {{name}},\n\n{{inviter_name}} sent you a link to set a new password for the {{site_name}} staff panel. Use the button below; the link works once and expires after a short while.\n\nIf you were not expecting this, you can ignore this email.',
+    cta_label: 'Set your password',
+    variables: ['name', 'email', 'role', 'inviter_name', 'site_name', 'link'],
+  },
   quote_response: {
     name: 'Invoice answered (to the team)', description: 'Sent to your notification address when a client accepts or declines an invoice online.',
     subject: '{{client_name}} {{response}} invoice {{quote_number}}',
@@ -87,7 +94,7 @@ export async function buildVars(key, ctx = {}) {
     const c = ctx.client
     return { ...base, name: c?.data?.contact_person || c?.name || '', email: c?.data?.email || '' }
   }
-  if (key === 'user_invite') return { ...base, name: ctx.name || '', email: ctx.email || '', role: ctx.role || '', inviter_name: ctx.actor?.name || ctx.actor?.email || 'An administrator', link: ctx.link || '' }
+  if (key === 'user_invite' || key === 'password_link') return { ...base, name: ctx.name || '', email: ctx.email || '', role: ctx.role || '', inviter_name: ctx.actor?.name || ctx.actor?.email || 'An administrator', link: ctx.link || '' }
   if (key === 'quote_response') {
     const q = ctx.quote
     return { ...base, client_name: q.client_name || q.client_email || 'A client', response: q.status, quote_number: q.number, quote_title: q.title, total: formatMoney(q.total, q.currency), note: q.response_note, link: ctx.link || '' }
@@ -104,6 +111,7 @@ export const SAMPLE_VARS = {
   enquiry_reply: { name: 'Alessia Loghin', email: 'alessia@example.com', enquiry_type: 'quote request', commodity: 'Cocoa Beans', quantity: '20 MT', destination: 'Rotterdam', subject: '', message: 'Please quote for 20 MT of cocoa beans.' },
   blank: { name: 'Alessia Loghin', email: 'alessia@example.com' },
   user_invite: { name: 'Tunde', email: 'tunde@example.com', role: 'sales', inviter_name: 'Chimaobi', link: 'https://vertocagro.com/staff360/set-password' },
+  password_link: { name: 'Tunde', email: 'tunde@example.com', role: 'sales', inviter_name: 'Chimaobi', link: 'https://vertocagro.com/staff360/set-password' },
   quote_response: { client_name: 'Alessia Loghin', response: 'accepted', quote_number: 'VA-2026-0007', quote_title: 'Cocoa beans, 20 MT', total: 'USD 51,600.00', note: 'Please confirm the shipping date.', link: 'https://vertocagro.com/staff360/quotes/7' },
   inbound_notice: { from: 'alessia@example.com', from_name: 'Alessia Loghin', subject: 'Re: Invoice VA-2026-0007', excerpt: 'Thank you, we would like to proceed. Can you confirm the loading port?', link: 'https://vertocagro.com/staff360/messages/12' },
 }

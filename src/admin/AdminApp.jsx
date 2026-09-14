@@ -10,6 +10,7 @@ import ProductForm from './ProductForm'
 import PostsAdmin from './PostsAdmin'
 import PostForm from './PostForm'
 import UsersAdmin from './UsersAdmin'
+import UserDetail from './UserDetail'
 import AuditLog from './AuditLog'
 import ClientsAdmin from './ClientsAdmin'
 import ClientDetail from './ClientDetail'
@@ -77,6 +78,7 @@ export default function AdminApp() {
           <Route path="posts/new" element={P('posts', <PostForm />)} />
           <Route path="posts/:slug" element={P('posts', <PostForm />)} />
           <Route path="users" element={P('users', <UsersAdmin />)} />
+          <Route path="users/:id" element={P('users', <UserDetail />)} />
           <Route path="clients" element={P('clients', <ClientsAdmin />)} />
           <Route path="clients/new" element={P('clients', <ClientDetail />)} />
           <Route path="clients/fields" element={P('clients', <ClientFieldsAdmin />)} />

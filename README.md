@@ -197,6 +197,12 @@ very next request, with no re-login. The frontend only hides menus.
   appear in the table. Values are validated server-side against those
   definitions — required, email, number, date, URL, select options. CSV and
   PDF download the current filtered view; the PDF library loads only on click.
+- **Users** (`/staff360/users`) — invite-only accounts with roles. Open a user
+  to edit their name, sign-in email and role, deactivate them, see whether the
+  invitation was accepted and a password set (from Supabase Auth; the
+  set-password page stamps `password_set_at`), their last sign-in and recent
+  audit entries, and to send a fresh invitation or a one-time set-password
+  link (`password_link` template).
 - **Enquiries** (`/staff360/enquiries`) — quote requests and contact messages on
   separate tabs, each with its own pipeline: quotes move new → contacted →
   quoted → won or lost; messages new → replied; either can be archived. Each

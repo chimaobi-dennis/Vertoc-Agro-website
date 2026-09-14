@@ -9,7 +9,7 @@ import express, { Router } from 'express'
 import { authenticate, requireRole, PERMISSIONS } from './auth.js'
 import { audit } from './audit.js'
 import * as content from './content.js'
-import { deliver, sendQuote, inviteUser, resolveResendKey, resolveWebhookSecret, dryRun, quoteLink, publicUrl, panelLink } from './messaging.js'
+import { deliver, sendQuote, inviteUser, sendSetPasswordLink, resolveResendKey, resolveWebhookSecret, dryRun, quoteLink, publicUrl, panelLink } from './messaging.js'
 import { DEFAULT_TEMPLATES, TEMPLATE_KEYS, SAMPLE_VARS, renderTemplate, renderKey, templateFor } from './templates.js'
 import { renderEmailHtml } from './email.js'
 import { renderQuotePdf } from './quote-pdf.js'
@@ -132,6 +132,54 @@ router.get('/users', requireRole('admin'), h(async (_req, res) => {
   res.json(data)
 }))
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Sign-in facts for one account from Supabase Auth. "Password set" is
+// stamped by the set-password page (user_metadata.password_set_at); accounts
+// from before that stamp existed count as set once they have signed in.
+async function authDetails(sb, id) {
+  const { data, error } = await sb.auth.admin.getUserById(id)
+  if (error || !data?.user) return null
+  const u = data.user
+  const confirmed_at = u.email_confirmed_at || u.confirmed_at || null
+  const password_set_at = u.user_metadata?.password_set_at || null
+  return {
+    invited_at: u.invited_at || null, confirmed_at, last_sign_in_at: u.last_sign_in_at || null, password_set_at,
+    auth_created_at: u.created_at || null,
+    invite: confirmed_at ? 'accepted' : 'pending',
+    password: password_set_at ? 'set' : u.last_sign_in_at ? 'signed_in' : 'none',
+  }
+}
+
+router.get('/users/:id', requireRole('admin'), h(async (req, res) => {
+  const { id } = req.params
+  if (!UUID_RE.test(id)) throw bad('User not found.', 404)
+  const sb = await supabase()
+  const { data: p, error } = await sb.from('profiles').select('*').eq('id', id).maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!p) throw bad('User not found.', 404)
+  const [auth, activity] = await Promise.all([
+    authDetails(sb, p.id),
+    sb.from('audit_log').select('id, action, entity, entity_id, at').eq('actor_id', p.id).order('at', { ascending: false }).limit(20).then(r => r.data || []),
+  ])
+  res.json({ ...p, auth, activity })
+}))
+
+// A fresh set-password link: the invitation again while it is still
+// unaccepted, a one-time recovery link once the account is confirmed.
+router.post('/users/:id/send-link', requireRole('admin'), h(async (req, res) => {
+  const { id } = req.params
+  if (!UUID_RE.test(id)) throw bad('User not found.', 404)
+  const sb = await supabase()
+  const { data: p } = await sb.from('profiles').select('*').eq('id', id).maybeSingle()
+  if (!p) throw bad('User not found.', 404)
+  if (!p.active) throw bad('Activate the account first.')
+  const redirectTo = `${process.env.ADMIN_URL || ''}/staff360/set-password`
+  const r = await sendSetPasswordLink({ actor: req.user, profile: p, supabase: sb, redirectTo })
+  await audit({ actor: req.user, action: r.kind, entity: 'user', entityId: p.id, after: { email: p.email, via: r.via, message_id: r.message?.id ?? null } })
+  res.json({ kind: r.kind, via: r.via, message_id: r.message?.id ?? null, warning: r.warning })
+}))
+
 router.post('/users/invite', requireRole('admin'), h(async (req, res) => {
   const { email, name = '', role = 'editor' } = req.body || {}
   if (!isEmail(email)) throw bad('Please enter a valid email address.')
@@ -158,8 +206,13 @@ router.patch('/users/:id', requireRole('admin'), h(async (req, res) => {
     patch.role = req.body.role
   }
   if (req.body.active !== undefined) patch.active = Boolean(req.body.active)
-  if (req.body.name !== undefined) patch.name = String(req.body.name).slice(0, 120)
+  if (req.body.name !== undefined) patch.name = String(req.body.name).trim().slice(0, 120)
+  if (req.body.email !== undefined) {
+    if (!isEmail(req.body.email)) throw bad('Please enter a valid email address.')
+    patch.email = String(req.body.email).trim().toLowerCase()
+  }
   if (!Object.keys(patch).length) throw bad('Nothing to update.')
+  if (!UUID_RE.test(id)) throw bad('User not found.', 404)
 
   const sb = await supabase()
   const { data: before } = await sb.from('profiles').select('*').eq('id', id).maybeSingle()
@@ -175,6 +228,13 @@ router.patch('/users/:id', requireRole('admin'), h(async (req, res) => {
     if ((count ?? 0) <= 1) throw bad('This is the last active admin; promote someone else first.')
   }
 
+  // Email and name live in Supabase Auth too (sign-in address, invite greeting).
+  const emailChanged = patch.email !== undefined && patch.email !== before.email
+  const nameChanged = patch.name !== undefined && patch.name !== before.name
+  if (emailChanged || nameChanged) {
+    const { error: aErr } = await sb.auth.admin.updateUserById(id, { ...(emailChanged ? { email: patch.email, email_confirm: true } : {}), ...(nameChanged ? { user_metadata: { name: patch.name } } : {}) })
+    if (aErr) throw bad(/already|exists/i.test(aErr.message) ? 'That email already has an account.' : aErr.message)
+  }
   const { data: after, error } = await sb.from('profiles').update(patch).eq('id', id).select().single()
   if (error) throw new Error(error.message)
   await audit({ actor: req.user, action: 'update', entity: 'user', entityId: id, before, after })

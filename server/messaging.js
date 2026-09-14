@@ -143,6 +143,42 @@ export async function sendQuote(id, { actor, to, subject, body, attachmentIds = 
 }
 
 /**
+ * A fresh set-password link for an existing staff account, from the user
+ * page. Unaccepted invitation → the invitation again (new link, old one
+ * stops working); confirmed account → a one-time recovery link. Goes out
+ * through Resend with the matching template, or the Supabase mailer when
+ * no key is configured.
+ */
+export async function sendSetPasswordLink({ actor, profile, supabase, redirectTo }) {
+  const { data: au } = await supabase.auth.admin.getUserById(profile.id)
+  const confirmed = Boolean(au?.user?.email_confirmed_at || au?.user?.confirmed_at)
+  const kind = confirmed ? 'password_link' : 'reinvite'
+  const { key } = await resolveResendKey()
+  if (!key && !dryRun()) {
+    const { error } = confirmed
+      ? await supabase.auth.resetPasswordForEmail(profile.email, { redirectTo })
+      : await supabase.auth.admin.inviteUserByEmail(profile.email, { data: { name: profile.name }, redirectTo })
+    if (error) throw bad(error.message)
+    return { kind, via: 'supabase', message: null }
+  }
+  const { data, error } = await supabase.auth.admin.generateLink({ type: confirmed ? 'recovery' : 'invite', email: profile.email, options: { redirectTo, ...(confirmed ? {} : { data: { name: profile.name } }) } })
+  if (error) throw bad(error.message)
+  const link = data.properties?.action_link
+  if (!link) throw new Error('Supabase returned no link')
+  const tpl = await renderKey(confirmed ? 'password_link' : 'user_invite', { name: profile.name, email: profile.email, role: profile.role, link, actor })
+  try {
+    const message = await deliver({ actor, to: profile.email, toName: profile.name, subject: tpl.subject, body: tpl.body, cta: tpl.cta || { label: 'Set your password', url: link } })
+    return { kind, via: 'resend', message }
+  } catch (e) {
+    const { error: fbErr } = confirmed
+      ? await supabase.auth.resetPasswordForEmail(profile.email, { redirectTo })
+      : await supabase.auth.admin.inviteUserByEmail(profile.email, { data: { name: profile.name }, redirectTo })
+    if (fbErr) throw e
+    return { kind, via: 'supabase', message: null, warning: `Sent with the plain Supabase email instead: ${e.message}` }
+  }
+}
+
+/**
  * Notification to the team (quote answered, email received). Best effort:
  * never throws, never blocks the action that triggered it.
  */
