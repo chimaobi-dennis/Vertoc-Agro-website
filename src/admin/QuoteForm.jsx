@@ -25,7 +25,7 @@ export default function QuoteForm() {
   const [clients, setClients] = useState(null)
   const [fields, setFields] = useState(null)
   const [settings, setSettings] = useState(null)
-  const [form, setForm] = useState({ client_id: sp.get('client') || '', client_name: '', client_email: '', title: '', currency: '', valid_until: '', discount: 0, tax_rate: 0, notes: '', terms: '', internal_notes: '', data: {} })
+  const [form, setForm] = useState({ number: '', client_id: sp.get('client') || '', client_name: '', client_email: '', title: '', currency: '', valid_until: '', discount: 0, tax_rate: 0, notes: '', terms: '', internal_notes: '', data: {} })
   const [items, setItems] = useState([blank()])
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -54,7 +54,7 @@ export default function QuoteForm() {
 
   const load = () => adminFetch(`/quotes/${id}`).then(q => {
     setQuote(q)
-    setForm({ client_id: q.client_id ?? '', client_name: q.client_name, client_email: q.client_email, title: q.title, currency: q.currency, valid_until: q.valid_until || '', discount: q.discount, tax_rate: q.tax_rate, notes: q.notes, terms: q.terms, internal_notes: q.internal_notes, data: q.data || {} })
+    setForm({ number: (String(q.number || '').match(/-(\d+)$/) || [])[1] || '', client_id: q.client_id ?? '', client_name: q.client_name, client_email: q.client_email, title: q.title, currency: q.currency, valid_until: q.valid_until || '', discount: q.discount, tax_rate: q.tax_rate, notes: q.notes, terms: q.terms, internal_notes: q.internal_notes, data: q.data || {} })
     setItems(q.items?.length ? q.items : [blank()]); setDirty(false)
   }).catch(e => setErr(e.message))
 
@@ -88,6 +88,7 @@ export default function QuoteForm() {
 
   const loading = !fields || !clients || (editing && !quote)
   const cur = form.currency || 'USD'
+  const numberYear = (editing && quote?.number?.match(/-(\d{4})-/)?.[1]) || new Date().getFullYear()
 
   return (
     <>
@@ -110,6 +111,12 @@ export default function QuoteForm() {
                   {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </Select>
               </Field>
+              <Field label="Invoice number" hint={editing ? 'Auto-numbered. Change only the digits if you need to — the prefix and year are fixed.' : 'Leave empty for the next free number, or type the digits you want.'} className="md:col-span-2">
+                <div className="flex max-w-xs">
+                  <span className="inline-flex items-center h-11 px-3 rounded-l-xl border border-r-0 border-border bg-muted text-sm font-medium text-muted-foreground whitespace-nowrap">VA-{numberYear}-</span>
+                  <Input className="rounded-l-none" inputMode="numeric" pattern="[0-9]*" maxLength={6} placeholder={editing ? '' : 'auto'} disabled={locked} value={form.number} onChange={e => set({ number: e.target.value.replace(/\D/g, '') })} />
+                </div>
+              </Field>
               <Field label="Prepared for *"><Input required value={form.client_name} onChange={e => set({ client_name: e.target.value })} placeholder="Company or person" /></Field>
               <Field label="Email"><Input type="email" value={form.client_email} onChange={e => set({ client_email: e.target.value })} placeholder="Where the invoice is sent" /></Field>
               <Field label="Title" className="md:col-span-2"><Input value={form.title} onChange={e => set({ title: e.target.value })} placeholder='e.g. "Cocoa beans, 20 MT, CIF Rotterdam"' /></Field>
@@ -120,14 +127,14 @@ export default function QuoteForm() {
             <Card className="p-6 animate-fade-up" style={{ animationDelay: '70ms' }}>
               <h2 className="font-semibold mb-4">Line items</h2>
               <div className="space-y-3">
-                <div className="hidden md:grid grid-cols-[1fr_88px_72px_120px_120px_36px] gap-2 text-[11px] uppercase tracking-wider text-muted-foreground px-1"><span>Description</span><span>Qty</span><span>Unit</span><span>Unit price</span><span className="text-right">Amount</span><span /></div>
+                <div className="hidden md:grid grid-cols-[1fr_80px_64px_120px_minmax(150px,auto)_36px] gap-2 text-[11px] uppercase tracking-wider text-muted-foreground px-1"><span>Description</span><span>Qty</span><span>Unit</span><span>Unit price</span><span className="text-right">Amount</span><span /></div>
                 {items.map((it, i) => (
-                  <div key={i} className="grid md:grid-cols-[1fr_88px_72px_120px_120px_36px] gap-2 items-center">
+                  <div key={i} className="grid md:grid-cols-[1fr_80px_64px_120px_minmax(150px,auto)_36px] gap-2 items-center">
                     <Input disabled={locked} value={it.description} onChange={e => setItem(i, { description: e.target.value })} placeholder="Product, grade, packaging…" />
                     <Input disabled={locked} type="number" min="0" step="0.001" value={it.quantity} onChange={e => setItem(i, { quantity: e.target.value })} />
                     <Input disabled={locked} value={it.unit} onChange={e => setItem(i, { unit: e.target.value })} placeholder="MT" />
                     <Input disabled={locked} type="number" min="0" step="0.01" value={it.unit_price} onChange={e => setItem(i, { unit_price: e.target.value })} placeholder="0.00" />
-                    <div className="h-11 flex items-center justify-end text-sm font-medium tabular-nums">{fmtMoney((Number(it.quantity) || 0) * (Number(it.unit_price) || 0), cur)}</div>
+                    <div className="h-11 flex items-center justify-end text-sm font-medium tabular-nums whitespace-nowrap">{fmtMoney((Number(it.quantity) || 0) * (Number(it.unit_price) || 0), cur)}</div>
                     <button type="button" disabled={locked || items.length === 1} onClick={() => { setItems(l => l.filter((_, j) => j !== i)); setDirty(true) }} className="h-9 w-9 rounded-lg text-destructive hover:bg-muted disabled:opacity-30 flex items-center justify-center" aria-label="Remove line"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}

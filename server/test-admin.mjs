@@ -178,12 +178,21 @@ try {
   await step('quote needs its required field', () => refused(() => api('/quotes', { method: 'POST', body: { client_id: client2.id, items: [{ description: 'x', unit_price: 1 }] } }), /required/, 'missing incoterm'))
   const quote = await step('POST /quotes (number, snapshot, totals)', async () => {
     const q = await api('/quotes', { method: 'POST', body: { client_id: client2.id, title: 'e2e-quote', items: [{ description: 'Cocoa beans', quantity: 20, unit: 'MT', unit_price: 2400 }, { description: 'Bagging', quantity: 1, unit_price: 500 }], discount: 500, tax_rate: 7.5, data: { e2e_incoterm: 'FOB' } } })
-    if (!/^VQ-\d{4}-\d{4}$/.test(q.number)) throw new Error('number ' + q.number)
+    if (!/^VA-\d{4}-\d{4,6}$/.test(q.number)) throw new Error('number ' + q.number)
     if (Number(q.subtotal) !== 48500 || Number(q.total) !== 51600) throw new Error(`subtotal ${q.subtotal} total ${q.total}`)
     if (q.client_email !== 'buyer3@e2e.invalid' || q.currency !== 'EUR' || q.status !== 'draft') throw new Error('snapshot/currency/status')
     return q
   })
   await step('PATCH /quotes/:id recomputes totals', async () => { const q = await api(`/quotes/${quote.id}`, { method: 'PATCH', body: { discount: 0 } }); if (Number(q.total) !== 52137.5) throw new Error('total ' + q.total); return q.total })
+  {
+    const year = new Date().getFullYear(), manualN = Number(quote.number.slice(-4)) + 50, pad = n => String(n).padStart(4, '0')
+    const raw = (path, body) => fetch(`${API}/api/admin${path}`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    await step('PATCH /quotes/:id number: digits only, prefix + year fixed', async () => { const q = await api(`/quotes/${quote.id}`, { method: 'PATCH', body: { number: String(manualN) } }); if (q.number !== `VA-${year}-${pad(manualN)}`) throw new Error(q.number); quote.number = q.number; return q.number })
+    await step('number with another prefix/year rejected', async () => { const r = await raw(`/quotes/${quote.id}`, { number: `VQ-${year - 1}-0001` }); if (r.status !== 400) throw new Error(r.status); return '400 ✓' })
+    const b = await step('next auto number follows the manual one', async () => { const b = await api('/quotes', { method: 'POST', body: { title: 'e2e-quote-b', client_name: 'e2e-b', items: [{ description: 'x', quantity: 1, unit_price: 1 }], data: { e2e_incoterm: 'FOB' } } }); if (b.number !== `VA-${year}-${pad(manualN + 1)}`) throw new Error(b.number); return b })
+    await step('duplicate number rejected', async () => { const r = await raw(`/quotes/${b.id}`, { number: quote.number }); if (r.status !== 400) throw new Error(r.status); return '400 ✓' })
+    await step('DELETE /quotes/:id (second one)', async () => (await api(`/quotes/${b.id}`, { method: 'DELETE' })).deleted)
+  }
   await step('GET /quotes/:id/pdf is a PDF', async () => { const r = await fetch(`${API}/api/admin/quotes/${quote.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } }); const b = Buffer.from(await r.arrayBuffer()); if (r.status !== 200 || b.subarray(0, 4).toString() !== '%PDF') throw new Error('status ' + r.status); return `${b.length} bytes` })
   await step('public link works while draft (status untouched)', async () => { const r = await fetch(`${API}/api/q/${quote.token}`); const d = await r.json(); if (r.status !== 200 || d.status !== 'draft' || d.token !== undefined) throw new Error('got ' + r.status + ' ' + d.status); return 'draft ✓' })
 
@@ -239,7 +248,7 @@ try {
       const back = await api('/templates/blank/reset', { method: 'POST' }); if (back.body.includes('e2e-custom')) throw new Error('reset failed')
       return 'customised → rendered → reset ✓'
     })
-    await step('POST /templates/quote/preview returns branded HTML', async () => { const r = await api('/templates/quote/preview', { method: 'POST', body: { subject: 'S {{quote_number}}', body: 'B {{client_name}}' } }); if (!r.subject.startsWith('S VQ-') || !r.html.includes('B Alessia')) throw new Error(JSON.stringify(r).slice(0, 80)); return r.subject })
+    await step('POST /templates/quote/preview returns branded HTML', async () => { const r = await api('/templates/quote/preview', { method: 'POST', body: { subject: 'S {{quote_number}}', body: 'B {{client_name}}' } }); if (!r.subject.startsWith('S VA-') || !r.html.includes('B Alessia')) throw new Error(JSON.stringify(r).slice(0, 80)); return r.subject })
     const whsec = 'whsec_' + Buffer.from('e2e-webhook-secret-' + Date.now()).toString('base64')
     settingsBefore.secrets = (await svc.from('settings').select('value').eq('key', 'secrets').maybeSingle()).data?.value ?? null
     await step('PUT /settings/secrets/resend_webhook_secret', async () => { const r = await api('/settings/secrets/resend_webhook_secret', { method: 'PUT', body: { value: whsec } }); if (!r.resend_webhook_secret?.hint) throw new Error('not stored'); return 'stored, hint ' + r.resend_webhook_secret.hint })

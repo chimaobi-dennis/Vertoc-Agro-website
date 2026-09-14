@@ -225,7 +225,7 @@ Purchases** — and the site's own identity moves out of the code.
   email keep the word *quote*) — a builder with line items, discount, tax,
   notes, terms, internal notes and **your own quote fields** (Incoterm, port,
   payment terms… managed under Invoices → Fields, same engine as client
-  fields). Numbers are `VQ-YYYY-NNNN` from an atomic per-year counter. The PDF
+  fields). Numbers are `VA-YYYY-NNNN`: the next free number for the year, unless staff type the digits themselves in the builder (prefix and year are fixed; a taken number is refused, and the automatic sequence continues after the highest one used). The PDF
   is rendered server-side, so the preview, the attachment and the client's
   download are the same file. **Send to client** emails the PDF with a unique
   link `/q/<token>` (24 random bytes) where the client can read, download and

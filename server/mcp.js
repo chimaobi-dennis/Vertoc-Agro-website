@@ -258,6 +258,7 @@ export function buildServer() {
     client_id: z.number().optional().describe('Link to a client; name/email are copied from it'),
     client_name: z.string().optional(), client_email: z.string().optional(),
     title: z.string().optional().describe('e.g. "Cocoa beans, 20 MT CIF Rotterdam"'),
+    number: z.string().optional().describe('Invoice number: the digits after VA-YYYY- (e.g. "0006") or the full VA-YYYY-NNNN; omit for the next free number'),
     currency: z.string().optional().describe('ISO code; defaults to Settings → Quotes'),
     items: z.array(itemShape).optional(),
     discount: z.number().optional().describe('Absolute amount'),

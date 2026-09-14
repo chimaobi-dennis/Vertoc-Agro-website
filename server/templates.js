@@ -100,12 +100,12 @@ export async function buildVars(key, ctx = {}) {
 }
 
 export const SAMPLE_VARS = {
-  quote: { client_name: 'Alessia Loghin', client_email: 'alessia@example.com', quote_number: 'VQ-2026-0007', quote_title: 'Cocoa beans, 20 MT, CIF Rotterdam', total: 'USD 51,600.00', currency: 'USD', valid_until: '24 September 2026', link: 'https://vertocagro.com/q/example' },
+  quote: { client_name: 'Alessia Loghin', client_email: 'alessia@example.com', quote_number: 'VA-2026-0007', quote_title: 'Cocoa beans, 20 MT, CIF Rotterdam', total: 'USD 51,600.00', currency: 'USD', valid_until: '24 September 2026', link: 'https://vertocagro.com/q/example' },
   enquiry_reply: { name: 'Alessia Loghin', email: 'alessia@example.com', enquiry_type: 'quote request', commodity: 'Cocoa Beans', quantity: '20 MT', destination: 'Rotterdam', subject: '', message: 'Please quote for 20 MT of cocoa beans.' },
   blank: { name: 'Alessia Loghin', email: 'alessia@example.com' },
   user_invite: { name: 'Tunde', email: 'tunde@example.com', role: 'sales', inviter_name: 'Chimaobi', link: 'https://vertocagro.com/staff360/set-password' },
-  quote_response: { client_name: 'Alessia Loghin', response: 'accepted', quote_number: 'VQ-2026-0007', quote_title: 'Cocoa beans, 20 MT', total: 'USD 51,600.00', note: 'Please confirm the shipping date.', link: 'https://vertocagro.com/staff360/quotes/7' },
-  inbound_notice: { from: 'alessia@example.com', from_name: 'Alessia Loghin', subject: 'Re: Invoice VQ-2026-0007', excerpt: 'Thank you, we would like to proceed. Can you confirm the loading port?', link: 'https://vertocagro.com/staff360/messages/12' },
+  quote_response: { client_name: 'Alessia Loghin', response: 'accepted', quote_number: 'VA-2026-0007', quote_title: 'Cocoa beans, 20 MT', total: 'USD 51,600.00', note: 'Please confirm the shipping date.', link: 'https://vertocagro.com/staff360/quotes/7' },
+  inbound_notice: { from: 'alessia@example.com', from_name: 'Alessia Loghin', subject: 'Re: Invoice VA-2026-0007', excerpt: 'Thank you, we would like to proceed. Can you confirm the loading port?', link: 'https://vertocagro.com/staff360/messages/12' },
 }
 
 /** Rendered subject/body/cta for a key in a context. Disabled templates render empty. */

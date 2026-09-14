@@ -80,7 +80,7 @@ export async function ingestReceived(data, { apiKey, dryRun = false }) {
   // Who is this from, and what is it about?
   const client = await content.findClientByEmail(from.email)
   let quote_id = null, enquiry_id = null, client_id = client?.id ?? null
-  const num = subject.match(/VQ-\d{4}-\d{4}/)?.[0]
+  const num = subject.match(/V[AQ]-\d{4}-\d{4,6}/)?.[0]
   if (num) { const q = await content.getQuoteByNumber(num); if (q) { quote_id = q.id; client_id ??= q.client_id } }
   const inReplyTo = headers['in-reply-to'] || headers['In-Reply-To'] || null
   const prior = await content.latestOutboundTo(from.email)

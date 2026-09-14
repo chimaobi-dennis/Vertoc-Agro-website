@@ -648,6 +648,40 @@ export async function getQuoteByToken(token) {
   return (unwrap(await supabase.from('quotes').select('*').eq('token', String(token)).limit(1), 'getQuoteByToken'))?.[0] ?? null
 }
 
+/* ---------------------------------------------------- invoice numbers --- */
+// VA-YYYY-NNNN. The prefix and the year are fixed; staff may choose the
+// digits after them, otherwise the next free number for the year is used
+// (so a manual VA-2026-0020 is followed by VA-2026-0021). `number` is
+// unique in the database, so two people creating at the same moment are
+// resolved by retrying with the next number.
+export const NUMBER_PREFIX = 'VA'
+const NUMBER_RE = /^([A-Z]{2})-(\d{4})-(\d{1,6})$/
+const numberOf = (year, n) => `${NUMBER_PREFIX}-${year}-${String(n).padStart(4, '0')}`
+const yearOf = number => Number(NUMBER_RE.exec(String(number || ''))?.[2]) || null
+
+/** Accepts "6", "0006" or "VA-2026-0006"; returns the canonical number for `year` or throws. */
+export function parseQuoteNumber(input, year) {
+  const s = String(input ?? '').trim().toUpperCase()
+  const example = numberOf(year, 1)
+  let digits
+  if (/^\d{1,6}$/.test(s)) digits = s
+  else {
+    const m = NUMBER_RE.exec(s)
+    if (!m || m[1] !== NUMBER_PREFIX || Number(m[2]) !== year) throw new Error(`Invoice numbers look like ${example}; only the digits after ${NUMBER_PREFIX}-${year}- can be changed`)
+    digits = m[3]
+  }
+  const n = Number(digits)
+  if (!Number.isInteger(n) || n < 1) throw new Error(`The invoice number must be 1 or higher (e.g. ${example})`)
+  return numberOf(year, n)
+}
+
+/** Highest number already used for a year, manual or automatic. */
+async function highestQuoteNumber(year) {
+  const rows = unwrap(await supabase.from('quotes').select('number').like('number', `${NUMBER_PREFIX}-${year}-%`), 'highestQuoteNumber')
+  return (rows || []).reduce((max, r) => { const m = NUMBER_RE.exec(r.number); return m ? Math.max(max, Number(m[3])) : max }, 0)
+}
+const isDuplicateNumber = error => error?.code === '23505' && /number/i.test(`${error.message} ${error.details}`)
+
 export async function createQuote(input, actorId = null) {
   const settings = await getSettings()
   const fields = await listQuoteFields()
@@ -657,9 +691,10 @@ export async function createQuote(input, actorId = null) {
   const items = normaliseItems(input?.items ?? [])
   const totals = quoteTotals({ items, discount: input?.discount, tax_rate: input?.tax_rate })
   const data = await cleanFieldData(input?.data || {}, fields)
-  const number = unwrap(await supabase.rpc('next_quote_number'), 'createQuote:number')
+  const year = new Date().getFullYear()
+  const manual = input?.number != null && String(input.number).trim() !== '' ? parseQuoteNumber(input.number, year) : null
   const row = {
-    number, token: randomBytes(24).toString('base64url'),
+    token: randomBytes(24).toString('base64url'),
     client_id: client?.id ?? null,
     client_name: str(input?.client_name ?? client?.name, 200),
     client_email: str(input?.client_email ?? client?.data?.email, 200),
@@ -672,7 +707,15 @@ export async function createQuote(input, actorId = null) {
     valid_until: input?.valid_until ? dateOnly(input.valid_until) : addDays(settings.quotes.valid_days || 14),
     created_by: actorId,
   }
-  const q = unwrap(await supabase.from('quotes').insert(row).select().single(), 'createQuote')
+  let q = null
+  for (let attempt = 0; attempt < 6 && !q; attempt++) {
+    const number = manual || numberOf(year, await highestQuoteNumber(year) + 1)
+    const { data: inserted, error } = await supabase.from('quotes').insert({ ...row, number }).select().single()
+    if (!error) q = inserted
+    else if (!isDuplicateNumber(error)) throw new Error(`createQuote: ${error.message}`)
+    else if (manual) throw new Error(`${number} is already used by another invoice`)
+  }
+  if (!q) throw new Error('could not allocate an invoice number; please try again')
   await adoptDocuments(fileRefs(q.data, fields), { quote_id: q.id, client_id: q.client_id })
   return q
 }
@@ -697,6 +740,15 @@ export async function updateQuote(id, patch) {
     }
   }
   for (const k of ['client_name', 'client_email', 'title']) if (patch[k] !== undefined) row[k] = str(patch[k], 200)
+  if (patch.number !== undefined && String(patch.number).trim() !== '') {
+    const number = parseQuoteNumber(patch.number, yearOf(existing.number) || new Date(existing.created_at).getFullYear())
+    if (number !== existing.number) {
+      if (existing.status === 'accepted') throw new Error('this invoice was accepted by the client; its number is locked.')
+      const clash = await getQuoteByNumber(number)
+      if (clash && clash.id !== existing.id) throw new Error(`${number} is already used by another invoice`)
+      row.number = number
+    }
+  }
   for (const k of ['notes', 'terms', 'internal_notes', 'response_note']) if (patch[k] !== undefined) row[k] = str(patch[k])
   if (patch.currency !== undefined) row.currency = currencyCode(patch.currency)
   if (patch.valid_until !== undefined) row.valid_until = patch.valid_until ? dateOnly(patch.valid_until) : null
