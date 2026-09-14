@@ -35,20 +35,28 @@ export async function renderQuotePdf(quote, settings, fields = [], link = '') {
   const W = 210, M = 16
   const cur = quote.currency || 'USD'
 
-  /* header band */
-  doc.setFillColor(...NAVY); doc.rect(0, 0, W, 34, 'F')
-  doc.setFillColor(...GREEN); doc.rect(0, 34, W, 1.5, 'F')
+  /* header band. The company block wraps inside the space left of the
+     title and number (never runs into them); the band grows to fit. */
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(22); const titleW = doc.getTextWidth('INVOICE')
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(11); const numberW = doc.getTextWidth(String(quote.number || ''))
+  const blockW = W - 2 * M - Math.max(titleW, numberW) - 12
+  doc.setFontSize(9)
+  const contact = [company.phone, company.email].filter(Boolean).join('  ·  ')
+  const block = [...doc.splitTextToSize(String(company.address || ''), blockW), ...doc.splitTextToSize(contact, blockW)].filter(Boolean)
+  const bandH = Math.max(34, 23 + block.length * 4.2 + 3)
+  doc.setFillColor(...NAVY); doc.rect(0, 0, W, bandH, 'F')
+  doc.setFillColor(...GREEN); doc.rect(0, bandH, W, 1.5, 'F')
   doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(20)
   doc.text(company.name || 'Vertoc Agro', M, 16)
   doc.setFontSize(9); doc.setFont('helvetica', 'normal')
-  doc.text([company.address, [company.phone, company.email].filter(Boolean).join('  ·  ')].filter(Boolean), M, 23)
+  doc.text(block, M, 23)
   doc.setFont('helvetica', 'bold'); doc.setFontSize(22)
   doc.text('INVOICE', W - M, 16, { align: 'right' })
   doc.setFontSize(11); doc.setFont('helvetica', 'normal')
-  doc.text(quote.number, W - M, 24, { align: 'right' })
+  doc.text(String(quote.number || ''), W - M, 24, { align: 'right' })
 
   /* meta + client */
-  let y = 46
+  let y = bandH + 12
   doc.setTextColor(...MUTED); doc.setFontSize(8.5); doc.setFont('helvetica', 'bold')
   doc.text('PREPARED FOR', M, y); doc.text('DETAILS', 120, y)
   doc.setTextColor(...INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5)
