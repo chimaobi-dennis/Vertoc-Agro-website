@@ -92,25 +92,19 @@ export default function SettingsAdmin() {
                   <Field label="Address" className="md:col-span-2"><Input {...bind('address')} /></Field>
                   <Field label="Phone"><Input {...bind('phone')} /></Field>
                   <Field label="Email"><Input type="email" {...bind('email')} /></Field>
-                  <Field label="RC number" hint="Company registration number — printed in the green bar of the footer"><Input {...bind('rc_number')} /></Field>
-                  <Field label="TIN" hint="Tax identification number — printed under the footer band when set"><Input {...bind('tin')} /></Field>
-                  <Field label="Footer tagline" hint="Printed under the address in the navy footer band" className="md:col-span-2"><Input {...bind('tagline')} placeholder="Growing the Future, One Harvest at a Time." /></Field>
                 </div>
               )}
             </Group>
           )}
 
           {tab === 'quotes' && (
-            <Group group="quotes" settings={settings} onSaved={onSaved} title="Invoice defaults" description="Applied to every new invoice; each invoice can still override them. The letterhead (logo, contact block, footer) also uses Settings → Company.">
-              {({ form, setForm, bind }) => (
+            <Group group="quotes" settings={settings} onSaved={onSaved} title="Invoice defaults" description="Applied to every new invoice; each invoice can still override them.">
+              {({ bind }) => (
                 <div className="grid md:grid-cols-2 gap-5">
                   <Field label="Default currency" hint="ISO code, e.g. USD, EUR, NGN"><Input maxLength={3} {...bind('default_currency', { onChange: undefined })} onChange={e => bind('default_currency').onChange({ target: { value: e.target.value.toUpperCase() } })} /></Field>
                   <Field label="Valid for (days)"><Input type="number" min="1" max="365" {...bind('valid_days')} /></Field>
                   <Field label="Default terms" hint="Printed under the line items" className="md:col-span-2"><Textarea rows={4} {...bind('terms')} placeholder="e.g. 50% deposit on order confirmation, balance against shipping documents." /></Field>
                   <Field label="Payment instructions" hint="Bank details for the client. Printed on every invoice PDF and shown online." className="md:col-span-2"><Textarea rows={5} {...bind('payment_text')} placeholder={'Bank: …\nAccount name: …\nAccount number / IBAN: …\nSWIFT: …'} /></Field>
-                  <Field label="Letterhead logo" hint="Printed top-left on every page of the PDF. Empty = the site logo."><ImageUpload value={form.logo} onChange={v => setForm({ ...form, logo: v })} /></Field>
-                  <Field label="Signature image" hint="PNG or JPG, cropped tightly. Printed at the end of the invoice above the signatory line."><ImageUpload value={form.signature} onChange={v => setForm({ ...form, signature: v })} /></Field>
-                  <Field label="Signatory" hint='Name and title printed under the signature, e.g. "A. Okafor, Managing Director". Empty = "Authorised signatory".' className="md:col-span-2"><Input {...bind('signatory')} /></Field>
                 </div>
               )}
             </Group>

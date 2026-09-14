@@ -430,14 +430,8 @@ export const DEFAULT_SETTINGS = {
     facebook: 'https://facebook.com/VertocAgro', instagram: 'https://instagram.com/vertocagro', linkedin: 'https://linkedin.com/company/vertocagro',
     twitter: 'https://x.com/vertocagro', threads: 'https://www.threads.com/@vertocagro',
   },
-  company: {
-    name: 'Vertoc Agro', address: 'Akala Express Way, Ibadan, Oyo State, Nigeria', phone: '+234 913 500 9001', email: 'sales@vertocagro.com', website: 'https://vertocagro.com',
-    rc_number: '', tin: '', tagline: '',   // letterhead footer: RC in the green bar, tagline under the address, TIN below the band
-  },
-  quotes: {
-    default_currency: 'USD', valid_days: 14, terms: '', payment_text: '',
-    logo: '', signature: '', signatory: '',   // letterhead logo (falls back to the site logo), signature image and the name/title under it
-  },
+  company: { name: 'Vertoc Agro', address: 'Akala Express Way, Ibadan, Oyo State, Nigeria', phone: '+234 913 500 9001', email: 'sales@vertocagro.com', website: 'https://vertocagro.com' },
+  quotes: { default_currency: 'USD', valid_days: 14, terms: '', payment_text: '' },
   email: {
     from: 'Vertoc Agro <sales@vertocagro.com>', reply_to: 'sales@vertocagro.com', signature: 'Vertoc Agro\n+234 913 500 9001\nsales@vertocagro.com',
     inbound_address: '',        // address clients reply to once Resend receiving is set up; used as Reply-To when set

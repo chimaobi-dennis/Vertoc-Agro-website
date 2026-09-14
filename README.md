@@ -248,17 +248,15 @@ Purchases** — and the site's own identity moves out of the code.
 - **Settings** (`/staff360/settings`, admins) — *Site*: name, tagline, logo,
   favicon, contact details, hours, social links (the public site reads these
   live from `/api/site`, with the old hard-coded values as fallback). *Company*:
-  the block printed on invoices, plus the RC number, TIN and footer tagline of
-  the letterhead. *Invoices*: default currency, validity, terms, the payment
-  instructions printed on every invoice, the letterhead logo, a signature
-  image and the signatory line. The PDF (`server/quote-pdf.js`) has a white
-  header with the logo, address and contacts on the left and INVOICE + number
-  on the right under a green rule; the footer line carries number · company ·
-  the clickable online link and the page count above the letterhead's green
-  bar (RC number), navy band (address, tagline) and TIN line. One font family
-  throughout: TeX Gyre Adventor (`server/fonts/`, GUST Font License), the
-  free clone of the Avant Garde design that Century Gothic matches — Century
-  Gothic itself is a Monotype font and cannot be shipped with the site. *Email*: sender, reply-to,
+  the block printed on invoices. *Invoices*: default currency, validity, terms
+  and the payment instructions printed on every invoice. The PDF
+  (`server/quote-pdf.js`) is the original design: navy header band with the
+  company block and INVOICE + number, green rule, prepared-for and details,
+  items, totals, fields, notes, terms, payment, and a footer line with the
+  number, company, clickable online link and page count. `server/fonts/`
+  holds TeX Gyre Adventor (GUST licence), an embeddable Century Gothic
+  look-alike, kept for the day a different font is wanted; the design uses
+  the built-in Helvetica. *Email*: sender, reply-to,
   signature, and the Resend API key — stored encrypted (AES-256-GCM under a
   key derived from the service-role key), write-only, shown as "ends with
   ····abcd". *MCP & API*: switch the endpoint on or off and generate or revoke
