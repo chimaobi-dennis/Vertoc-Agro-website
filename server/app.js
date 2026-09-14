@@ -108,9 +108,11 @@ app.get('/api/site', (_req, res) =>
 // /q/<token> in the browser calls these. The token is the only credential:
 // 24 random bytes, so the link is unguessable; nothing internal is exposed.
 
+// Drafts are visible too: staff often download the PDF and hand it over
+// themselves, and the link printed on it must work. Viewing a draft leaves
+// its status alone; only a *sent* invoice flips to "viewed".
 async function liveQuote(token) {
-  const q = await content.getQuoteByToken(token)
-  return q && q.status !== 'draft' ? q : null
+  return content.getQuoteByToken(token)
 }
 const quoteView = async q => {
   const [settings, fields] = await Promise.all([content.getSettings(), content.listQuoteFields()])
@@ -132,7 +134,7 @@ app.get('/api/q/:token/pdf', async (req, res) => {
     const link = `${(process.env.SITE_URL || process.env.ADMIN_URL || '').replace(/\/$/, '')}/q/${q.token}`
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader('Content-Disposition', `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${q.number}.pdf"`)
-    res.send(renderQuotePdf(q, settings, fields, link))
+    res.send(await renderQuotePdf(q, settings, fields, link))
   } catch (e) {
     console.error('[quote-pdf]', e.message)
     res.status(500).json({ error: 'Something went wrong on our side.' })

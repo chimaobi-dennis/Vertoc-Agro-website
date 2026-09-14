@@ -430,8 +430,14 @@ export const DEFAULT_SETTINGS = {
     facebook: 'https://facebook.com/VertocAgro', instagram: 'https://instagram.com/vertocagro', linkedin: 'https://linkedin.com/company/vertocagro',
     twitter: 'https://x.com/vertocagro', threads: 'https://www.threads.com/@vertocagro',
   },
-  company: { name: 'Vertoc Agro', address: 'Akala Express Way, Ibadan, Oyo State, Nigeria', phone: '+234 913 500 9001', email: 'sales@vertocagro.com', website: 'https://vertocagro.com' },
-  quotes: { default_currency: 'USD', valid_days: 14, terms: '', payment_text: '' },
+  company: {
+    name: 'Vertoc Agro', address: 'Akala Express Way, Ibadan, Oyo State, Nigeria', phone: '+234 913 500 9001', email: 'sales@vertocagro.com', website: 'https://vertocagro.com',
+    rc_number: '', tin: '', tagline: '',   // letterhead footer: RC in the green bar, tagline under the address, TIN below the band
+  },
+  quotes: {
+    default_currency: 'USD', valid_days: 14, terms: '', payment_text: '',
+    logo: '', signature: '', signatory: '',   // letterhead logo (falls back to the site logo), signature image and the name/title under it
+  },
   email: {
     from: 'Vertoc Agro <sales@vertocagro.com>', reply_to: 'sales@vertocagro.com', signature: 'Vertoc Agro\n+234 913 500 9001\nsales@vertocagro.com',
     inbound_address: '',        // address clients reply to once Resend receiving is set up; used as Reply-To when set
@@ -744,12 +750,12 @@ const isExpired = q => q.valid_until && q.valid_until < new Date().toISOString()
 /** The client's answer from the public page. Returns the updated quote. */
 export async function respondToQuote(token, action, note = '') {
   const q = await getQuoteByToken(token)
-  if (!q || q.status === 'draft') return null
+  if (!q) return null
   if (!['accept', 'decline'].includes(action)) throw new Error('action must be accept or decline')
-  if (['accepted', 'declined'].includes(q.status)) throw new Error('This quote has already been answered.')
+  if (['accepted', 'declined'].includes(q.status)) throw new Error('This invoice has already been answered.')
   if (q.status === 'expired' || isExpired(q)) {
     if (q.status !== 'expired') await supabase.from('quotes').update({ status: 'expired' }).eq('id', q.id)
-    throw new Error('This quote has expired. Please contact us for an updated one.')
+    throw new Error('This invoice has expired. Please contact us for an updated one.')
   }
   const row = { status: action === 'accept' ? 'accepted' : 'declined', responded_at: new Date().toISOString(), response_note: str(note, 2000) }
   return unwrap(await supabase.from('quotes').update(row).eq('id', q.id).select().single(), 'respondToQuote')
@@ -763,7 +769,7 @@ export function publicQuote(q, settings, fields = []) {
     client_name: q.client_name, currency: q.currency, items: q.items,
     subtotal: q.subtotal, discount: q.discount, tax_rate: q.tax_rate, total: q.total,
     notes: q.notes, terms: q.terms, valid_until: q.valid_until,
-    sent_at: q.sent_at, responded_at: q.responded_at, response_note: q.response_note,
+    sent_at: q.sent_at, date: q.sent_at || q.created_at, responded_at: q.responded_at, response_note: q.response_note,
     fields: fields.map(f => ({ label: f.label, value: f.type === 'checkbox' ? (q.data?.[f.key] ? 'Yes' : '') : (q.data?.[f.key] && typeof q.data[f.key] === 'object' ? q.data[f.key].name : q.data?.[f.key] ?? '') })).filter(f => f.value),
     company: settings.company, payment_text: settings.quotes.payment_text,
   }

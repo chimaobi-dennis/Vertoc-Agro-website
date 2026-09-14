@@ -9,9 +9,9 @@ import { formatMoney } from './quote-pdf.js'
 
 export const DEFAULT_TEMPLATES = {
   quote: {
-    name: 'Quotation to client', description: 'Sent with the PDF and the unique online link when a quote goes out.',
-    subject: 'Quotation {{quote_number}} from {{company_name}}',
-    body: 'Dear {{client_name}},\n\nThank you for your interest in {{company_name}}. Please find attached our quotation {{quote_number}}{{#if quote_title}} for {{quote_title}}{{/if}}.{{#if valid_until}} It is valid until {{valid_until}}.{{/if}}\n\nYou can review it and accept or decline online using the button below. If you have any questions, simply reply to this email.\n\nKind regards,\n{{sender_name}}',
+    name: 'Invoice to client', description: 'Sent with the PDF and the unique online link when an invoice goes out.',
+    subject: 'Invoice {{quote_number}} from {{company_name}}',
+    body: 'Dear {{client_name}},\n\nThank you for your interest in {{company_name}}. Please find attached our invoice {{quote_number}}{{#if quote_title}} for {{quote_title}}{{/if}}.{{#if valid_until}} It is valid until {{valid_until}}.{{/if}}\n\nYou can review it and accept or decline online using the button below. If you have any questions, simply reply to this email.\n\nKind regards,\n{{sender_name}}',
     cta_label: 'View and respond online',
     variables: ['client_name', 'client_email', 'quote_number', 'quote_title', 'total', 'currency', 'valid_until', 'link', 'company_name', 'sender_name'],
   },
@@ -35,10 +35,10 @@ export const DEFAULT_TEMPLATES = {
     variables: ['name', 'email', 'role', 'inviter_name', 'site_name', 'link'],
   },
   quote_response: {
-    name: 'Quote answered (to the team)', description: 'Sent to your notification address when a client accepts or declines a quote online.',
-    subject: '{{client_name}} {{response}} quotation {{quote_number}}',
-    body: '{{client_name}} has {{response}} quotation {{quote_number}}{{#if quote_title}} ({{quote_title}}){{/if}} — total {{total}}.{{#if note}}\n\nTheir note:\n{{note}}{{/if}}',
-    cta_label: 'Open the quote',
+    name: 'Invoice answered (to the team)', description: 'Sent to your notification address when a client accepts or declines an invoice online.',
+    subject: '{{client_name}} {{response}} invoice {{quote_number}}',
+    body: '{{client_name}} has {{response}} invoice {{quote_number}}{{#if quote_title}} ({{quote_title}}){{/if}} — total {{total}}.{{#if note}}\n\nTheir note:\n{{note}}{{/if}}',
+    cta_label: 'Open the invoice',
     variables: ['client_name', 'response', 'quote_number', 'quote_title', 'total', 'note', 'link'],
   },
   inbound_notice: {
@@ -105,7 +105,7 @@ export const SAMPLE_VARS = {
   blank: { name: 'Alessia Loghin', email: 'alessia@example.com' },
   user_invite: { name: 'Tunde', email: 'tunde@example.com', role: 'sales', inviter_name: 'Chimaobi', link: 'https://vertocagro.com/staff360/set-password' },
   quote_response: { client_name: 'Alessia Loghin', response: 'accepted', quote_number: 'VQ-2026-0007', quote_title: 'Cocoa beans, 20 MT', total: 'USD 51,600.00', note: 'Please confirm the shipping date.', link: 'https://vertocagro.com/staff360/quotes/7' },
-  inbound_notice: { from: 'alessia@example.com', from_name: 'Alessia Loghin', subject: 'Re: Quotation VQ-2026-0007', excerpt: 'Thank you, we would like to proceed. Can you confirm the loading port?', link: 'https://vertocagro.com/staff360/messages/12' },
+  inbound_notice: { from: 'alessia@example.com', from_name: 'Alessia Loghin', subject: 'Re: Invoice VQ-2026-0007', excerpt: 'Thank you, we would like to proceed. Can you confirm the loading port?', link: 'https://vertocagro.com/staff360/messages/12' },
 }
 
 /** Rendered subject/body/cta for a key in a context. Disabled templates render empty. */

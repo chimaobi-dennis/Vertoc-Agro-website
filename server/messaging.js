@@ -114,13 +114,13 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
 /** Email a quote: PDF attached, public link as the button, status -> sent. */
 export async function sendQuote(id, { actor, to, subject, body, attachmentIds = [] }) {
   const q = await content.getQuote(id)
-  if (!q) throw bad('quote not found', 404)
-  if (['accepted', 'declined'].includes(q.status)) throw bad(`This quote was already ${q.status}; create a new one instead.`)
+  if (!q) throw bad('invoice not found', 404)
+  if (['accepted', 'declined'].includes(q.status)) throw bad(`This invoice was already ${q.status}; create a new one instead.`)
   if (!q.items?.length) throw bad('Add at least one line item before sending.')
   const settings = await content.getSettings()
   const fields = await content.listQuoteFields()
   const link = quoteLink(q)
-  const pdf = renderQuotePdf(q, settings, fields, link)
+  const pdf = await renderQuotePdf(q, settings, fields, link)
   const recipient = to || q.client_email
   const tpl = await renderKey('quote', { quote: q, link, settings, actor })
   const msg = await deliver({

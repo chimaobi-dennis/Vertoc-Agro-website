@@ -1,4 +1,4 @@
-/* Public quote page: /q/<token>. The token is the only credential. */
+/* Public invoice page: /q/<token>. The token is the only credential. */
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { CheckCircle2, Clock, Download, FileText, XCircle } from 'lucide-react'
@@ -36,7 +36,7 @@ export default function QuoteView() {
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
 
-  const open = q && ['sent', 'viewed'].includes(q.status)
+  const open = q && ['draft', 'sent', 'viewed'].includes(q.status)
   const tax = q ? Math.max((Number(q.subtotal) || 0) - (Number(q.discount) || 0), 0) * (Number(q.tax_rate) || 0) / 100 : 0
 
   return (
@@ -44,7 +44,7 @@ export default function QuoteView() {
       <div className="pt-28 pb-16 bg-background min-h-screen">
         <div className="container mx-auto px-4 md:px-6 max-w-4xl">
           {state === 'loading' && (
-            <div className="bg-card border border-border rounded-2xl p-6 md:p-10 space-y-6" role="status" aria-label="Loading quotation">
+            <div className="bg-card border border-border rounded-2xl p-6 md:p-10 space-y-6" role="status" aria-label="Loading invoice">
               <div className="flex justify-between"><Bone className="h-8 w-48" /><Bone className="h-8 w-32" /></div>
               <Bone className="h-4 w-64" />
               {[...Array(4)].map((_, i) => <Bone key={i} className="h-10 w-full" />)}
@@ -53,23 +53,23 @@ export default function QuoteView() {
           )}
           {state === 'missing' && (
             <div className="text-center py-24">
-              <h1 className="font-serif text-3xl font-bold mb-3">This quotation link is not valid</h1>
-              <p className="text-muted-foreground">It may have been replaced by a newer quote. Please contact us at <a className="text-accent font-semibold" href={`mailto:${site.email}`}>{site.email}</a>.</p>
+              <h1 className="font-serif text-3xl font-bold mb-3">This invoice link is not valid</h1>
+              <p className="text-muted-foreground">It may have been replaced by a newer invoice. Please contact us at <a className="text-accent font-semibold" href={`mailto:${site.email}`}>{site.email}</a>.</p>
             </div>
           )}
-          {state === 'error' && <div className="text-center py-24 text-muted-foreground">Couldn&rsquo;t load this quotation. Please try again shortly.</div>}
+          {state === 'error' && <div className="text-center py-24 text-muted-foreground">Couldn&rsquo;t load this invoice. Please try again shortly.</div>}
 
           {q && (
             <>
               <div className="text-center mb-8 animate-fade-up">
-                <span className="inline-block text-sm font-semibold uppercase tracking-widest text-accent mb-3">Quotation</span>
+                <span className="inline-block text-sm font-semibold uppercase tracking-widest text-accent mb-3">Invoice</span>
                 <h1 className="font-serif text-3xl md:text-4xl font-bold text-foreground">{q.number}</h1>
                 {q.title && <p className="text-muted-foreground mt-2">{q.title}</p>}
               </div>
 
-              {q.status === 'accepted' && <Banner icon={CheckCircle2} tone="accent" title="Accepted" text={`Thank you — you accepted this quotation on ${fmtDate(q.responded_at)}. Our team will be in touch shortly.`} />}
-              {q.status === 'declined' && <Banner icon={XCircle} tone="muted" title="Declined" text={`You declined this quotation on ${fmtDate(q.responded_at)}. We'd be glad to prepare a revised one.`} />}
-              {q.status === 'expired' && <Banner icon={Clock} tone="muted" title="Expired" text={`This quotation was valid until ${fmtDate(q.valid_until)}. Please contact us for an updated one.`} />}
+              {q.status === 'accepted' && <Banner icon={CheckCircle2} tone="accent" title="Accepted" text={`Thank you — you accepted this invoice on ${fmtDate(q.responded_at)}. Our team will be in touch shortly.`} />}
+              {q.status === 'declined' && <Banner icon={XCircle} tone="muted" title="Declined" text={`You declined this invoice on ${fmtDate(q.responded_at)}. We'd be glad to prepare a revised one.`} />}
+              {q.status === 'expired' && <Banner icon={Clock} tone="muted" title="Expired" text={`This invoice was valid until ${fmtDate(q.valid_until)}. Please contact us for an updated one.`} />}
 
               <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-card animate-fade-up" style={{ animationDelay: '70ms' }}>
                 <div className="bg-primary text-primary-foreground p-6 md:p-8 flex flex-wrap justify-between gap-6">
@@ -79,7 +79,7 @@ export default function QuoteView() {
                   </div>
                   <dl className="text-sm grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 self-start">
                     <dt className="text-primary-foreground/60">Prepared for</dt><dd className="font-semibold">{q.client_name || '—'}</dd>
-                    <dt className="text-primary-foreground/60">Date</dt><dd>{fmtDate(q.sent_at)}</dd>
+                    <dt className="text-primary-foreground/60">Date</dt><dd>{fmtDate(q.date || q.sent_at)}</dd>
                     <dt className="text-primary-foreground/60">Valid until</dt><dd>{fmtDate(q.valid_until)}</dd>
                   </dl>
                 </div>
@@ -119,13 +119,13 @@ export default function QuoteView() {
                   {open && !answer && (
                     <div className="flex flex-wrap gap-3 ml-auto">
                       <button onClick={() => setAnswer('decline')} className={`${btn} border border-border bg-card text-foreground hover:bg-muted`}><XCircle className="w-4 h-4" />Decline</button>
-                      <button onClick={() => setAnswer('accept')} className={`${btn} bg-accent text-accent-foreground hover:bg-accent/90 shadow-hover`}><CheckCircle2 className="w-4 h-4" />Accept quotation</button>
+                      <button onClick={() => setAnswer('accept')} className={`${btn} bg-accent text-accent-foreground hover:bg-accent/90 shadow-hover`}><CheckCircle2 className="w-4 h-4" />Accept invoice</button>
                     </div>
                   )}
                 </div>
                 {open && answer && (
                   <div className="border-t border-border p-6 md:p-8 animate-fade-up">
-                    <h2 className="font-semibold mb-1">{answer === 'accept' ? 'Accept this quotation?' : 'Decline this quotation?'}</h2>
+                    <h2 className="font-semibold mb-1">{answer === 'accept' ? 'Accept this invoice?' : 'Decline this invoice?'}</h2>
                     <p className="text-sm text-muted-foreground mb-4">{answer === 'accept' ? 'We will contact you to confirm the order details.' : 'Tell us what would make it work, if you like.'}</p>
                     <textarea rows={3} value={note} onChange={e => setNote(e.target.value)} placeholder="Optional message to our team" className="w-full rounded-xl border border-border bg-card p-3 text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25" />
                     {err && <p className="text-sm text-destructive mt-2" role="alert">{err}</p>}
@@ -136,7 +136,7 @@ export default function QuoteView() {
                   </div>
                 )}
               </div>
-              <p className="text-center text-xs text-muted-foreground mt-6 flex items-center justify-center gap-1.5"><FileText className="w-3.5 h-3.5" />Questions? Reply to the email this quotation arrived with, or write to <a className="text-accent font-semibold" href={`mailto:${site.email}`}>{site.email}</a>.</p>
+              <p className="text-center text-xs text-muted-foreground mt-6 flex items-center justify-center gap-1.5"><FileText className="w-3.5 h-3.5" />Questions? Reply to the email this invoice arrived with, or write to <a className="text-accent font-semibold" href={`mailto:${site.email}`}>{site.email}</a>.</p>
             </>
           )}
         </div>

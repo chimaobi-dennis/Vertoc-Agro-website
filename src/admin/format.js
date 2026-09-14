@@ -15,7 +15,11 @@ export const messageTone = s => ({ sent: 'green', failed: 'red', queued: 'amber'
 
 /** Open a URL in a new tab from an async flow without tripping popup blockers. */
 export function openInNewTab(promiseOfUrl) {
-  const w = window.open('', '_blank', 'noopener')
-  return promiseOfUrl.then(url => { if (w) w.location = url; else window.location.assign(url) })
+  // Opened synchronously (inside the click) so popup blockers allow it. No
+  // 'noopener' here: that makes window.open return null, which used to send
+  // the *current* tab to the blob URL. The blob is same-origin, so it is safe.
+  const w = window.open('', '_blank')
+  if (w) { try { w.opener = null; w.document.title = 'Preparing PDF…'; w.document.body.innerHTML = '<p style="font:14px system-ui;padding:24px;color:#555">Preparing the PDF…</p>' } catch {} }
+  return promiseOfUrl.then(url => { if (w && !w.closed) w.location.replace(url); else window.open(url, '_blank') })
     .catch(e => { w?.close(); throw e })
 }

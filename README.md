@@ -230,7 +230,9 @@ Purchases** — and the site's own identity moves out of the code.
   download are the same file. **Send to client** emails the PDF with a unique
   link `/q/<token>` (24 random bytes) where the client can read, download and
   **Accept** or **Decline** online; opening the link flips sent → viewed, and
-  an accepted quote locks its prices. Statuses: draft → sent → viewed →
+  an accepted quote locks its prices. The public link and PDF work from the
+  moment the invoice exists (a draft opened by the client stays a draft, so
+  staff can hand the PDF over themselves). Statuses: draft → sent → viewed →
   accepted | declined, or expired past *Valid until*. **Convert to purchase**
   turns it into an order once.
 - **Email** — one-to-one only, through [Resend](https://resend.com). Compose
@@ -246,8 +248,12 @@ Purchases** — and the site's own identity moves out of the code.
 - **Settings** (`/staff360/settings`, admins) — *Site*: name, tagline, logo,
   favicon, contact details, hours, social links (the public site reads these
   live from `/api/site`, with the old hard-coded values as fallback). *Company*:
-  the block printed on quotes. *Quotes*: default currency, validity, terms and
-  the payment instructions printed on every quote. *Email*: sender, reply-to,
+  the block printed on invoices, plus the RC number, TIN and footer tagline of
+  the letterhead. *Invoices*: default currency, validity, terms, the payment
+  instructions printed on every invoice, the letterhead logo, a signature
+  image and the signatory line. The PDF reproduces the printed letterhead:
+  logo and contact block on top, navy footer band with the address and
+  tagline, RC number in the green bar (`server/quote-pdf.js`). *Email*: sender, reply-to,
   signature, and the Resend API key — stored encrypted (AES-256-GCM under a
   key derived from the service-role key), write-only, shown as "ends with
   ····abcd". *MCP & API*: switch the endpoint on or off and generate or revoke
@@ -272,7 +278,7 @@ owner's own address.
 
 ### Email templates, inbound email, staff panel URL (Phase 4)
 
-Needs `server/migrations/005_templates_inbound.sql`.
+Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sql` for the invoice wording + letterhead settings).
 
 - **Email templates** (`/staff360/templates`, admins) — every email the panel
   sends starts from an editable template: quotation to client, reply to an

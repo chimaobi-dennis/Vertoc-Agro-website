@@ -434,7 +434,7 @@ router.get('/quotes/:id/pdf', inbox, h(async (req, res) => {
   const q = await content.getQuote(req.params.id)
   if (!q) throw bad('quote not found', 404)
   const [settings, fields] = await Promise.all([content.getSettings(), content.listQuoteFields()])
-  const pdf = renderQuotePdf(q, settings, fields, quoteLink(q))
+  const pdf = await renderQuotePdf(q, settings, fields, quoteLink(q))
   res.setHeader('Content-Type', 'application/pdf')
   res.setHeader('Content-Disposition', `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${q.number}.pdf"`)
   res.send(pdf)

@@ -277,7 +277,7 @@ export function buildServer() {
 
   server.registerTool('list_quotes', {
     title: 'List quotes',
-    description: 'Outbound quotations. status "open" = sent or viewed but not yet answered.',
+    description: 'Outbound invoices (the staff panel calls them invoices; the API and these tools say quote). status "open" = sent or viewed but not yet answered.',
     inputSchema: { status: z.enum(['draft', 'sent', 'viewed', 'accepted', 'declined', 'expired', 'open', 'all']).optional(), client_id: z.number().optional() },
   }, run(a => content.listQuotes(a)))
 
@@ -293,7 +293,7 @@ export function buildServer() {
 
   server.registerTool('create_quote', {
     title: 'Create a quote',
-    description: 'Draft a priced quotation. Totals are computed server-side. Use send_quote to email it.',
+    description: 'Draft a priced invoice. Totals are computed server-side. Use send_quote to email it.',
     inputSchema: quoteShape,
   }, run(async a => {
     const after = await content.createQuote(a)
