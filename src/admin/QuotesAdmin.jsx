@@ -23,11 +23,11 @@ export default function QuotesAdmin() {
 
   return (
     <>
-      <PageHeader eyebrow="Sales" title="Quotes" description={rows ? `${visible.length} ${status === 'all' ? '' : status} quote${visible.length === 1 ? '' : 's'}` : ' '}
+      <PageHeader eyebrow="Sales" title="Invoices" description={rows ? `${visible.length} ${status === 'all' ? '' : status} invoice${visible.length === 1 ? '' : 's'}` : ' '}
         action={
           <div className="flex flex-wrap gap-2">
             <Link to="/staff360/quotes/fields"><Button variant="outline"><Settings2 className="w-4 h-4" />Fields</Button></Link>
-            <Link to="/staff360/quotes/new"><Button variant="accent"><Plus className="w-4 h-4" />New quote</Button></Link>
+            <Link to="/staff360/quotes/new"><Button variant="accent"><Plus className="w-4 h-4" />New invoice</Button></Link>
           </div>
         } />
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
@@ -59,7 +59,7 @@ export default function QuotesAdmin() {
               <Td className="text-right"><Link to={`/staff360/quotes/${r.id}`} className="text-xs font-semibold text-accent">Open →</Link></Td>
             </tr>
           ))}
-          {rows && !visible.length && <tr><Td colSpan={7} className="text-center py-12 text-muted-foreground">{q ? 'No quotes match your search.' : 'No quotes yet — create your first one.'}</Td></tr>}
+          {rows && !visible.length && <tr><Td colSpan={7} className="text-center py-12 text-muted-foreground">{q ? 'No invoices match your search.' : 'No invoices yet — create your first one.'}</Td></tr>}
         </Table>
       </Card>
     </>

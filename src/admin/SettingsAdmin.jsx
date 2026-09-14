@@ -11,7 +11,7 @@ import { fmtDateTime } from './format'
 const TABS = [
   { key: 'site', label: 'Site', icon: Globe },
   { key: 'company', label: 'Company', icon: Building2 },
-  { key: 'quotes', label: 'Quotes', icon: FileText },
+  { key: 'quotes', label: 'Invoices', icon: FileText },
   { key: 'email', label: 'Email', icon: Mail },
   { key: 'mcp', label: 'MCP & API', icon: Plug },
 ]
@@ -51,7 +51,7 @@ export default function SettingsAdmin() {
 
   return (
     <>
-      <PageHeader eyebrow="System" title="Settings" description="Site identity, company details, quote defaults, email sending and Claude access — all editable here, nothing hard-coded." />
+      <PageHeader eyebrow="System" title="Settings" description="Site identity, company details, invoice defaults, email sending and Claude access — all editable here, nothing hard-coded." />
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
       <Tabs tabs={TABS} value={tab} onChange={t => { const n = new URLSearchParams(sp); n.set('tab', t); setSp(n, { replace: true }) }} />
 
@@ -84,7 +84,7 @@ export default function SettingsAdmin() {
           )}
 
           {tab === 'company' && (
-            <Group group="company" settings={settings} onSaved={onSaved} title="Company block on quotes" description="Printed in the header of every quotation PDF and shown on the client's online view.">
+            <Group group="company" settings={settings} onSaved={onSaved} title="Company block on invoices" description="Printed in the header of every invoice PDF and shown on the client's online view.">
               {({ bind }) => (
                 <div className="grid md:grid-cols-2 gap-5">
                   <Field label="Company name"><Input {...bind('name')} /></Field>
@@ -98,13 +98,13 @@ export default function SettingsAdmin() {
           )}
 
           {tab === 'quotes' && (
-            <Group group="quotes" settings={settings} onSaved={onSaved} title="Quote defaults" description="Applied to every new quote; each quote can still override them.">
+            <Group group="quotes" settings={settings} onSaved={onSaved} title="Invoice defaults" description="Applied to every new invoice; each invoice can still override them.">
               {({ bind }) => (
                 <div className="grid md:grid-cols-2 gap-5">
                   <Field label="Default currency" hint="ISO code, e.g. USD, EUR, NGN"><Input maxLength={3} {...bind('default_currency', { onChange: undefined })} onChange={e => bind('default_currency').onChange({ target: { value: e.target.value.toUpperCase() } })} /></Field>
                   <Field label="Valid for (days)"><Input type="number" min="1" max="365" {...bind('valid_days')} /></Field>
                   <Field label="Default terms" hint="Printed under the line items" className="md:col-span-2"><Textarea rows={4} {...bind('terms')} placeholder="e.g. 50% deposit on order confirmation, balance against shipping documents." /></Field>
-                  <Field label="Payment instructions" hint="Bank details for the client. Printed on every quote PDF and shown online." className="md:col-span-2"><Textarea rows={5} {...bind('payment_text')} placeholder={'Bank: …\nAccount name: …\nAccount number / IBAN: …\nSWIFT: …'} /></Field>
+                  <Field label="Payment instructions" hint="Bank details for the client. Printed on every invoice PDF and shown online." className="md:col-span-2"><Textarea rows={5} {...bind('payment_text')} placeholder={'Bank: …\nAccount name: …\nAccount number / IBAN: …\nSWIFT: …'} /></Field>
                 </div>
               )}
             </Group>
@@ -170,7 +170,7 @@ function EmailSettings({ settings, onSaved, reload }) {
             <Field label="Inbound address" hint="Once Resend receiving is connected (below): replies go here and land in Messages. Used as Reply-To when set."><Input type="email" {...bind('inbound_address')} placeholder="sales@reply.vertocagro.com" /></Field>
             <Field label="Notify the team at" hint="Defaults to the Reply-to address"><Input type="email" {...bind('notify_to')} /></Field>
             <div className="md:col-span-2 flex flex-wrap gap-6 text-sm">
-              <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_responses !== false} onChange={ev => setForm({ ...form, notify_responses: ev.target.checked })} />Email the team when a client accepts or declines a quote</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_responses !== false} onChange={ev => setForm({ ...form, notify_responses: ev.target.checked })} />Email the team when a client accepts or declines an invoice</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_inbound !== false} onChange={ev => setForm({ ...form, notify_inbound: ev.target.checked })} />Email the team when a client's email arrives</label>
             </div>
             <p className="md:col-span-2 text-xs text-muted-foreground flex items-center gap-1.5"><LayoutTemplate className="w-3.5 h-3.5 text-accent" />The wording of every email lives under <Link to="/staff360/templates" className="font-semibold text-accent">Email templates</Link>.</p>
@@ -228,7 +228,7 @@ function McpSettings({ settings, onSaved, reload }) {
     <>
       <Card className="p-6 animate-fade-up">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
-          <div><h2 className="font-semibold flex items-center gap-2"><Plug className="w-4 h-4 text-accent" />Claude connection (MCP)</h2><p className="text-sm text-muted-foreground mt-0.5">Lets Claude manage products, posts, clients, quotes and email by chatting. Every change it makes is in the audit log as "Claude".</p></div>
+          <div><h2 className="font-semibold flex items-center gap-2"><Plug className="w-4 h-4 text-accent" />Claude connection (MCP)</h2><p className="text-sm text-muted-foreground mt-0.5">Lets Claude manage products, posts, clients, invoices and email by chatting. Every change it makes is in the audit log as "Claude".</p></div>
           <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={m.enabled !== false} onChange={e => toggle(e.target.checked)} />Enabled</label>
         </div>
         <Field label="Endpoint">

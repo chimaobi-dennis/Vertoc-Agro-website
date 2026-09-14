@@ -91,8 +91,8 @@ export function QuotesPanel({ clientId }) {
   return (
     <Card className="animate-fade-up">
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-        <h2 className="font-semibold">Quotes</h2>
-        <Link to={`/staff360/quotes/new?client=${clientId}`}><Button variant="accent" className="h-9"><Plus className="w-4 h-4" />New quote</Button></Link>
+        <h2 className="font-semibold">Invoices</h2>
+        <Link to={`/staff360/quotes/new?client=${clientId}`}><Button variant="accent" className="h-9"><Plus className="w-4 h-4" />New invoice</Button></Link>
       </div>
       <Table head={['Number', 'Title', 'Total', 'Status', 'Valid until', '']}>
         {!rows && [0, 1].map(i => <tr key={i}>{[...Array(6)].map((_, j) => <Td key={j}><Bone className="h-4 w-20" /></Td>)}</tr>)}
@@ -106,7 +106,7 @@ export function QuotesPanel({ clientId }) {
             <Td className="text-right"><Link to={`/staff360/quotes/${q.id}`} className="text-xs font-semibold text-accent">Open →</Link></Td>
           </tr>
         ))}
-        {rows?.length === 0 && <tr><Td colSpan={6}><Empty>No quotes for this client yet.</Empty></Td></tr>}
+        {rows?.length === 0 && <tr><Td colSpan={6}><Empty>No invoices for this client yet.</Empty></Td></tr>}
       </Table>
     </Card>
   )
@@ -133,7 +133,7 @@ export function MessagesPanel({ clientId, onCompose, onReply, refreshKey = 0 }) 
               <span className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${m.direction === 'in' ? 'bg-accent/15 text-accent' : 'bg-primary/10 text-primary'}`}>{m.direction === 'in' ? <ArrowDownLeft className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5" />}</span>
               <div className="min-w-0 flex-1">
                 <p className={`truncate ${m.direction === 'in' && !m.read_at ? 'font-bold' : 'font-medium'}`}>{m.subject}</p>
-                <p className="text-xs text-muted-foreground truncate">{m.direction === 'in' ? `from ${m.from_name || m.from_email}` : `to ${m.to_email}`} · {fmtDateTime(m.created_at)}{m.attachments?.length ? ` · ${m.attachments.length} attachment${m.attachments.length > 1 ? 's' : ''}` : ''}{m.quote_id ? ' · quote' : ''}</p>
+                <p className="text-xs text-muted-foreground truncate">{m.direction === 'in' ? `from ${m.from_name || m.from_email}` : `to ${m.to_email}`} · {fmtDateTime(m.created_at)}{m.attachments?.length ? ` · ${m.attachments.length} attachment${m.attachments.length > 1 ? 's' : ''}` : ''}{m.quote_id ? ' · invoice' : ''}</p>
               </div>
               <Badge tone={messageTone(m.status)}>{m.status}</Badge>
             </button>
@@ -220,7 +220,7 @@ export function PurchasesPanel({ clientId, defaultCurrency = 'USD' }) {
               <Td className="text-right"><button onClick={() => remove(p)} className="p-2 rounded-lg text-destructive hover:bg-muted" title="Delete" aria-label="Delete"><Trash2 className="w-4 h-4" /></button></Td>
             </tr>
           ))}
-          {rows?.length === 0 && <tr><Td colSpan={6}><Empty>No purchases yet. Convert an accepted quote, or add one above.</Empty></Td></tr>}
+          {rows?.length === 0 && <tr><Td colSpan={6}><Empty>No purchases yet. Convert an accepted invoice, or add one above.</Empty></Td></tr>}
         </Table>
       </Card>
       {toastEl}

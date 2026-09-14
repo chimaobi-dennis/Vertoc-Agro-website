@@ -10,7 +10,7 @@ const TILES = [
   { key: 'products', label: 'Products', icon: Package, to: '/staff360/products', perm: 'products', tone: 'bg-primary/10 text-primary' },
   { key: 'posts', label: 'Blog posts', icon: Newspaper, to: '/staff360/posts', perm: 'posts', tone: 'bg-accent/15 text-accent' },
   { key: 'enquiriesNew', label: 'New enquiries', icon: Inbox, to: '/staff360/enquiries', perm: 'quotes', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
-  { key: 'quotesOpen', label: 'Open quotes', icon: FileText, to: '/staff360/quotes?status=open', perm: 'quotes', tone: 'bg-primary/10 text-primary' },
+  { key: 'quotesOpen', label: 'Open invoices', icon: FileText, to: '/staff360/quotes?status=open', perm: 'quotes', tone: 'bg-primary/10 text-primary' },
   { key: 'inboundUnread', label: 'Unread emails', icon: Mail, to: '/staff360/messages?unread=1', perm: 'email', tone: 'bg-accent/15 text-accent' },
   { key: 'clients', label: 'Clients', icon: Briefcase, to: '/staff360/clients', perm: 'clients', tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
   { key: 'users', label: 'Active users', icon: Users, to: '/staff360/users', perm: 'users', tone: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300' },
@@ -71,7 +71,7 @@ export default function Dashboard() {
           <p className="text-sm text-muted-foreground mb-5">Jump straight into the common tasks.</p>
           <div className="flex flex-col gap-2.5">
             {me?.permissions?.products && <Link to="/staff360/products/new"><Button variant="accent" className="w-full justify-start"><Plus className="w-4 h-4" />New product</Button></Link>}
-            {me?.permissions?.quotes && <Link to="/staff360/quotes/new"><Button variant="outline" className="w-full justify-start"><FileText className="w-4 h-4" />New quote</Button></Link>}
+            {me?.permissions?.quotes && <Link to="/staff360/quotes/new"><Button variant="outline" className="w-full justify-start"><FileText className="w-4 h-4" />New invoice</Button></Link>}
             {me?.permissions?.posts && <Link to="/staff360/posts/new"><Button variant="outline" className="w-full justify-start"><Plus className="w-4 h-4" />New blog post</Button></Link>}
             {me?.permissions?.users && <Link to="/staff360/users"><Button variant="outline" className="w-full justify-start"><UserPlus className="w-4 h-4" />Invite a user</Button></Link>}
           </div>

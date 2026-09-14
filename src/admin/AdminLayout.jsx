@@ -10,7 +10,7 @@ const NAV = [
   { to: '/staff360/products', label: 'Products', icon: Package, perm: 'products', group: 'Manage' },
   { to: '/staff360/posts', label: 'Blog', icon: Newspaper, perm: 'posts', group: 'Manage' },
   { to: '/staff360/enquiries', label: 'Enquiries', icon: Inbox, perm: 'quotes', group: 'Sales' },
-  { to: '/staff360/quotes', label: 'Quotes', icon: FileText, perm: 'quotes', group: 'Sales' },
+  { to: '/staff360/quotes', label: 'Invoices', icon: FileText, perm: 'quotes', group: 'Sales' },
   { to: '/staff360/messages', label: 'Messages', icon: Mail, perm: 'email', group: 'Sales', badge: 'inboundUnread' },
   { to: '/staff360/clients', label: 'Clients', icon: Briefcase, perm: 'clients', group: 'Sales' },
   { to: '/staff360/users', label: 'Users', icon: Users, perm: 'users', group: 'System' },

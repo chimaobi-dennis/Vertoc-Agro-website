@@ -40,7 +40,7 @@ export default function QuoteForm() {
     if (editing) load()
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Defaults for a new quote come from Settings → Quotes.
+  // Defaults for a new invoice (API: quote) come from Settings → Invoices.
   useEffect(() => {
     if (editing || !settings?.quotes) return
     setForm(f => ({ ...f, currency: f.currency || settings.quotes.default_currency || 'USD', terms: f.terms || settings.quotes.terms || '' }))
@@ -91,12 +91,12 @@ export default function QuoteForm() {
 
   return (
     <>
-      <Link to="/staff360/quotes" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Quotes</Link>
-      <PageHeader eyebrow="Sales" title={editing ? (quote?.number || ' ') : 'New quote'}
-        description={editing && quote ? (quote.title || 'Untitled quotation') : 'Build a priced quotation, then email it as a PDF with a unique link the client can accept online.'}
+      <Link to="/staff360/quotes" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Invoices</Link>
+      <PageHeader eyebrow="Sales" title={editing ? (quote?.number || ' ') : 'New invoice'}
+        description={editing && quote ? (quote.title || 'Untitled invoice') : 'Build a priced invoice, then email it as a PDF with a unique link the client can accept online.'}
         action={editing && quote && <Badge tone={quoteTone(quote.status)}>{quote.status}</Badge>} />
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
-      {locked && <div className="mb-4"><Alert tone="info">This quote was accepted by the client, so prices and items are locked. Create a new quote for changes.</Alert></div>}
+      {locked && <div className="mb-4"><Alert tone="info">This invoice was accepted by the client, so prices and items are locked. Create a new invoice for changes.</Alert></div>}
 
       {loading ? (
         <div className="grid lg:grid-cols-[1fr_340px] gap-6"><Card className="p-6 space-y-4">{[...Array(6)].map((_, i) => <Bone key={i} className="h-11 w-full" />)}</Card><Card className="p-6 space-y-3">{[...Array(4)].map((_, i) => <Bone key={i} className="h-10 w-full" />)}</Card></div>
@@ -111,7 +111,7 @@ export default function QuoteForm() {
                 </Select>
               </Field>
               <Field label="Prepared for *"><Input required value={form.client_name} onChange={e => set({ client_name: e.target.value })} placeholder="Company or person" /></Field>
-              <Field label="Email"><Input type="email" value={form.client_email} onChange={e => set({ client_email: e.target.value })} placeholder="Where the quote is sent" /></Field>
+              <Field label="Email"><Input type="email" value={form.client_email} onChange={e => set({ client_email: e.target.value })} placeholder="Where the invoice is sent" /></Field>
               <Field label="Title" className="md:col-span-2"><Input value={form.title} onChange={e => set({ title: e.target.value })} placeholder='e.g. "Cocoa beans, 20 MT, CIF Rotterdam"' /></Field>
               <Field label="Currency"><Input maxLength={3} disabled={locked} value={form.currency} onChange={e => set({ currency: e.target.value.toUpperCase() })} /></Field>
               <Field label="Valid until"><Input type="date" value={form.valid_until} onChange={e => set({ valid_until: e.target.value })} /></Field>
@@ -154,25 +154,25 @@ export default function QuoteForm() {
                 <div className="grid md:grid-cols-2 gap-5">
                   {fields.map(f => <DynamicField key={f.key} field={f} value={form.data[f.key]} scope={{ quote_id: quote?.id, client_id: form.client_id || undefined }} onChange={v => set({ data: { ...form.data, [f.key]: v } })} />)}
                 </div>
-              ) : <p className="text-sm text-muted-foreground">No quote fields yet — add Incoterm, port of loading, payment terms and anything else you need.</p>}
+              ) : <p className="text-sm text-muted-foreground">No invoice fields yet — add Incoterm, port of loading, payment terms and anything else you need.</p>}
             </Card>
 
             <Card className="p-6 grid gap-5 animate-fade-up" style={{ animationDelay: '210ms' }}>
-              <Field label="Notes to the client" hint="Printed on the quote."><Textarea rows={3} value={form.notes} onChange={e => set({ notes: e.target.value })} /></Field>
-              <Field label="Terms" hint="Printed on the quote. Defaults come from Settings → Quotes."><Textarea rows={3} value={form.terms} onChange={e => set({ terms: e.target.value })} /></Field>
+              <Field label="Notes to the client" hint="Printed on the invoice."><Textarea rows={3} value={form.notes} onChange={e => set({ notes: e.target.value })} /></Field>
+              <Field label="Terms" hint="Printed on the invoice. Defaults come from Settings → Invoices."><Textarea rows={3} value={form.terms} onChange={e => set({ terms: e.target.value })} /></Field>
               <Field label="Internal notes" hint="Only your team sees these."><Textarea rows={3} value={form.internal_notes} onChange={e => set({ internal_notes: e.target.value })} /></Field>
             </Card>
           </div>
 
           <div className="space-y-5 lg:sticky lg:top-24">
             <Card className="p-5 space-y-3 animate-fade-up" style={{ animationDelay: '100ms' }}>
-              <Button type="submit" variant="accent" className="w-full" disabled={busy}>{busy ? 'Saving…' : editing ? (dirty ? 'Save changes' : 'Saved') : 'Create quote'}</Button>
+              <Button type="submit" variant="accent" className="w-full" disabled={busy}>{busy ? 'Saving…' : editing ? (dirty ? 'Save changes' : 'Saved') : 'Create invoice'}</Button>
               {editing && (
                 <>
                   <Button type="button" variant="primary" className="w-full" onClick={openSend} disabled={busy || ['accepted', 'declined'].includes(quote.status)}><Send className="w-4 h-4" />{quote.status === 'draft' ? 'Send to client' : 'Send again'}</Button>
                   <div className="grid grid-cols-2 gap-2">
                     <Button type="button" variant="outline" onClick={preview}><Eye className="w-4 h-4" />PDF</Button>
-                    <Button type="button" variant="outline" onClick={copyLink} disabled={quote.status === 'draft'} title={quote.status === 'draft' ? 'The link goes live once the quote is sent' : quote.link}><Copy className="w-4 h-4" />Link</Button>
+                    <Button type="button" variant="outline" onClick={copyLink} disabled={quote.status === 'draft'} title={quote.status === 'draft' ? 'The link goes live once the invoice is sent' : quote.link}><Copy className="w-4 h-4" />Link</Button>
                   </div>
                   {quote.status !== 'draft' && <Button type="button" variant="outline" className="w-full" onClick={convert}><ShoppingBag className="w-4 h-4" />Convert to purchase</Button>}
                 </>
@@ -196,7 +196,7 @@ export default function QuoteForm() {
 
             {editing && (
               <Card className="animate-fade-up" style={{ animationDelay: '240ms' }}>
-                <div className="px-5 py-3.5 border-b border-border"><h2 className="text-sm font-semibold">Emails for this quote</h2></div>
+                <div className="px-5 py-3.5 border-b border-border"><h2 className="text-sm font-semibold">Emails for this invoice</h2></div>
                 <ul className="divide-y divide-border">
                   {quote.messages?.map(m => (
                     <li key={m.id} className="px-5 py-3 text-xs flex items-center gap-2">
@@ -206,7 +206,7 @@ export default function QuoteForm() {
                   ))}
                   {!quote.messages?.length && <li className="px-5 py-6 text-center text-xs text-muted-foreground">Not sent yet.</li>}
                 </ul>
-                {editing && <div className="px-5 py-3 border-t border-border"><Button type="button" variant="ghost" className="h-8 px-2 text-xs text-destructive" onClick={remove}><Trash2 className="w-3.5 h-3.5" />Delete quote</Button></div>}
+                {editing && <div className="px-5 py-3 border-t border-border"><Button type="button" variant="ghost" className="h-8 px-2 text-xs text-destructive" onClick={remove}><Trash2 className="w-3.5 h-3.5" />Delete invoice</Button></div>}
               </Card>
             )}
           </div>
@@ -216,7 +216,7 @@ export default function QuoteForm() {
       {editing && quote && settings && (
         <Composer open={compose} onClose={() => setCompose(false)} title={`Send ${quote.number}`} quoteId={quote.id} clientId={quote.client_id}
           to={form.client_email} template={{ key: 'quote', quote_id: quote.id }}
-          onSent={() => { toast('Quote sent'); load() }} />
+          onSent={() => { toast('Invoice sent'); load() }} />
       )}
       {toastEl}
     </>

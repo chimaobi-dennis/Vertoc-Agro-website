@@ -220,9 +220,11 @@ Purchases** — and the site's own identity moves out of the code.
   a signed link that expires in an hour; the public anon key can read nothing.
   Client and quote fields gain two types, **Image** and **File**, whose values
   are verified references to uploaded documents.
-- **Quotes** (`/staff360/quotes`) — a builder with line items, discount, tax,
+- **Invoices** (`/staff360/quotes`; the staff panel labels these *Invoices*,
+  while the routes, API, MCP tools, database and the client-facing PDF and
+  email keep the word *quote*) — a builder with line items, discount, tax,
   notes, terms, internal notes and **your own quote fields** (Incoterm, port,
-  payment terms… managed under Quotes → Fields, same engine as client
+  payment terms… managed under Invoices → Fields, same engine as client
   fields). Numbers are `VQ-YYYY-NNNN` from an atomic per-year counter. The PDF
   is rendered server-side, so the preview, the attachment and the client's
   download are the same file. **Send to client** emails the PDF with a unique

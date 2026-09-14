@@ -12,7 +12,7 @@ const tone = s => ({ new: 'amber', won: 'green', lost: 'red', archived: 'muted' 
 const TABS = [
   { key: 'profile', label: 'Profile', icon: UserRound },
   { key: 'documents', label: 'Documents', icon: FolderOpen },
-  { key: 'quotes', label: 'Quotes', icon: FileText },
+  { key: 'quotes', label: 'Invoices', icon: FileText },
   { key: 'messages', label: 'Messages', icon: Mail },
   { key: 'purchases', label: 'Purchases', icon: ShoppingBag },
 ]
@@ -77,7 +77,7 @@ export default function ClientDetail() {
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={client.status === 'active' ? 'green' : 'muted'}>{client.status}</Badge>
             <Button variant="outline" onClick={openCompose}><Mail className="w-4 h-4" />Send email</Button>
-            <Link to={`/staff360/quotes/new?client=${client.id}`}><Button variant="accent"><Plus className="w-4 h-4" />New quote</Button></Link>
+            <Link to={`/staff360/quotes/new?client=${client.id}`}><Button variant="accent"><Plus className="w-4 h-4" />New invoice</Button></Link>
           </div>
         )} />
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}

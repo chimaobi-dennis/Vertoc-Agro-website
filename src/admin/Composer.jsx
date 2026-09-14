@@ -71,7 +71,7 @@ export default function Composer({ open, onClose, title = 'Send email', to = '',
         {settings && !configured && (
           <Alert tone="info">Email isn't connected yet.{me?.permissions?.settings ? <> Add your Resend API key under <Link to="/staff360/settings?tab=email" className="font-semibold text-accent">Settings → Email</Link>.</> : ' Ask an admin to add the Resend API key in Settings.'}</Alert>
         )}
-        {quoteId && <Alert tone="info">The quotation PDF and its unique online link are attached automatically. The text comes from the "Quotation to client" template — edit it here before sending.</Alert>}
+        {quoteId && <Alert tone="info">The invoice PDF and its unique online link are attached automatically. The text comes from the "Quotation to client" template — edit it here before sending.</Alert>}
         {err && <Alert>{err}</Alert>}
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="To"><Input type="email" required value={form.to} onChange={e => setForm({ ...form, to: e.target.value })} placeholder="client@company.com" /></Field>

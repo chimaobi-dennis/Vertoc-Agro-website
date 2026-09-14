@@ -93,7 +93,7 @@ export default function MessageDetail() {
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Linked to</h2>
             <p><span className="text-muted-foreground">Client · </span>{m.client_id ? <Link to={`/staff360/clients/${m.client_id}?tab=messages`} className="font-medium text-accent">{client?.name || `#${m.client_id}`}</Link> : <span className="text-muted-foreground">none</span>}</p>
             {!m.client_id && inbound && <Button variant="outline" className="w-full h-9" onClick={createClient}><UserPlus className="w-4 h-4" />Create client from sender</Button>}
-            <p><span className="text-muted-foreground">Quote · </span>{m.quote_id ? <Link to={`/staff360/quotes/${m.quote_id}`} className="font-medium text-accent">{quote?.number || `#${m.quote_id}`}</Link> : <span className="text-muted-foreground">none</span>}</p>
+            <p><span className="text-muted-foreground">Invoice · </span>{m.quote_id ? <Link to={`/staff360/quotes/${m.quote_id}`} className="font-medium text-accent">{quote?.number || `#${m.quote_id}`}</Link> : <span className="text-muted-foreground">none</span>}</p>
             <p><span className="text-muted-foreground">Enquiry · </span>{m.enquiry_id ? <Link to={`/staff360/enquiries/${m.enquiry_id}`} className="font-medium text-accent">#{m.enquiry_id}</Link> : <span className="text-muted-foreground">none</span>}</p>
           </Card>
         </div>
