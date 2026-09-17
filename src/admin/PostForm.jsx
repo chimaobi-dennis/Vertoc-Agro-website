@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
+import { DraftNotice, useDraft } from './useDraft'
 import { Button, Card, Field, Input, Textarea, Select, PageHeader, Alert } from './ui'
 import ImageUpload from './ImageUpload'
 import { Bone } from '../components/Skeleton'
@@ -23,7 +24,9 @@ function Preview({ text }) {
 export default function PostForm() {
   const { slug } = useParams(); const editing = Boolean(slug)
   const nav = useNavigate()
-  const [f, setF] = useState(EMPTY); const [slugDirty, setSlugDirty] = useState(editing)
+  const [draft, setDraft, draftInfo] = useDraft('post:new', null, { enabled: !editing })   // survives a reload until published
+  const [f, setF] = useState(() => (!editing && draft) ? { ...EMPTY, ...draft } : EMPTY); const [slugDirty, setSlugDirty] = useState(editing || Boolean(draft?.slug))
+  useEffect(() => { if (!editing) setDraft(f) }, [f, editing]) // eslint-disable-line react-hooks/exhaustive-deps
   const [preview, setPreview] = useState(false)
   const [loading, setLoading] = useState(editing); const [busy, setBusy] = useState(false); const [err, setErr] = useState(null)
 
@@ -40,7 +43,7 @@ export default function PostForm() {
     try {
       if (editing) await adminFetch(`/posts/${slug}`, { method: 'PATCH', body })
       else await adminFetch('/posts', { method: 'POST', body })
-      nav('/staff360/posts')
+      draftInfo.clear(); nav('/staff360/posts')
     } catch (e) { setErr(e.message); setBusy(false) }
   }
 
@@ -59,6 +62,7 @@ export default function PostForm() {
       <PageHeader title={editing ? 'Edit post' : 'New post'} />
       <form onSubmit={submit} className="space-y-6 max-w-4xl">
         {err && <Alert>{err}</Alert>}
+        {!editing && <DraftNotice draft={draftInfo} onDiscard={() => { draftInfo.clear(); setF(EMPTY); setSlugDirty(false) }} />}
         <Card className="p-6 grid md:grid-cols-2 gap-5">
           <Field label="Title *" className="md:col-span-2"><Input required value={f.title} onChange={set('title')} /></Field>
           <Field label="Slug"><Input value={f.slug} onChange={e => { setSlugDirty(true); set('slug')(e) }} /></Field>

@@ -7,6 +7,7 @@ import { Bone } from '../components/Skeleton'
 import DynamicField from './DynamicField'
 import Composer from './Composer'
 import { QUOTE_STATUSES, fmtDateTime, fmtMoney, messageTone, openInNewTab, quoteTone } from './format'
+import { DraftNotice, useDraft } from './useDraft'
 
 const money = v => Math.round((Number(v) || 0) * 100) / 100
 const blank = () => ({ description: '', quantity: 1, unit: 'MT', unit_price: '' })
@@ -25,8 +26,12 @@ export default function QuoteForm() {
   const [clients, setClients] = useState(null)
   const [fields, setFields] = useState(null)
   const [settings, setSettings] = useState(null)
-  const [form, setForm] = useState({ number: '', client_id: sp.get('client') || '', client_name: '', client_email: '', title: '', currency: '', valid_until: '', discount: 0, tax_rate: 0, notes: '', terms: '', internal_notes: '', data: {} })
-  const [items, setItems] = useState([blank()])
+  const initialForm = { number: '', client_id: sp.get('client') || '', client_name: '', client_email: '', title: '', currency: '', valid_until: '', discount: 0, tax_rate: 0, notes: '', terms: '', internal_notes: '', data: {} }
+  // A new invoice is drafted on this device until it is created, so a reload keeps it.
+  const [draft, setDraft, draftInfo] = useDraft('invoice:new', null, { enabled: !editing })
+  const [form, setForm] = useState(() => (!editing && draft?.form) ? { ...initialForm, ...draft.form } : initialForm)
+  const [items, setItems] = useState(() => (!editing && draft?.items?.length) ? draft.items : [blank()])
+  useEffect(() => { if (!editing) setDraft({ form, items }) }, [form, items, editing]) // eslint-disable-line react-hooks/exhaustive-deps
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
@@ -72,7 +77,7 @@ export default function QuoteForm() {
     const body = { ...form, client_id: form.client_id || null, items: items.filter(it => it.description.trim()) }
     try {
       if (editing) { const q = await adminFetch(`/quotes/${id}`, { method: 'PATCH', body }); setQuote(x => ({ ...x, ...q })); setDirty(false); toast('Saved'); return q }
-      const q = await adminFetch('/quotes', { method: 'POST', body }); nav(`/staff360/quotes/${q.id}`, { replace: true }); return q
+      const q = await adminFetch('/quotes', { method: 'POST', body }); draftInfo.clear(); nav(`/staff360/quotes/${q.id}`, { replace: true }); return q
     } catch (x) { setErr(x.message); throw x } finally { setBusy(false) }
   }
   const submit = e => { e.preventDefault(); save().catch(() => {}) }
@@ -97,6 +102,7 @@ export default function QuoteForm() {
         description={editing && quote ? (quote.title || 'Untitled invoice') : 'Build a priced invoice, then email it as a PDF with a unique link the client can accept online.'}
         action={editing && quote && <Badge tone={quoteTone(quote.status)}>{quote.status}</Badge>} />
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
+      {!editing && <DraftNotice draft={draftInfo} onDiscard={() => { draftInfo.clear(); setForm(initialForm); setItems([blank()]); setDirty(false) }} />}
       {locked && <div className="mb-4"><Alert tone="info">This invoice was accepted by the client, so prices and items are locked. Create a new invoice for changes.</Alert></div>}
 
       {loading ? (

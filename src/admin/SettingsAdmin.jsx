@@ -6,6 +6,7 @@ import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Field, Input, PageHeader, Tabs, Textarea, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import ImageUpload from './ImageUpload'
+import { DraftNotice, useDraft } from './useDraft'
 import { fmtDateTime } from './format'
 
 const TABS = [
@@ -18,20 +19,24 @@ const TABS = [
 
 /** One settings group: local draft, Save writes only that group. */
 function Group({ group, settings, onSaved, children, title, description }) {
-  const [form, setForm] = useState(settings[group])
+  // Unsaved edits are drafted on this device, so a reload or a tab switch keeps them.
+  const [draft, setDraft, draftInfo] = useDraft(`settings:${group}`, null)
+  const [form, setForm] = useState(() => (draft ? { ...settings[group], ...draft } : settings[group]))
   const [busy, setBusy] = useState(false)
   const [toast, toastEl] = useToast()
-  useEffect(() => { setForm(settings[group]) }, [settings, group])
+  useEffect(() => { if (!draftInfo.restored) setForm(settings[group]) }, [settings, group]) // eslint-disable-line react-hooks/exhaustive-deps
   const dirty = JSON.stringify(form) !== JSON.stringify(settings[group])
+  useEffect(() => { if (dirty) setDraft(form); else if (!draftInfo.restored) draftInfo.clear() }, [form]) // eslint-disable-line react-hooks/exhaustive-deps
   const save = async e => {
     e.preventDefault(); setBusy(true)
-    try { const s = await adminFetch('/settings', { method: 'PUT', body: { [group]: form } }); onSaved(s); toast('Saved') } catch (x) { toast(x.message, 'error') } finally { setBusy(false) }
+    try { const s = await adminFetch('/settings', { method: 'PUT', body: { [group]: form } }); draftInfo.clear(); onSaved(s); toast('Saved') } catch (x) { toast(x.message, 'error') } finally { setBusy(false) }
   }
   const bind = (k, extra = {}) => ({ value: form[k] ?? '', onChange: e => setForm({ ...form, [k]: e.target.value }), ...extra })
   return (
     <form onSubmit={save}>
       <Card className="p-6 animate-fade-up">
         <div className="mb-5"><h2 className="font-semibold">{title}</h2>{description && <p className="text-sm text-muted-foreground mt-0.5">{description}</p>}</div>
+        <DraftNotice draft={draftInfo} onDiscard={() => { draftInfo.clear(); setForm(settings[group]) }} />
         {children({ form, setForm, bind })}
         <div className="mt-6 flex justify-end"><Button type="submit" variant="accent" disabled={!dirty || busy}>{busy ? 'Saving…' : 'Save changes'}</Button></div>
       </Card>

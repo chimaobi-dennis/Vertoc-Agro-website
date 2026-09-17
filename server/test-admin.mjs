@@ -205,7 +205,10 @@ try {
       const r = await api(`/quotes/${quote.id}/send`, { method: 'POST', body: { subject: 'e2e-quote send' } })
       if (r.message.status !== 'sent' || r.quote.status !== 'sent' || !r.message.attachments?.some(a => a.name === `${quote.number}.pdf`)) throw new Error(JSON.stringify(r.message).slice(0, 120))
       if (!r.message.html.includes(`/q/${quote.token}`)) throw new Error('link missing from email')
-      return `msg #${r.message.id} ${r.message.provider_id}`
+      const att = r.message.attachments?.find(a => a.name === `${quote.number}.pdf`); if (!att?.document_id) throw new Error('PDF not filed as a document: ' + JSON.stringify(r.message.attachments))
+      const docs = await api(`/documents?client_id=${client2.id}`); const d = docs.find(x => x.id === att.document_id); if (!d || d.quote_id !== quote.id || d.content_type !== 'application/pdf') throw new Error('PDF missing from the client documents')
+      await api(`/documents/${att.document_id}`, { method: 'DELETE' })
+      return `msg #${r.message.id} ${r.message.provider_id} · PDF filed as document #${att.document_id} ✓`
     })
     const enq2 = await step('seed enquiry, reply via POST /messages (dry run)', async () => {
       const { data, error } = await svc.from('enquiries').insert({ kind: 'quote', name: 'e2e-enquirer2', email: 'q2@e2e.invalid', commodity: 'Sesame' }).select().single(); if (error) throw error

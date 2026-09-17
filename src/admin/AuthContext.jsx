@@ -17,7 +17,15 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!authConfigured) { setSession(null); setLoading(false); return }
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    // Supabase re-emits the session whenever the tab regains focus (token refresh,
+    // visibility change). Keeping the same object for the same user stops every
+    // page from remounting — and losing its state — on each tab switch. API calls
+    // read the current token from supabase.auth.getSession(), never from here.
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => setSession(prev => {
+      if (event === 'SIGNED_OUT' || !s) return null
+      if (prev && prev.user?.id === s.user?.id) return prev
+      return s
+    }))
     return () => sub.subscription.unsubscribe()
   }, [])
 

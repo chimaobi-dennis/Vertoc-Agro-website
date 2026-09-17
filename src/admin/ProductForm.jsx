@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
+import { DraftNotice, useDraft } from './useDraft'
 import { Button, Card, Field, Input, Textarea, Select, PageHeader, Alert } from './ui'
 import ImageUpload from './ImageUpload'
 import { Bone } from '../components/Skeleton'
@@ -16,7 +17,9 @@ const EMPTY = { name: '', slug: '', category: 'Agro', summary: '', description: 
 export default function ProductForm() {
   const { slug } = useParams(); const editing = Boolean(slug)
   const nav = useNavigate()
-  const [f, setF] = useState(EMPTY); const [slugDirty, setSlugDirty] = useState(editing)
+  const [draft, setDraft, draftInfo] = useDraft('product:new', null, { enabled: !editing })   // survives a reload until created
+  const [f, setF] = useState(() => (!editing && draft) ? { ...EMPTY, ...draft } : EMPTY); const [slugDirty, setSlugDirty] = useState(editing || Boolean(draft?.slug))
+  useEffect(() => { if (!editing) setDraft(f) }, [f, editing]) // eslint-disable-line react-hooks/exhaustive-deps
   const [loading, setLoading] = useState(editing); const [busy, setBusy] = useState(false); const [err, setErr] = useState(null)
 
   useEffect(() => {
@@ -38,7 +41,7 @@ export default function ProductForm() {
     try {
       if (editing) await adminFetch(`/products/${slug}`, { method: 'PATCH', body })
       else await adminFetch('/products', { method: 'POST', body })
-      nav('/staff360/products')
+      draftInfo.clear(); nav('/staff360/products')
     } catch (e) { setErr(e.message); setBusy(false) }
   }
 
@@ -57,6 +60,7 @@ export default function ProductForm() {
       <PageHeader title={editing ? `Edit ${f.name}` : 'New product'} />
       <form onSubmit={submit} className="space-y-6 max-w-4xl">
         {err && <Alert>{err}</Alert>}
+        {!editing && <DraftNotice draft={draftInfo} onDiscard={() => { draftInfo.clear(); setF(EMPTY); setSlugDirty(false) }} />}
         <Card className="p-6 grid md:grid-cols-2 gap-5">
           <Field label="Name *" className="md:col-span-2"><Input required value={f.name} onChange={set('name')} /></Field>
           <Field label="Slug" hint="URL path, e.g. /products/cocoa"><Input value={f.slug} onChange={e => { setSlugDirty(true); set('slug')(e) }} /></Field>

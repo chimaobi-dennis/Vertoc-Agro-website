@@ -334,6 +334,12 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
   `POST /messages/thread/read`, and `POST /messages` with `reply_to_id`.
   Team notifications and staff invitations are `internal` mail
   (`messages.headers.internal`) and never appear in conversations.
+- **Invoice PDFs on the client record.** Sending an invoice files its PDF under
+  the client's documents (and the invoice), replacing the copy from an earlier
+  send; the email's attachment links to that document.
+- **Drafts.** New invoices, products, posts and clients, and unsaved settings
+  edits, are mirrored to the browser's local storage (`useDraft`) until saved,
+  so a reload keeps them; a strip offers to discard a restored draft.
 - **Quote request pipeline.** A submission of the website's Request a Quote
   form sends two emails from editable templates: *Quote request received* to
   the sender (the request stays *new* for the team) and *New quote request*

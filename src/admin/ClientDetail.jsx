@@ -6,6 +6,7 @@ import { Alert, Badge, Button, Card, Field, Input, PageHeader, Table, Tabs, Td, 
 import { Bone } from '../components/Skeleton'
 import DynamicField from './DynamicField'
 import Composer from './Composer'
+import { DraftNotice, useDraft } from './useDraft'
 import { DocumentsPanel, MessagesPanel, PurchasesPanel, QuotesPanel } from './ClientTabs'
 
 const tone = s => ({ new: 'amber', won: 'green', lost: 'red', archived: 'muted' })[s] || 'blue'
@@ -27,8 +28,11 @@ export default function ClientDetail() {
   const [fields, setFields] = useState(null)
   const [client, setClient] = useState(null)
   const [enqs, setEnqs] = useState([])
-  const [name, setName] = useState(prefill?.name || '')
-  const [data, setData] = useState(prefill?.data || {})
+  // A new client is drafted on this device until it is created; an explicit prefill (from an enquiry or email) wins over the draft.
+  const [draft, setDraft, draftInfo] = useDraft('client:new', null, { enabled: !editing && !prefill })
+  const [name, setName] = useState(prefill?.name || (!editing && draft?.name) || '')
+  const [data, setData] = useState(prefill?.data || (!editing && draft?.data) || {})
+  useEffect(() => { if (!editing && !prefill) setDraft({ name, data }) }, [name, data, editing]) // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const [compose, setCompose] = useState(null)   // { to, subject, body }
@@ -51,7 +55,7 @@ export default function ClientDetail() {
       else {
         const c = await adminFetch('/clients', { method: 'POST', body: { name, data } })
         if (linkEnquiry) await adminFetch(`/enquiries/${linkEnquiry}`, { method: 'PATCH', body: { client_id: c.id } }).catch(() => {})
-        nav(`/staff360/clients/${c.id}`, { replace: true }); return
+        draftInfo.clear(); nav(`/staff360/clients/${c.id}`, { replace: true }); return
       }
     } catch (x) { setErr(x.message) } finally { setBusy(false) }
   }
@@ -81,6 +85,7 @@ export default function ClientDetail() {
           </div>
         )} />
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
+      {!editing && <DraftNotice draft={draftInfo} onDiscard={() => { draftInfo.clear(); setName(''); setData({}) }} />}
 
       {editing && <Tabs tabs={TABS} value={tab} onChange={setTab} />}
 

@@ -135,10 +135,18 @@ export async function sendQuote(id, { actor, to, subject, body, attachmentIds = 
   const pdf = await renderQuotePdf(q, settings, fields, link)
   const recipient = to || q.client_email
   const tpl = await renderKey('quote', { quote: q, link, settings, actor })
+  // File the PDF under the client's documents (and the invoice), replacing the copy from an
+  // earlier send of the same invoice, so it shows on the client record and can be reopened.
+  let pdfDoc = null
+  try {
+    const previous = (await content.listDocuments({ quote_id: q.id })).find(d => d.name === `${q.number}.pdf`)
+    if (previous) await content.deleteDocument(previous.id)
+    pdfDoc = await content.createDocumentFromBuffer({ client_id: q.client_id, quote_id: q.id, name: `${q.number}.pdf`, content_type: 'application/pdf', content: pdf, folder: `invoices/${q.id}` }, actor?.id ?? null)
+  } catch (e) { console.error('[send-quote] pdf not filed:', e.message) }
   const msg = await deliver({
     actor, to: recipient, toName: q.client_name,
     subject: subject || tpl.subject, body: body || tpl.body,
-    attachmentIds, extraAttachments: [{ filename: `${q.number}.pdf`, content: pdf }],
+    attachmentIds: pdfDoc ? [pdfDoc.id, ...attachmentIds] : attachmentIds, extraAttachments: pdfDoc ? [] : [{ filename: `${q.number}.pdf`, content: pdf }],
     cta: tpl.cta || { label: 'View and respond online', url: link },
     clientId: q.client_id, quoteId: q.id,
   })
