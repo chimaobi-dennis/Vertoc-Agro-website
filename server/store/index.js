@@ -44,6 +44,7 @@ export const {
   listQuotes, getQuote, getQuoteByToken, createQuote, updateQuote, deleteQuote, markQuoteSent, markQuoteViewed, respondToQuote, publicQuote, convertQuoteToPurchase,
   createMessage, updateMessage, getMessage, listMessages, markMessageRead, getMessageByProviderId, latestOutboundTo, countUnreadInbound, findClientByEmail, getQuoteByNumber,
   listThreads, getThread, markThreadRead, splitQuoted, parseThreadKey, threadKeyOf, cleanSubject,
+  getLabelCatalogue, setLabelCatalogue, setThreadLabel, LABEL_COLORS, DEFAULT_LABELS,
   listTemplates, getTemplate, upsertTemplate, updateTemplate, createDocumentFromBuffer,
   listPurchases, getPurchase, createPurchase, updatePurchase, deletePurchase,
 } = store

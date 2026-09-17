@@ -888,10 +888,18 @@ const counterpart = m => String((m.direction === 'in' ? m.from_email : m.to_emai
 async function teamAddresses() {
   const [settings, staff] = await Promise.all([getSettings(), supabase.from('profiles').select('email').then(r => r.data || [])])
   const e = settings.email || {}
-  const addr = s => String(s || '').match(/<([^>]+)>/)?.[1] || String(s || '')
-  return new Set([e.from, e.reply_to, e.notify_to, e.inbound_address, ...staff.map(p => p.email)].map(addr).map(s => s.trim().toLowerCase()).filter(Boolean))
+  const norm = s => (String(s || '').match(/<([^>]+)>/)?.[1] || String(s || '')).trim().toLowerCase()
+  return { notify: new Set([e.from, e.reply_to, e.notify_to, e.inbound_address].map(norm).filter(Boolean)), staff: new Set(staff.map(p => norm(p.email)).filter(Boolean)) }
 }
-const isInternal = (m, team) => m.headers?.internal === true || (m.direction === 'out' && team.has(String(m.to_email || '').toLowerCase()))
+// Notifications go to the team's own addresses; staff invitations go to a staff address with no
+// client record attached. Mail to a client record is a conversation even if that client happens to
+// use a staff address (test clients do).
+const isInternal = (m, team) => {
+  if (m.headers?.internal === true) return true
+  if (m.direction !== 'out') return false
+  const to = String(m.to_email || '').toLowerCase()
+  return team.notify.has(to) || (m.client_id == null && team.staff.has(to))
+}
 
 // A thread is one subject with one counterpart (client record, or bare address): "Re:" / "Fwd:"
 // prefixes are ignored, so a reply stays in its thread and a new subject starts a new one.
@@ -909,7 +917,53 @@ export function parseThreadKey(key) {
 }
 const forCounterpart = (qry, k) => (k.client_id != null ? qry.eq('client_id', k.client_id) : qry.is('client_id', null).or(`from_email.ilike.${k.email},to_email.ilike.${k.email}`))
 
-export async function listThreads({ q = '', unread = false, client_id = null, limit = 1000 } = {}) {
+/* ------------------------------------------------------------- labels --- */
+// Thread labels live in the settings table under 'thread_labels' (not a settings group, so they
+// never reach GET /settings): { catalogue: [{ name, color }], threads: { [threadKey]: { label, at, by } } }.
+export const LABEL_COLORS = ['green', 'amber', 'red', 'blue', 'purple', 'teal', 'pink', 'slate']
+export const DEFAULT_LABELS = [
+  { name: 'Waiting for client response', color: 'amber' },
+  { name: 'Deal pending approval', color: 'blue' },
+  { name: 'Deal closed', color: 'green' },
+  { name: 'Follow up needed', color: 'red' },
+  { name: 'On hold', color: 'slate' },
+]
+const cleanLabelName = s => String(s || '').replace(/\s+/g, ' ').trim().slice(0, 40)
+async function readLabelsRow() {
+  const rows = unwrap(await supabase.from('settings').select('value').eq('key', 'thread_labels').limit(1), 'readLabels')
+  const v = rows?.[0]?.value
+  return { catalogue: Array.isArray(v?.catalogue) && v.catalogue.length ? v.catalogue : structuredClone(DEFAULT_LABELS), threads: v?.threads && typeof v.threads === 'object' ? v.threads : {} }
+}
+const writeLabelsRow = async v => unwrap(await supabase.from('settings').upsert({ key: 'thread_labels', value: v }, { onConflict: 'key' }), 'writeLabels')
+export async function getLabelCatalogue() { return (await readLabelsRow()).catalogue }
+export async function setLabelCatalogue(list) {
+  if (!Array.isArray(list)) throw new Error('labels must be a list')
+  const seen = new Set(), catalogue = []
+  for (const l of list.slice(0, 30)) {
+    const name = cleanLabelName(l?.name); if (!name || seen.has(name.toLowerCase())) continue
+    seen.add(name.toLowerCase()); catalogue.push({ name, color: LABEL_COLORS.includes(l?.color) ? l.color : 'slate' })
+  }
+  if (!catalogue.length) throw new Error('keep at least one label')
+  const row = await readLabelsRow()
+  const keep = new Set(catalogue.map(c => c.name.toLowerCase()))   // threads whose label was removed lose it
+  const threads = Object.fromEntries(Object.entries(row.threads).filter(([, t]) => keep.has(String(t.label).toLowerCase())))
+  await writeLabelsRow({ catalogue, threads })
+  return catalogue
+}
+/** Set (or, with an empty label, clear) the label on one thread. A new name joins the catalogue. */
+export async function setThreadLabel(key, label, actor = null) {
+  if (!parseThreadKey(key)) throw new Error('unknown thread')
+  const row = await readLabelsRow()
+  const name = cleanLabelName(label)
+  if (!name) { delete row.threads[key]; await writeLabelsRow(row); return null }
+  let entry = row.catalogue.find(c => c.name.toLowerCase() === name.toLowerCase())
+  if (!entry) { if (row.catalogue.length >= 30) throw new Error('too many labels; remove one first'); entry = { name, color: 'slate' }; row.catalogue.push(entry) }
+  row.threads[key] = { label: entry.name, at: new Date().toISOString(), by: actor?.email || actor?.label || null }
+  await writeLabelsRow(row)
+  return { ...entry, at: row.threads[key].at }
+}
+
+export async function listThreads({ q = '', unread = false, label = '', client_id = null, limit = 1000 } = {}) {
   let qry = supabase.from('messages').select('id,client_id,direction,status,from_email,from_name,to_email,to_name,subject,body,created_at,read_at,attachments,headers').order('created_at', { ascending: false }).limit(limit)
   if (client_id != null) qry = qry.eq('client_id', Number(client_id))
   const [rows, team] = await Promise.all([qry.then(r => unwrap(r, 'listThreads') ?? []), teamAddresses()])
@@ -928,10 +982,19 @@ export async function listThreads({ q = '', unread = false, client_id = null, li
     const clients = unwrap(await supabase.from('clients').select('id,name,data').in('id', ids), 'listThreads:clients') ?? []
     for (const t of map.values()) { const c = clients.find(x => x.id === t.client_id); if (c) { t.name = c.name; t.email = t.email || String(c.data?.email || '').toLowerCase() } }
   }
+  const labels = await readLabelsRow()
   let list = [...map.values()]
+  for (const t of list) {
+    t.awaiting_reply = t.last?.direction === 'out'   // we spoke last: the ball is in their court
+    const l = labels.threads[t.key]
+    t.label = l ? { name: l.label, color: labels.catalogue.find(c => c.name === l.label)?.color || 'slate', at: l.at } : null
+  }
   const term = String(q || '').trim().toLowerCase()
-  if (term) list = list.filter(t => [t.name, t.email, t.subject, t.last?.snippet].some(v => String(v || '').toLowerCase().includes(term)))
+  if (term) list = list.filter(t => [t.name, t.email, t.subject, t.last?.snippet, t.label?.name].some(v => String(v || '').toLowerCase().includes(term)))
   if (unread) list = list.filter(t => t.unread > 0)
+  const want = String(label || '').trim().toLowerCase()
+  if (want === '__awaiting') list = list.filter(t => t.awaiting_reply)
+  else if (want) list = list.filter(t => t.label?.name.toLowerCase() === want)
   return list
 }
 export async function getThread(key, { limit = 500 } = {}) {

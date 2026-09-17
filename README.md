@@ -334,6 +334,13 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
   `POST /messages/thread/read`, and `POST /messages` with `reply_to_id`.
   Team notifications and staff invitations are `internal` mail
   (`messages.headers.internal`) and never appear in conversations.
+- **Thread labels.** Each thread shows an automatic *Awaiting reply* marker
+  when we wrote last, and can carry one manual label from an editable list
+  (presets: Waiting for client response, Deal pending approval, Deal closed,
+  Follow up needed, On hold; any new name typed on a thread joins the list).
+  Stored in the `settings` table under `thread_labels`, outside the settings
+  groups. Endpoints: `GET/PUT /messages/labels`, `PUT /messages/thread/label`,
+  and `label=` (or `label=__awaiting`) on `GET /messages/threads`.
 
 ### Testing
 

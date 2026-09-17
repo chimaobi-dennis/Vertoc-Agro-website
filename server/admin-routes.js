@@ -518,7 +518,20 @@ router.get('/messages', mail, h(async (req, res) => {
   }))
 }))
 router.get('/messages/threads', mail, h(async (req, res) => {
-  res.json(await content.listThreads({ q: req.query.q || '', unread: req.query.unread === '1', client_id: idOrNull(req.query.client_id) }))
+  res.json(await content.listThreads({ q: req.query.q || '', unread: req.query.unread === '1', label: req.query.label || '', client_id: idOrNull(req.query.client_id) }))
+}))
+router.get('/messages/labels', mail, h(async (_req, res) => {
+  res.json({ labels: await content.getLabelCatalogue(), colors: content.LABEL_COLORS })
+}))
+router.put('/messages/labels', mail, h(async (req, res) => {
+  const labels = await exposing(content.setLabelCatalogue)(req.body?.labels)
+  await audit({ actor: req.user, action: 'update', entity: 'labels', entityId: null, after: { labels } })
+  res.json({ labels, colors: content.LABEL_COLORS })
+}))
+router.put('/messages/thread/label', mail, h(async (req, res) => {
+  const label = await exposing(content.setThreadLabel)(req.body?.key, req.body?.label, req.user)
+  await audit({ actor: req.user, action: 'label', entity: 'thread', entityId: req.body?.key, after: { label: label?.name ?? null } })
+  res.json({ key: req.body?.key, label })
 }))
 router.get('/messages/thread', mail, h(async (req, res) => {
   const rows = await content.getThread(req.query.key)
