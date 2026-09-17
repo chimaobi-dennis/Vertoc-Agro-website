@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronRight, Download, ExternalLink, FileText, Mail, Plus, Reply, Trash2, Upload } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
-import Thread from './Thread'
+import Conversations from './Conversations'
 import { Badge, Button, Card, Empty, Field, Input, Select, Table, Td, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import { ACCEPT, isImage, openDocument, uploadDocument } from './documents'
@@ -116,18 +116,7 @@ export function QuotesPanel({ clientId }) {
 /* ----------------------------------------------------------- messages --- */
 
 export function MessagesPanel({ clientId, email = '', onCompose, refreshKey = 0 }) {
-  return (
-    <Card className="animate-fade-up flex flex-col min-h-[60vh]">
-      <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border">
-        <div><h2 className="font-semibold">Conversation</h2><p className="text-xs text-muted-foreground">Every email with this client, newest at the bottom. Replies thread under their last email.</p></div>
-        <div className="flex items-center gap-3">
-          <Link to={`/staff360/messages?t=c${clientId}`} className="text-xs font-semibold text-accent whitespace-nowrap">Open in Messages →</Link>
-          <Button variant="accent" className="h-9" onClick={onCompose}><Mail className="w-4 h-4" />New email</Button>
-        </div>
-      </div>
-      <Thread threadKey={`c${clientId}`} clientId={clientId} email={email} refreshKey={refreshKey} bodyClass="max-h-[55vh]" />
-    </Card>
-  )
+  return <Conversations clientId={clientId} email={email} onCompose={onCompose} refreshKey={refreshKey} className="h-[72vh] min-h-[480px]" />
 }
 
 /* ---------------------------------------------------------- purchases --- */

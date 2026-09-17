@@ -518,7 +518,7 @@ router.get('/messages', mail, h(async (req, res) => {
   }))
 }))
 router.get('/messages/threads', mail, h(async (req, res) => {
-  res.json(await content.listThreads({ q: req.query.q || '', unread: req.query.unread === '1' }))
+  res.json(await content.listThreads({ q: req.query.q || '', unread: req.query.unread === '1', client_id: idOrNull(req.query.client_id) }))
 }))
 router.get('/messages/thread', mail, h(async (req, res) => {
   const rows = await content.getThread(req.query.key)
@@ -554,7 +554,7 @@ router.post('/messages', mail, h(async (req, res) => {
     clientId ??= inReplyTo.client_id; enquiryId ??= inReplyTo.enquiry_id; quoteId = inReplyTo.quote_id ?? null
   }
   const msg = await deliver({ actor: req.user, to, toName, subject, body: b.body, attachmentIds: b.attachment_ids || [], clientId, enquiryId, quoteId, inReplyTo })
-  res.status(201).json(msg)
+  res.status(201).json({ ...msg, thread_key: content.threadKeyOf(msg) })
 }))
 
 /* purchases */

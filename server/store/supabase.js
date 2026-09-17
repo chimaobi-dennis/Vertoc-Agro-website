@@ -883,34 +883,44 @@ export function splitQuoted(text) {
   return visible ? { text: visible, quoted } : { text: t, quoted: '' }
 }
 const counterpart = m => String((m.direction === 'in' ? m.from_email : m.to_email) || '').toLowerCase()
-// Mail to the team itself (notifications) is not part of a client conversation: new rows carry
-// headers.internal, older ones are recognised by their recipient being one of our own addresses.
+// Mail to the team itself (notifications, staff invites) is not part of a client conversation: new rows
+// carry headers.internal, older ones are recognised by their recipient being one of our own addresses.
 async function teamAddresses() {
-  const e = (await getSettings()).email || {}
+  const [settings, staff] = await Promise.all([getSettings(), supabase.from('profiles').select('email').then(r => r.data || [])])
+  const e = settings.email || {}
   const addr = s => String(s || '').match(/<([^>]+)>/)?.[1] || String(s || '')
-  return new Set([e.from, e.reply_to, e.notify_to, e.inbound_address].map(addr).map(s => s.trim().toLowerCase()).filter(Boolean))
+  return new Set([e.from, e.reply_to, e.notify_to, e.inbound_address, ...staff.map(p => p.email)].map(addr).map(s => s.trim().toLowerCase()).filter(Boolean))
 }
 const isInternal = (m, team) => m.headers?.internal === true || (m.direction === 'out' && team.has(String(m.to_email || '').toLowerCase()))
-const threadKey = m => (m.client_id != null ? `c${m.client_id}` : `e:${counterpart(m)}`)
+
+// A thread is one subject with one counterpart (client record, or bare address): "Re:" / "Fwd:"
+// prefixes are ignored, so a reply stays in its thread and a new subject starts a new one.
+const RE_PREFIX = /^\s*((re|fwd?|fw|aw|sv|tr|wg)\s*:\s*)+/i
+export const cleanSubject = s => String(s || '').replace(RE_PREFIX, '').replace(/\s+/g, ' ').trim()
+const normSubject = s => cleanSubject(s).toLowerCase() || '(no subject)'
+const counterpartKey = m => (m.client_id != null ? `c${m.client_id}` : `e:${counterpart(m)}`)
+export const threadKeyOf = m => `${counterpartKey(m)}|${normSubject(m.subject)}`
 export function parseThreadKey(key) {
-  const k = String(key || '').trim()
-  if (/^c\d+$/.test(k)) return { client_id: Number(k.slice(1)), email: null }
-  if (k.startsWith('e:') && k.length > 2) return { client_id: null, email: k.slice(2).toLowerCase().replace(/[%,()]/g, '') }
+  const k = String(key || ''); const i = k.indexOf('|'); if (i < 0) return null
+  const who = k.slice(0, i), subject = k.slice(i + 1)
+  if (/^c\d+$/.test(who)) return { client_id: Number(who.slice(1)), email: null, subject }
+  if (who.startsWith('e:') && who.length > 2) return { client_id: null, email: who.slice(2).toLowerCase().replace(/[%,()]/g, ''), subject }
   return null
 }
-export async function listThreads({ q = '', unread = false, limit = 1000 } = {}) {
-  const [rows, team] = await Promise.all([
-    supabase.from('messages').select('id,client_id,direction,status,from_email,from_name,to_email,to_name,subject,body,created_at,read_at,attachments,headers').order('created_at', { ascending: false }).limit(limit).then(r => unwrap(r, 'listThreads') ?? []),
-    teamAddresses(),
-  ])
+const forCounterpart = (qry, k) => (k.client_id != null ? qry.eq('client_id', k.client_id) : qry.is('client_id', null).or(`from_email.ilike.${k.email},to_email.ilike.${k.email}`))
+
+export async function listThreads({ q = '', unread = false, client_id = null, limit = 1000 } = {}) {
+  let qry = supabase.from('messages').select('id,client_id,direction,status,from_email,from_name,to_email,to_name,subject,body,created_at,read_at,attachments,headers').order('created_at', { ascending: false }).limit(limit)
+  if (client_id != null) qry = qry.eq('client_id', Number(client_id))
+  const [rows, team] = await Promise.all([qry.then(r => unwrap(r, 'listThreads') ?? []), teamAddresses()])
   const map = new Map()
   for (const m of rows) {
     if (isInternal(m, team)) continue
-    const key = threadKey(m); let t = map.get(key)
-    if (!t) { t = { key, client_id: m.client_id ?? null, email: counterpart(m), name: '', last: null, unread: 0, count: 0, updated_at: m.created_at }; map.set(key, t) }
+    const key = threadKeyOf(m); let t = map.get(key)
+    if (!t) { t = { key, client_id: m.client_id ?? null, email: counterpart(m), name: '', subject: cleanSubject(m.subject) || '(no subject)', last: null, unread: 0, count: 0, updated_at: m.created_at }; map.set(key, t) }
     t.count++
     if (m.direction === 'in' && !m.read_at) t.unread++
-    if (!t.last) { const { text } = splitQuoted(m.body); t.last = { id: m.id, direction: m.direction, subject: m.subject, snippet: text.replace(/\s+/g, ' ').slice(0, 140), created_at: m.created_at, status: m.status, attachments: m.attachments?.length || 0 } }
+    if (!t.last) { const { text } = splitQuoted(m.body); t.last = { id: m.id, direction: m.direction, snippet: text.replace(/\s+/g, ' ').slice(0, 140), created_at: m.created_at, status: m.status, attachments: m.attachments?.length || 0 } }
     if (!t.name) t.name = (m.direction === 'in' ? m.from_name : m.to_name) || ''
   }
   const ids = [...new Set([...map.values()].map(t => t.client_id).filter(v => v != null))]
@@ -920,22 +930,24 @@ export async function listThreads({ q = '', unread = false, limit = 1000 } = {})
   }
   let list = [...map.values()]
   const term = String(q || '').trim().toLowerCase()
-  if (term) list = list.filter(t => [t.name, t.email, t.last?.subject, t.last?.snippet].some(v => String(v || '').toLowerCase().includes(term)))
+  if (term) list = list.filter(t => [t.name, t.email, t.subject, t.last?.snippet].some(v => String(v || '').toLowerCase().includes(term)))
   if (unread) list = list.filter(t => t.unread > 0)
   return list
 }
 export async function getThread(key, { limit = 500 } = {}) {
   const k = parseThreadKey(key); if (!k) return null
-  let qry = supabase.from('messages').select('*').order('created_at', { ascending: true }).limit(limit)
-  qry = k.client_id != null ? qry.eq('client_id', k.client_id) : qry.is('client_id', null).or(`from_email.ilike.${k.email},to_email.ilike.${k.email}`)
+  const qry = forCounterpart(supabase.from('messages').select('*').order('created_at', { ascending: true }).limit(limit), k)
   const [rows, team] = await Promise.all([qry.then(r => unwrap(r, 'getThread') ?? []), teamAddresses()])
-  return rows.filter(m => !isInternal(m, team)).map(m => { const { text, quoted } = splitQuoted(m.body); return { ...m, html: undefined, text, quoted } })
+  return rows.filter(m => !isInternal(m, team) && normSubject(m.subject) === k.subject)
+    .map(m => { const { text, quoted } = splitQuoted(m.body); return { ...m, html: undefined, text, quoted } })
 }
 export async function markThreadRead(key) {
   const k = parseThreadKey(key); if (!k) return 0
-  let qry = supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('direction', 'in').is('read_at', null)
-  qry = k.client_id != null ? qry.eq('client_id', k.client_id) : qry.is('client_id', null).or(`from_email.ilike.${k.email},to_email.ilike.${k.email}`)
-  return (unwrap(await qry.select('id'), 'markThreadRead') ?? []).length
+  const qry = forCounterpart(supabase.from('messages').select('id,subject').eq('direction', 'in').is('read_at', null), k)
+  const ids = (unwrap(await qry, 'markThreadRead') ?? []).filter(m => normSubject(m.subject) === k.subject).map(m => m.id)
+  if (!ids.length) return 0
+  unwrap(await supabase.from('messages').update({ read_at: new Date().toISOString() }).in('id', ids), 'markThreadRead:update')
+  return ids.length
 }
 
 export async function getQuoteByNumber(number) {

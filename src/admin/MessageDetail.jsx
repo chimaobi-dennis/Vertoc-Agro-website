@@ -6,7 +6,7 @@ import { Alert, Badge, Button, Card, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import Composer from './Composer'
 import { openDocument } from './documents'
-import { fmtDateTime, messageTone } from './format'
+import { fmtDateTime, messageTone, threadKeyOf } from './format'
 
 export default function MessageDetail() {
   const { id } = useParams(); const nav = useNavigate()
@@ -34,7 +34,7 @@ export default function MessageDetail() {
   if (!m) return <div className="max-w-4xl space-y-4"><Bone className="h-4 w-24" /><Bone className="h-9 w-2/3" /><Card className="p-6 space-y-3">{[...Array(6)].map((_, i) => <Bone key={i} className="h-4 w-full" />)}</Card></div>
 
   const inbound = m.direction === 'in'
-  const threadKey = m.client_id ? `c${m.client_id}` : `e:${inbound ? m.from_email : m.to_email}`
+  const threadKey = threadKeyOf(m)
 
   return (
     <>

@@ -5,6 +5,9 @@ export const fmtMoney = (v, cur = 'USD') => {
 }
 export const fmtBytes = b => (b < 1024 ? `${b} B` : b < 1048576 ? `${Math.round(b / 1024)} KB` : `${(b / 1048576).toFixed(1)} MB`)
 export const fmtDate = iso => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
+// Same thread key as the server: one subject (Re:/Fwd: ignored) with one client record or address.
+export const cleanSubject = s => String(s || '').replace(/^\s*((re|fwd?|fw|aw|sv|tr|wg)\s*:\s*)+/i, '').replace(/\s+/g, ' ').trim()
+export const threadKeyOf = m => `${m.client_id != null ? `c${m.client_id}` : `e:${String((m.direction === 'in' ? m.from_email : m.to_email) || '').toLowerCase()}`}|${cleanSubject(m.subject).toLowerCase() || '(no subject)'}`
 export const fmtShort = iso => { const d = new Date(iso); return d.toDateString() === new Date().toDateString() ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) }
 export const fmtDateTime = iso => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—')
 

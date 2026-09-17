@@ -322,9 +322,11 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
 - MCP: `list_email_templates`, `update_email_template`, `get_message`,
   `mark_message_read`; `list_messages` filters by direction and unread.
 
-- **Conversations.** Messages is a chat-style view: one thread per client (or
-  per outside address), their emails on the left, ours on the right, quoted
-  history folded away (`splitQuoted` in the store). The reply box sends only
+- **Conversations.** Messages is a mail-client view: one thread per subject
+  with one client (or outside address) — "Re:"/"Fwd:" prefixes are ignored,
+  so replies stay in their thread and a new subject starts a new one. The
+  thread shows their emails on the left, ours on the right, quoted history
+  folded away (`splitQuoted` in the store). The reply box sends only
   the new text and threads it with `In-Reply-To` / `References` (Resend
   `headers`; the sent Message-ID is fetched and stored as
   `provider_message_id`), so the client's mail app files it under the same
