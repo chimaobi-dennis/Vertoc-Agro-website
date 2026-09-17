@@ -11,7 +11,7 @@ export const DEFAULT_TEMPLATES = {
   quote: {
     name: 'Invoice to client', description: 'Sent with the PDF and the unique online link when an invoice goes out.',
     subject: 'Invoice {{quote_number}} from {{company_name}}',
-    body: 'Dear {{client_name}},\n\nThank you for your interest in {{company_name}}. Please find attached our invoice {{quote_number}}{{#if quote_title}} for {{quote_title}}{{/if}}.{{#if valid_until}} It is valid until {{valid_until}}.{{/if}}\n\nYou can review it and accept or decline online using the button below. If you have any questions, simply reply to this email.\n\nKind regards,\n{{sender_name}}',
+    body: 'Dear {{client_name}},\n\nThank you for your interest in {{company_name}}. Please find attached our invoice {{quote_number}}{{#if quote_title}} for {{quote_title}}{{/if}}.{{#if valid_until}} It is valid until {{valid_until}}.{{/if}}\n\nYou can review it and accept or decline online using the button below. If you have any questions, simply reply to this email.\n\nKind regards,\n{{company_name}}',
     cta_label: 'View and respond online',
     variables: ['client_name', 'client_email', 'quote_number', 'quote_title', 'total', 'currency', 'valid_until', 'link', 'company_name', 'sender_name'],
   },
@@ -32,14 +32,14 @@ export const DEFAULT_TEMPLATES = {
   enquiry_reply: {
     name: 'Reply to a website enquiry', description: 'Pre-filled when you reply to a quote request or contact message from the inbox. Edit before sending.',
     subject: 'Re: your {{enquiry_type}} to {{company_name}}',
-    body: 'Dear {{name}},\n\nThank you for your {{enquiry_type}}{{#if commodity}} about {{commodity}}{{/if}}.\n\n\n\nKind regards,\n{{sender_name}}',
+    body: 'Dear {{name}},\n\nThank you for your {{enquiry_type}}{{#if commodity}} about {{commodity}}{{/if}}.\n\n\n\nKind regards,',
     cta_label: '',
-    variables: ['name', 'email', 'enquiry_type', 'commodity', 'quantity', 'destination', 'subject', 'message', 'company_name', 'sender_name'],
+    variables: ['name', 'email', 'enquiry_type', 'commodity', 'quantity', 'destination', 'subject', 'message', 'company_name', 'staff_name', 'staff_position'],
   },
   blank: {
     name: 'Email to a client', description: 'Pre-filled when you email a client from their record.',
-    subject: '', body: 'Dear {{name}},\n\n\n\nKind regards,\n{{sender_name}}', cta_label: '',
-    variables: ['name', 'email', 'company_name', 'sender_name'],
+    subject: '', body: 'Dear {{name}},\n\n\n\nKind regards,', cta_label: '',
+    variables: ['name', 'email', 'company_name', 'staff_name', 'staff_position'],
   },
   user_invite: {
     name: 'Staff invitation', description: 'Sent to a new team member with their set-password link. Replaces the plain Supabase mail.',
@@ -90,13 +90,14 @@ export async function templateFor(key) {
 }
 
 const fmtDate = d => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '')
-// "Precious Ubadire, Managing Director" when the sender has a position; the From name or company otherwise.
-const senderName = (actor, settings) => (actor?.name ? `${actor.name}${actor.position ? `, ${actor.position}` : ''}` : '') || (settings.email.from.match(/^(.*?)\s*</)?.[1] || '').trim() || settings.company.name
+// Templates sign as the company; the person writing is `staff_name` / `staff_position` (added
+// automatically under emails started from the message wizard, so templates need not include it).
+const senderName = (_actor, settings) => settings.company.name || (settings.email.from.match(/^(.*?)\s*</)?.[1] || '').trim()
 
 /** Variables for a template from the records it concerns. `link` is the CTA target. */
 export async function buildVars(key, ctx = {}) {
   const settings = ctx.settings || (await content.getSettings())
-  const base = { company_name: settings.company.name, site_name: settings.site.name, sender_name: senderName(ctx.actor, settings), sender_position: ctx.actor?.position || '' }
+  const base = { company_name: settings.company.name, site_name: settings.site.name, sender_name: senderName(ctx.actor, settings), staff_name: ctx.actor?.name || '', staff_position: ctx.actor?.position || '' }
   if (key === 'quote') {
     const q = ctx.quote
     return { ...base, client_name: q.client_name, client_email: q.client_email, quote_number: q.number, quote_title: q.title, total: formatMoney(q.total, q.currency), currency: q.currency, valid_until: fmtDate(q.valid_until), link: ctx.link || '' }

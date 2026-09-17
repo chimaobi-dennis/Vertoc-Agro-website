@@ -206,6 +206,7 @@ try {
       const r = await api(`/quotes/${quote.id}/send`, { method: 'POST', body: { subject: 'e2e-quote send' } })
       if (r.message.status !== 'sent' || r.quote.status !== 'sent' || !r.message.attachments?.some(a => a.name === `${quote.number}.pdf`)) throw new Error(JSON.stringify(r.message).slice(0, 120))
       if (!r.message.html.includes(`/q/${quote.token}`)) throw new Error('link missing from email')
+      if (r.message.html.includes('E2E Admin')) throw new Error('an invoice email must sign as the company, not the person')
       const att = r.message.attachments?.find(a => a.name === `${quote.number}.pdf`); if (!att?.document_id) throw new Error('PDF not filed as a document: ' + JSON.stringify(r.message.attachments))
       const docs = await api(`/documents?client_id=${client2.id}`); const d = docs.find(x => x.id === att.document_id); if (!d || d.quote_id !== quote.id || d.content_type !== 'application/pdf') throw new Error('PDF missing from the client documents')
       await api(`/documents/${att.document_id}`, { method: 'DELETE' })
@@ -219,12 +220,12 @@ try {
     await step('reply moved the enquiry new → contacted', async () => { const e = await api(`/enquiries/${enq2}`); if (e.status !== 'contacted') throw new Error(e.status); return e.status })
     settingsBefore.departments = (await svc.from('settings').select('value').eq('key', 'departments').maybeSingle()).data?.value ?? null
     await step('PUT /settings/departments + send from one (dry run)', async () => {
-      const l = await api('/settings/departments', { method: 'PUT', body: { departments: [{ name: 'E2E Finance', email: 'finance@e2e.invalid', reply_to: '' }] } })
+      const l = await api('/settings/departments', { method: 'PUT', body: { departments: [{ name: 'E2E Finance', email: 'finance@e2e.invalid', reply_to: '', signature: 'E2E Finance Team\nVertoc Agro' }] } })
       const fin = l.find(d => d.email === 'finance@e2e.invalid'); if (!fin || !l[0].is_default) throw new Error(JSON.stringify(l).slice(0, 160))
       const s = await api('/messages/senders'); if (!s.some(d => d.id === fin.id)) throw new Error('composer does not list it')
       const m = await api('/messages', { method: 'POST', body: { to: 'q2@e2e.invalid', subject: 'e2e-from-finance', body: 'Sent from finance.', from_id: fin.id } })
-      if (m.from_email !== 'E2E Finance <finance@e2e.invalid>' || !m.html.includes('E2E Admin')) throw new Error(JSON.stringify({ from: m.from_email, signoff: m.html.includes('E2E Admin') }))
-      return `${m.from_email} · signed off with the sender's name ✓`
+      if (m.from_email !== 'E2E Finance <finance@e2e.invalid>' || !m.html.includes('E2E Admin') || !m.html.includes('E2E Finance Team')) throw new Error(JSON.stringify({ from: m.from_email, signoff: m.html.includes('E2E Admin'), deptSig: m.html.includes('E2E Finance Team') }))
+      return `${m.from_email} · signed "E2E Admin" + the department signature ✓`
     })
     await step('POST /enquiries/:id/acknowledge sends the confirmation, request stays new (dry run)', async () => {
       const { data: fresh, error } = await svc.from('enquiries').insert({ kind: 'quote', name: 'e2e-enquirer3', email: 'q3@e2e.invalid', commodity: 'Maize', quantity: '50 MT', destination: 'Lagos' }).select().single(); if (error) throw error

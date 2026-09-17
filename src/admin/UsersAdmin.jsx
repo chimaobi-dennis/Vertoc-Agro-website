@@ -33,13 +33,14 @@ export default function UsersAdmin() {
       {err && <Alert>{err}</Alert>}
       <Card className="p-6 mb-6">
         <h2 className="text-sm font-semibold mb-4 flex items-center gap-2"><UserPlus className="w-4 h-4 text-accent" />Invite a user</h2>
-        <form onSubmit={invite} className="grid md:grid-cols-5 gap-4 items-end">
-          <Field label="Email"><Input type="email" required value={inv.email} onChange={e => setInv({ ...inv, email: e.target.value })} /></Field>
-          <Field label="Name"><Input value={inv.name} onChange={e => setInv({ ...inv, name: e.target.value })} /></Field>
-          <Field label="Position" hint="e.g. CEO, Managing Director — shown in their emails"><Input value={inv.position} onChange={e => setInv({ ...inv, position: e.target.value })} placeholder="Sales Manager" /></Field>
+        <form onSubmit={invite} className="grid md:grid-cols-2 xl:grid-cols-[1.3fr_1fr_1fr_0.7fr_auto] gap-4 items-end">
+          <Field label="Email"><Input type="email" required value={inv.email} onChange={e => setInv({ ...inv, email: e.target.value })} placeholder="name@vertocagro.com" /></Field>
+          <Field label="Name"><Input value={inv.name} onChange={e => setInv({ ...inv, name: e.target.value })} placeholder="Precious Ubadire" /></Field>
+          <Field label="Position"><Input value={inv.position} onChange={e => setInv({ ...inv, position: e.target.value })} placeholder="Managing Director" /></Field>
           <Field label="Role"><Select value={inv.role} onChange={e => setInv({ ...inv, role: e.target.value })}>{ROLES.map(r => <option key={r}>{r}</option>)}</Select></Field>
           <Button type="submit" disabled={busy}>{busy ? 'Sending…' : 'Send invite'}</Button>
         </form>
+        <p className="mt-3 text-xs text-muted-foreground">The name and position sign the emails they write from Messages ("Precious Ubadire, Managing Director"). Invoices, confirmations and notifications sign as the company.</p>
       </Card>
       <Card>
         <Table head={['User', 'Role', 'Status', 'Joined', '']}>

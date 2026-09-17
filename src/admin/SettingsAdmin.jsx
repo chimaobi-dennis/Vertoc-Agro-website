@@ -140,19 +140,19 @@ function DepartmentsCard() {
   }
   return (
     <Card className="p-6 animate-fade-up">
-      <div className="mb-5"><h2 className="font-semibold">Departments (send as)</h2><p className="text-sm text-muted-foreground mt-0.5">Other addresses the team can send from — Finance, Logistics, a person's own mailbox. The From above is always available as the default. Every address must be on a domain verified at resend.com.</p></div>
+      <div className="mb-5"><h2 className="font-semibold">Departments (send as)</h2><p className="text-sm text-muted-foreground mt-0.5">Other addresses the team can send from — Finance, Logistics, a person's own mailbox — each with its own signature. The From above is always available as the default and uses the Signature above. Every address must be on a domain verified at resend.com.</p></div>
       {!rows ? <Bone className="h-10 w-full" /> : (
         <>
-          {rows.length > 0 && (
-            <div className="hidden md:grid grid-cols-[1fr_1fr_1fr_36px] gap-2 text-[11px] uppercase tracking-wider text-muted-foreground px-1 mb-1"><span>Name</span><span>Address</span><span>Reply-to (optional)</span><span /></div>
-          )}
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {rows.map((d, i) => (
-              <li key={d.id || i} className="grid md:grid-cols-[1fr_1fr_1fr_36px] gap-2 items-center">
-                <Input value={d.name} onChange={e => update(i, { name: e.target.value })} placeholder="Finance" maxLength={60} />
-                <Input type="email" value={d.email} onChange={e => update(i, { email: e.target.value })} placeholder="finance@vertocagro.com" />
-                <Input type="email" value={d.reply_to || ''} onChange={e => update(i, { reply_to: e.target.value })} placeholder="same as the address" />
-                <button type="button" onClick={() => setRows(r => r.filter((_, j) => j !== i))} className="h-9 w-9 rounded-lg text-destructive hover:bg-muted flex items-center justify-center" aria-label="Remove department"><Trash2 className="w-4 h-4" /></button>
+              <li key={d.id || i} className="rounded-xl border border-border p-4 space-y-3">
+                <div className="grid md:grid-cols-[1fr_1fr_1fr_36px] gap-3 items-end">
+                  <Field label="Department"><Input value={d.name} onChange={e => update(i, { name: e.target.value })} placeholder="Finance" maxLength={60} /></Field>
+                  <Field label="Address"><Input type="email" value={d.email} onChange={e => update(i, { email: e.target.value })} placeholder="finance@vertocagro.com" /></Field>
+                  <Field label="Reply-to" hint="Optional — defaults to the address"><Input type="email" value={d.reply_to || ''} onChange={e => update(i, { reply_to: e.target.value })} placeholder="finance@vertocagro.com" /></Field>
+                  <button type="button" onClick={() => setRows(r => r.filter((_, j) => j !== i))} className="h-11 w-9 rounded-lg text-destructive hover:bg-muted flex items-center justify-center" aria-label="Remove department"><Trash2 className="w-4 h-4" /></button>
+                </div>
+                <Field label="Signature" hint="Under every email sent from this department. The company footer (address, phone, website) is added automatically."><Textarea rows={3} value={d.signature || ''} onChange={e => update(i, { signature: e.target.value })} placeholder={'Finance Team\nVertoc Agro'} /></Field>
               </li>
             ))}
             {!rows.length && <li className="text-sm text-muted-foreground">No extra departments yet — everything goes out from the From address above.</li>}
@@ -214,7 +214,7 @@ function EmailSettings({ settings, onSaved, reload }) {
           <div className="grid md:grid-cols-2 gap-5">
             <Field label="From" hint='Format: Name <address@domain>'><Input {...bind('from')} /></Field>
             <Field label="Reply-to" hint="Where client replies land when inbound is not set up"><Input type="email" {...bind('reply_to')} /></Field>
-            <Field label="Signature" hint="Appended under every message" className="md:col-span-2"><Textarea rows={4} {...bind('signature')} /></Field>
+            <Field label="Signature" hint="Under every email sent from this From. Emails written in Messages get the writer's name and position above it; the company footer (address, phone, website) is added automatically, so it need not repeat them." className="md:col-span-2"><Textarea rows={3} {...bind('signature')} placeholder={'Sales Team\nVertoc Agro'} /></Field>
             <Field label="Inbound address" hint="Once Resend receiving is connected (below): replies go here and land in Messages. Used as Reply-To when set."><Input type="email" {...bind('inbound_address')} placeholder="sales@reply.vertocagro.com" /></Field>
             <Field label="Notify the team at" hint="Defaults to the Reply-to address"><Input type="email" {...bind('notify_to')} /></Field>
             <div className="md:col-span-2 flex flex-wrap gap-6 text-sm">

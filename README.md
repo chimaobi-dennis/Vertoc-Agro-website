@@ -339,10 +339,14 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
   and the reply box offer a From selector when more than one exists
   (`GET /messages/senders`, `from_id` on `POST /messages` and
   `POST /quotes/:id/send`). Stored in the `settings` table under `departments`.
-- **Positions.** Staff have a position (migration `008_positions.sql`), set on
-  invite or on the user page. Free-text emails are signed "Name, Position"
-  above the signature, and templates get `{{sender_name}}` as
-  "Name, Position" plus `{{sender_position}}`.
+- **Positions and signatures.** Staff have a position (migration
+  `008_positions.sql`), set on invite or on the user page. Emails started
+  from Messages are signed "Name, Position" above the sending department's
+  signature; invoices, confirmations, notifications and invitations sign as
+  the company (`{{sender_name}}` = company name; `{{staff_name}}` and
+  `{{staff_position}}` are available to templates that want the person). Each
+  department has its own signature; the default From uses Settings → Email →
+  Signature. The company footer comes from Settings → Company.
 - **Invoice PDFs on the client record.** Sending an invoice files its PDF under
   the client's documents (and the invoice), replacing the copy from an earlier
   send; the email's attachment links to that document.
