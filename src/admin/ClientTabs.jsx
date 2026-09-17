@@ -125,7 +125,7 @@ export function MessagesPanel({ clientId, email = '', onCompose, refreshKey = 0 
           <Button variant="accent" className="h-9" onClick={onCompose}><Mail className="w-4 h-4" />New email</Button>
         </div>
       </div>
-      <Thread threadKey={`c${clientId}`} clientId={clientId} email={email} refreshKey={refreshKey} />
+      <Thread threadKey={`c${clientId}`} clientId={clientId} email={email} refreshKey={refreshKey} bodyClass="max-h-[55vh]" />
     </Card>
   )
 }

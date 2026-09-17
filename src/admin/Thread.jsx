@@ -18,7 +18,7 @@ const time = iso => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit',
  * the In-Reply-To / References headers, so their mail client files it in
  * the same thread instead of showing the whole history again.
  */
-export default function Thread({ threadKey, email = '', clientId = null, refreshKey = 0, onRead, onSent }) {
+export default function Thread({ threadKey, email = '', clientId = null, refreshKey = 0, onRead, onSent, bodyClass = '' }) {
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState(null)
   const [opened, setOpened] = useState(() => new Set())
@@ -72,7 +72,8 @@ export default function Thread({ threadKey, email = '', clientId = null, refresh
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-5 space-y-3" style={{ maxHeight: '58vh' }}>
+      {/* only this list scrolls; the header above and the reply box below stay put */}
+      <div className={`flex-1 min-h-0 overflow-y-auto px-4 md:px-6 py-5 space-y-3 ${bodyClass}`}>
         {err && <p className="text-sm text-destructive">{err}</p>}
         {!rows && [0, 1, 2].map(i => <div key={i} className={`flex ${i % 2 ? 'justify-end' : ''}`}><Bone className="h-14 w-2/3 rounded-2xl" /></div>)}
         {rows?.length === 0 && <p className="text-center text-sm text-muted-foreground py-10">No emails with {to || 'this address'} yet. Write the first one below.</p>}
@@ -123,7 +124,7 @@ export default function Thread({ threadKey, email = '', clientId = null, refresh
         <div ref={endRef} />
       </div>
 
-      <form onSubmit={send} className="border-t border-border p-4 space-y-3 bg-card rounded-b-2xl">
+      <form onSubmit={send} className="shrink-0 border-t border-border p-4 space-y-3 bg-card rounded-b-2xl">
         <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
           <span className="truncate">{needsSubject ? 'New email to' : 'Reply to'} <b className="text-foreground">{to || '—'}</b>{!editSubject && !needsSubject && subject ? <> · {subject}</> : null}</span>
           {!needsSubject && <button type="button" onClick={() => setEditSubject(v => !v)} className="font-semibold text-accent whitespace-nowrap">{editSubject ? 'Keep subject' : 'Change subject'}</button>}

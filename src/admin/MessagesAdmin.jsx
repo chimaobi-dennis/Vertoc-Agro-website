@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Search } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
-import { Alert, Badge, Card, Empty, Input, PageHeader } from './ui'
+import { Alert, Badge, Card, Empty, Input } from './ui'
 import { Bone } from '../components/Skeleton'
 import { fmtShort } from './format'
 import Thread from './Thread'
@@ -32,27 +32,31 @@ export default function MessagesAdmin() {
   const bump = () => setTick(x => x + 1)
 
   return (
-    <>
-      <PageHeader eyebrow="Sales" title="Messages" description="Every email conversation with a client, in one thread each. Replies go out under the same subject and land in the client's existing thread." />
-      {err && <div className="mb-4"><Alert>{err}</Alert></div>}
+    <div className="flex flex-col h-[calc(100dvh-6rem)] sm:h-[calc(100dvh-7rem)] lg:h-[calc(100dvh-9rem)] min-h-[520px]">
+      {err && <div className="mb-4 shrink-0"><Alert>{err}</Alert></div>}
       {settings && !settings.email.inbound_configured && (
-        <div className="mb-4"><Alert tone="info">Received emails aren't flowing in yet.{me?.permissions?.settings ? <> Connect Resend inbound under <Link to="/staff360/settings?tab=email" className="font-semibold text-accent">Settings → Email → Inbound</Link>.</> : ' Ask an admin to connect Resend inbound in Settings.'}</Alert></div>
+        <div className="mb-4 shrink-0"><Alert tone="info">Received emails aren't flowing in yet.{me?.permissions?.settings ? <> Connect Resend inbound under <Link to="/staff360/settings?tab=email" className="font-semibold text-accent">Settings → Email → Inbound</Link>.</> : ' Ask an admin to connect Resend inbound in Settings.'}</Alert></div>
       )}
 
-      <div className="grid lg:grid-cols-[340px_1fr] gap-5 items-start">
-        <Card className={`animate-fade-up ${active ? 'hidden lg:block' : ''}`}>
-          <div className="p-3 border-b border-border space-y-2">
+      <div className="grid lg:grid-cols-[340px_1fr] gap-5 flex-1 min-h-0">
+        {/* conversations: fixed top (title, search), the list scrolls on its own */}
+        <Card className={`animate-fade-up flex flex-col min-h-0 overflow-hidden ${active ? 'hidden lg:flex' : 'flex'}`}>
+          <div className="p-4 border-b border-border space-y-3 shrink-0">
+            <div className="flex items-end justify-between gap-3">
+              <div><p className="text-[11px] font-semibold uppercase tracking-widest text-accent">Sales</p><h1 className="font-serif text-2xl font-bold tracking-tight leading-tight">Messages</h1></div>
+              {threads && <span className="text-xs text-muted-foreground mb-1">{threads.length} conversation{threads.length === 1 ? '' : 's'}</span>}
+            </div>
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
               <Input className="pl-10 h-10" placeholder="Search name, address or subject…" value={q} onChange={e => setQ(e.target.value)} />
             </div>
             <label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground px-1"><input type="checkbox" checked={unread} onChange={e => set('unread', e.target.checked ? '1' : '')} />Unread only</label>
           </div>
-          <ul className="divide-y divide-border max-h-[70vh] overflow-y-auto">
+          <ul className="flex-1 min-h-0 overflow-y-auto divide-y divide-border">
             {!threads && [0, 1, 2, 3].map(i => <li key={i} className="flex items-center gap-3 px-4 py-3"><Bone className="w-9 h-9 rounded-full" /><div className="flex-1 space-y-2"><Bone className="h-4 w-2/3" /><Bone className="h-3 w-1/2" /></div></li>)}
             {threads?.map(t => (
               <li key={t.key}>
-                <button onClick={() => set('t', t.key)} className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-muted/40 ${active === t.key ? 'bg-accent/10' : ''}`}>
+                <button onClick={() => set('t', t.key)} className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-muted/40 border-l-2 ${active === t.key ? 'bg-accent/10 border-accent' : 'border-transparent'}`}>
                   <span className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">{initials(t.name || t.email)}</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
@@ -70,12 +74,13 @@ export default function MessagesAdmin() {
           </ul>
         </Card>
 
-        <Card className={`animate-fade-up flex flex-col min-h-[60vh] ${active ? '' : 'hidden lg:flex'}`} style={{ animationDelay: '60ms' }}>
+        {/* conversation: fixed header, scrolling bubbles, fixed reply box */}
+        <Card className={`animate-fade-up flex-col min-h-0 overflow-hidden ${active ? 'flex' : 'hidden lg:flex'}`} style={{ animationDelay: '60ms' }}>
           {active ? (
             <>
-              <div className="flex items-center gap-3 px-4 md:px-6 py-4 border-b border-border">
+              <div className="flex items-center gap-3 px-4 md:px-6 py-4 border-b border-border shrink-0">
                 <button onClick={() => set('t', '')} className="lg:hidden p-1 -ml-1 text-muted-foreground hover:text-foreground" aria-label="Back to conversations"><ArrowLeft className="w-5 h-5" /></button>
-                <span className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">{initials(current?.name || current?.email || active)}</span>
+                <span className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">{initials(current?.name || current?.email || active)}</span>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold truncate">{current?.name || current?.email || 'Conversation'}</p>
                   <p className="text-xs text-muted-foreground truncate">{current?.name ? current.email : ''}{current?.count ? `${current?.name ? ' · ' : ''}${current.count} email${current.count === 1 ? '' : 's'}` : ''}</p>
@@ -86,10 +91,13 @@ export default function MessagesAdmin() {
               <Thread threadKey={active} email={current?.email || ''} clientId={current?.client_id ?? null} onRead={bump} onSent={bump} />
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center p-10 text-center text-sm text-muted-foreground">Pick a conversation on the left. Unread ones are bold.</div>
+            <div className="flex-1 flex flex-col items-center justify-center p-10 text-center text-sm text-muted-foreground gap-2">
+              <span className="w-12 h-12 rounded-full bg-muted flex items-center justify-center"><Search className="w-5 h-5" /></span>
+              <p>Pick a conversation on the left. Unread ones are bold.</p>
+            </div>
           )}
         </Card>
       </div>
-    </>
+    </div>
   )
 }
