@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Check, Mail, MessageSquare, Plus, Search, Settings2, Tag, Trash2, X } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
-import { Badge, Button, Empty, Field, Input, Modal, Select, useToast } from './ui'
+import { Badge, Button, Empty, Input, Modal, Select, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import { fmtShort } from './format'
 import Thread from './Thread'
@@ -21,6 +21,15 @@ const TONES = {
   slate: 'bg-muted text-muted-foreground',
 }
 const DOTS = { green: 'bg-emerald-500', amber: 'bg-amber-500', red: 'bg-red-500', blue: 'bg-sky-500', purple: 'bg-violet-500', teal: 'bg-teal-500', pink: 'bg-pink-500', slate: 'bg-slate-400' }
+/** Colour palette: one circle per colour, the chosen one ringed. */
+const Swatches = ({ value, onChange, colors = Object.keys(DOTS), size = 'w-5 h-5' }) => (
+  <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Colour">
+    {colors.map(c => (
+      <button key={c} type="button" role="radio" aria-checked={value === c} title={c} aria-label={c} onClick={() => onChange(c)}
+        className={`${size} rounded-full ${DOTS[c] || DOTS.slate} transition-transform ${value === c ? 'ring-2 ring-offset-2 ring-foreground/60 scale-110' : 'opacity-70 hover:opacity-100'}`} />
+    ))}
+  </div>
+)
 const Chip = ({ color = 'slate', children, className = '' }) => <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap ${TONES[color] || TONES.slate} ${className}`}>{children}</span>
 
 /**
@@ -63,8 +72,8 @@ export default function Conversations({ clientId = null, email = '', useUrl = fa
   const current = threads?.find(t => t.key === active) || null
   const bump = () => setTick(x => x + 1)
   const startNew = () => (onCompose ? onCompose() : setCompose(true))
-  const setLabel = async (key, label) => {
-    try { await adminFetch('/messages/thread/label', { method: 'PUT', body: { key, label } }); toast(label ? `Labelled "${label}"` : 'Label removed'); loadLabels(); bump() }
+  const setLabel = async (key, label, color = null) => {
+    try { await adminFetch('/messages/thread/label', { method: 'PUT', body: { key, label, color } }); toast(label ? `Labelled "${label}"` : 'Label removed'); loadLabels(); bump() }
     catch (x) { toast(x.message, 'error') }
   }
   // `flush`: flat panes separated by a border (full-page workspace); otherwise two cards.
@@ -137,7 +146,7 @@ export default function Conversations({ clientId = null, email = '', useUrl = fa
                   <p className="font-semibold truncate">{current?.subject || active.split('|')[1] || 'Thread'}</p>
                   <p className="text-xs text-muted-foreground truncate">{current?.name ? `${current.name} · ` : ''}{current?.email || email}{current?.count ? ` · ${current.count} email${current.count === 1 ? '' : 's'}` : ''}{current?.awaiting_reply ? ' · awaiting their reply' : ''}</p>
                 </div>
-                <LabelMenu current={current?.label || null} labels={labels?.labels || []} onPick={l => setLabel(active, l)} onManage={() => setManage(true)} />
+                <LabelMenu current={current?.label || null} labels={labels?.labels || []} colors={labels?.colors} onPick={(l, c) => setLabel(active, l, c)} onManage={() => setManage(true)} />
                 {clientId == null && (current?.client_id
                   ? <Link to={`/staff360/clients/${current.client_id}?tab=messages`} className="text-xs font-semibold text-accent whitespace-nowrap hidden sm:inline">Client record →</Link>
                   : current?.email ? <Link to="/staff360/clients/new" state={{ prefill: { name: current.name || current.email, data: { email: current.email } } }} className="text-xs font-semibold text-accent whitespace-nowrap hidden sm:inline">Create client</Link> : null)}
@@ -164,10 +173,11 @@ export default function Conversations({ clientId = null, email = '', useUrl = fa
   )
 }
 
-/** Pick, type or clear the label of the open thread. */
-function LabelMenu({ current, labels, onPick, onManage }) {
+/** Pick, type (with a colour) or clear the label of the open thread. */
+function LabelMenu({ current, labels, colors, onPick, onManage }) {
   const [open, setOpen] = useState(false)
   const [custom, setCustom] = useState('')
+  const [customColor, setCustomColor] = useState('teal')
   const ref = useRef(null)
   useEffect(() => {
     if (!open) return
@@ -176,7 +186,7 @@ function LabelMenu({ current, labels, onPick, onManage }) {
     document.addEventListener('mousedown', away); window.addEventListener('keydown', esc)
     return () => { document.removeEventListener('mousedown', away); window.removeEventListener('keydown', esc) }
   }, [open])
-  const pick = l => { onPick(l); setOpen(false); setCustom('') }
+  const pick = (l, c = null) => { onPick(l, c); setOpen(false); setCustom('') }
   return (
     <div ref={ref} className="relative shrink-0">
       <button type="button" onClick={() => setOpen(o => !o)} className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-semibold border transition-colors ${current ? `${TONES[current.color] || TONES.slate} border-transparent` : 'border-border text-muted-foreground hover:bg-muted'}`} aria-haspopup="menu" aria-expanded={open}>
@@ -194,9 +204,12 @@ function LabelMenu({ current, labels, onPick, onManage }) {
               </li>
             ))}
           </ul>
-          <form onSubmit={e => { e.preventDefault(); if (custom.trim()) pick(custom.trim()) }} className="mt-1 flex items-center gap-1.5 px-1">
-            <Input className="h-8 text-xs" placeholder="New label…" value={custom} onChange={e => setCustom(e.target.value)} maxLength={40} />
-            <Button type="submit" variant="outline" className="h-8 px-2.5" disabled={!custom.trim()} aria-label="Add label"><Plus className="w-3.5 h-3.5" /></Button>
+          <form onSubmit={e => { e.preventDefault(); if (custom.trim()) pick(custom.trim(), customColor) }} className="mt-1.5 px-1 space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <Input className="h-8 text-xs" placeholder="New label…" value={custom} onChange={e => setCustom(e.target.value)} maxLength={40} />
+              <Button type="submit" variant="outline" className="h-8 px-2.5" disabled={!custom.trim()} aria-label="Add label"><Plus className="w-3.5 h-3.5" /></Button>
+            </div>
+            <Swatches value={customColor} onChange={setCustomColor} colors={colors} size="w-4 h-4" />
           </form>
           <div className="mt-1.5 pt-1.5 border-t border-border flex items-center justify-between px-1">
             <button type="button" onClick={() => { onManage(); setOpen(false) }} className="text-xs font-semibold text-accent px-1 py-1">Manage labels…</button>
@@ -225,18 +238,19 @@ function LabelManager({ open, onClose, labels, onSaved }) {
     <Modal open={open} onClose={onClose} title="Labels" footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button variant="accent" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save labels'}</Button></>}>
       <p className="text-sm text-muted-foreground mb-4">Labels mark where a thread stands. Removing one clears it from every thread that used it.</p>
       {err && <p className="text-sm text-destructive mb-3">{err}</p>}
-      <ul className="space-y-2">
+      <ul className="divide-y divide-border rounded-xl border border-border">
         {rows.map((l, i) => (
-          <li key={i} className="flex items-center gap-2">
-            <span className={`w-3 h-3 rounded-full shrink-0 ${DOTS[l.color] || DOTS.slate}`} />
-            <Input className="h-10 flex-1" value={l.name} maxLength={40} onChange={e => update(i, { name: e.target.value })} placeholder="Label name" />
-            <Select className="h-10 w-28 text-xs capitalize" value={l.color} onChange={e => update(i, { color: e.target.value })}>{colors.map(c => <option key={c} value={c}>{c}</option>)}</Select>
+          <li key={i} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+            <Chip color={l.color} className="shrink-0 min-w-[2.5rem] justify-center"><Tag className="w-3 h-3" /></Chip>
+            <div className="flex-1 min-w-[12rem]"><Input className="h-10" value={l.name} maxLength={40} onChange={e => update(i, { name: e.target.value })} placeholder="Label name" /></div>
+            <Swatches value={l.color} onChange={c => update(i, { color: c })} colors={colors} />
             <button type="button" onClick={() => setRows(r => r.filter((_, j) => j !== i))} className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-muted" aria-label="Remove label"><Trash2 className="w-4 h-4" /></button>
           </li>
         ))}
+        {!rows.length && <li className="px-3 py-6 text-center text-sm text-muted-foreground">No labels yet.</li>}
       </ul>
-      <Button type="button" variant="outline" className="mt-3 h-9" onClick={() => setRows(r => [...r, { name: '', color: 'slate' }])}><Plus className="w-4 h-4" />Add a label</Button>
-      <Field className="mt-4" label="" hint="Preset ideas: Waiting for client response · Deal pending approval · Deal closed · Follow up needed · On hold"><span /></Field>
+      <Button type="button" variant="outline" className="mt-3 h-9" onClick={() => setRows(r => [...r, { name: '', color: 'teal' }])}><Plus className="w-4 h-4" />Add a label</Button>
+      <p className="mt-4 text-xs text-muted-foreground">Ideas: Waiting for client response · Deal pending approval · Deal closed · Follow up needed · On hold</p>
     </Modal>
   )
 }

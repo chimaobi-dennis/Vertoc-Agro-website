@@ -529,7 +529,7 @@ router.put('/messages/labels', mail, h(async (req, res) => {
   res.json({ labels, colors: content.LABEL_COLORS })
 }))
 router.put('/messages/thread/label', mail, h(async (req, res) => {
-  const label = await exposing(content.setThreadLabel)(req.body?.key, req.body?.label, req.user)
+  const label = await exposing(content.setThreadLabel)(req.body?.key, req.body?.label, req.user, req.body?.color)
   await audit({ actor: req.user, action: 'label', entity: 'thread', entityId: req.body?.key, after: { label: label?.name ?? null } })
   res.json({ key: req.body?.key, label })
 }))

@@ -950,14 +950,16 @@ export async function setLabelCatalogue(list) {
   await writeLabelsRow({ catalogue, threads })
   return catalogue
 }
-/** Set (or, with an empty label, clear) the label on one thread. A new name joins the catalogue. */
-export async function setThreadLabel(key, label, actor = null) {
+/** Set (or, with an empty label, clear) the label on one thread. A new name joins the catalogue, with `color` when given. */
+export async function setThreadLabel(key, label, actor = null, color = null) {
   if (!parseThreadKey(key)) throw new Error('unknown thread')
   const row = await readLabelsRow()
   const name = cleanLabelName(label)
   if (!name) { delete row.threads[key]; await writeLabelsRow(row); return null }
+  const tone = LABEL_COLORS.includes(color) ? color : null
   let entry = row.catalogue.find(c => c.name.toLowerCase() === name.toLowerCase())
-  if (!entry) { if (row.catalogue.length >= 30) throw new Error('too many labels; remove one first'); entry = { name, color: 'slate' }; row.catalogue.push(entry) }
+  if (!entry) { if (row.catalogue.length >= 30) throw new Error('too many labels; remove one first'); entry = { name, color: tone || 'slate' }; row.catalogue.push(entry) }
+  else if (tone) entry.color = tone
   row.threads[key] = { label: entry.name, at: new Date().toISOString(), by: actor?.email || actor?.label || null }
   await writeLabelsRow(row)
   return { ...entry, at: row.threads[key].at }
