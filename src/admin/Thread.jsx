@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Download, ExternalLink, FileText, Paperclip, Send, X } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
-import { Badge, Button, Textarea, useToast } from './ui'
+import { Badge, Button, Select, Textarea, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import { ACCEPT, openDocument, uploadDocument } from './documents'
 import { fmtBytes, fmtDate, messageTone } from './format'
@@ -23,6 +23,8 @@ export default function Thread({ threadKey, email = '', clientId = null, refresh
   const [opened, setOpened] = useState(() => new Set())
   const [body, setBody] = useState('')
   const [files, setFiles] = useState([])
+  const [senders, setSenders] = useState([])
+  const [fromId, setFromId] = useState('')
   const [uploading, setUploading] = useState(false)
   const [sending, setSending] = useState(false)
   const fileRef = useRef(null)
@@ -40,6 +42,7 @@ export default function Thread({ threadKey, email = '', clientId = null, refresh
     } catch (e) { setErr(e.message) }
   }, [threadKey]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setRows(null); setBody(''); setFiles([]); setOpened(new Set()); load() }, [load, refreshKey])
+  useEffect(() => { adminFetch('/messages/senders').then(l => { setSenders(l); setFromId(f => f || l[0]?.id || '') }).catch(() => {}) }, [])
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }) }, [rows])
 
   const last = rows?.length ? rows[rows.length - 1] : null
@@ -59,7 +62,7 @@ export default function Thread({ threadKey, email = '', clientId = null, refresh
     if (!body.trim() || !to || !last) return
     setSending(true)
     try {
-      const r = await adminFetch('/messages', { method: 'POST', body: { to, subject, body, client_id: clientId, reply_to_id: lastIn?.id ?? last.id, attachment_ids: files.map(f => f.id) } })
+      const r = await adminFetch('/messages', { method: 'POST', body: { to, subject, body, client_id: clientId, reply_to_id: lastIn?.id ?? last.id, attachment_ids: files.map(f => f.id), from_id: fromId || null } })
       setBody(''); setFiles([]); toast('Sent'); onSent?.(r); load()
     } catch (x) { toast(x.message, 'error') } finally { setSending(false) }
   }
@@ -117,7 +120,10 @@ export default function Thread({ threadKey, email = '', clientId = null, refresh
       </div>
 
       <form onSubmit={send} className="shrink-0 border-t border-border p-4 space-y-3 bg-card">
-        <p className="text-xs text-muted-foreground truncate">Reply to <b className="text-foreground">{to || '—'}</b>{subject ? <> · {subject}</> : null}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground truncate">Reply to <b className="text-foreground">{to || '—'}</b>{subject ? <> · {subject}</> : null}</p>
+          {senders.length > 1 && <label className="flex items-center gap-1.5 text-xs text-muted-foreground">From<Select className="h-8 text-xs w-auto" value={fromId} onChange={e => setFromId(e.target.value)}>{senders.map(s => <option key={s.id} value={s.id}>{s.name} &lt;{s.email}&gt;</option>)}</Select></label>}
+        </div>
         <Textarea rows={3} value={body} onChange={e => setBody(e.target.value)} placeholder="Write a reply… only this text is sent; their mail app files it under this thread. A different topic? Use New email." />
         {files.length > 0 && (
           <ul className="flex flex-wrap gap-1.5">

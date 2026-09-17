@@ -863,6 +863,41 @@ export async function findClientByEmail(email) {
   const e = String(email || '').trim(); if (!e) return null
   return (unwrap(await supabase.from('clients').select('*').ilike('data->>email', e).order('status').limit(1), 'findClientByEmail'))?.[0] ?? null
 }
+/* --------------------------------------------------------- departments --- */
+// Sender identities ("departments"): each is a From address with a display
+// name, an optional reply-to and an optional signature. Stored in the
+// settings table under 'departments' (outside the settings groups). The
+// email settings' From is always available as the default sender.
+const DEPT_RE = /^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$/
+const parseFrom = s => { const m = String(s || '').match(/^\s*(?:"?([^"<]*)"?\s*)?<([^>]+)>\s*$/); return m ? { name: (m[1] || '').trim(), email: m[2].trim() } : { name: '', email: String(s || '').trim() } }
+export async function listDepartments() {
+  const [settings, rows] = await Promise.all([getSettings(), supabase.from('settings').select('value').eq('key', 'departments').limit(1).then(r => unwrap(r, 'listDepartments') ?? [])])
+  const base = parseFrom(settings.email.from)
+  const def = { id: 'default', name: base.name || settings.company.name || 'Vertoc Agro', email: base.email, reply_to: settings.email.reply_to || '', signature: '', is_default: true }
+  const items = (rows?.[0]?.value?.items || []).filter(d => d && d.id !== 'default').map(d => ({ ...d, is_default: false }))
+  return [def, ...items]
+}
+export async function setDepartments(list) {
+  if (!Array.isArray(list)) throw new Error('departments must be a list')
+  const items = [], seen = new Set()
+  for (const d of list.slice(0, 20)) {
+    const name = String(d?.name || '').replace(/\s+/g, ' ').trim().slice(0, 60), email = String(d?.email || '').trim().toLowerCase()
+    if (!name || !DEPT_RE.test(email) || seen.has(email)) continue
+    seen.add(email)
+    const reply_to = String(d?.reply_to || '').trim().toLowerCase(); if (reply_to && !DEPT_RE.test(reply_to)) throw new Error(`reply-to for ${name} is not a valid address`)
+    items.push({ id: String(d?.id || '').match(/^[a-z0-9_-]{4,40}$/i) ? d.id : `d_${randomBytes(4).toString('hex')}`, name, email, reply_to, signature: String(d?.signature || '').trim().slice(0, 2000) })
+  }
+  unwrap(await supabase.from('settings').upsert({ key: 'departments', value: { items } }, { onConflict: 'key' }), 'setDepartments')
+  return listDepartments()
+}
+/** The From line, reply-to and signature to send with, for a department id (or the default). */
+export async function resolveSender(fromId, settings) {
+  const s = settings || (await getSettings())
+  const list = await listDepartments()
+  const d = (fromId && list.find(x => x.id === fromId)) || list[0]
+  return { id: d.id, name: d.name, from: `${d.name} <${d.email}>`, reply_to: d.reply_to || s.email.reply_to, signature: d.signature || s.email.signature }
+}
+
 /* ------------------------------------------------------- conversations --- */
 // A conversation is every email with one client (or, for senders without a
 // client record, one address). Quoted history at the bottom of a reply is

@@ -334,6 +334,15 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
   `POST /messages/thread/read`, and `POST /messages` with `reply_to_id`.
   Team notifications and staff invitations are `internal` mail
   (`messages.headers.internal`) and never appear in conversations.
+- **Departments.** Settings → Email → Departments adds sender identities
+  (Finance <finance@…>, Logistics <…>) next to the default From. The composer
+  and the reply box offer a From selector when more than one exists
+  (`GET /messages/senders`, `from_id` on `POST /messages` and
+  `POST /quotes/:id/send`). Stored in the `settings` table under `departments`.
+- **Positions.** Staff have a position (migration `008_positions.sql`), set on
+  invite or on the user page. Free-text emails are signed "Name, Position"
+  above the signature, and templates get `{{sender_name}}` as
+  "Name, Position" plus `{{sender_position}}`.
 - **Invoice PDFs on the client record.** Sending an invoice files its PDF under
   the client's documents (and the invoice), replacing the copy from an earlier
   send; the email's attachment links to that document.

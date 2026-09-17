@@ -39,12 +39,12 @@ export async function authenticate(req, res, next) {
     if (result.error || !user) return deny(res, 401, 'Session expired. Please sign in again.')
 
     const { data: profile } = await supabase
-      .from('profiles').select('id, email, name, role, active').eq('id', user.id).maybeSingle()
+      .from('profiles').select('*').eq('id', user.id).maybeSingle()
 
     if (!profile) return deny(res, 403, 'No profile for this account. Ask an admin to enable it.')
     if (!profile.active) return deny(res, 403, 'This account has been deactivated.')
 
-    req.user = { id: profile.id, email: profile.email || user.email, name: profile.name, role: profile.role }
+    req.user = { id: profile.id, email: profile.email || user.email, name: profile.name, role: profile.role, position: profile.position || '' }
     next()
   } catch (e) {
     console.error('[auth]', e.message)

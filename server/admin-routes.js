@@ -127,7 +127,7 @@ const isEmail = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || ''))
 router.get('/users', requireRole('admin'), h(async (_req, res) => {
   const sb = await supabase()
   const { data, error } = await sb.from('profiles')
-    .select('id, email, name, role, active, created_at').order('created_at')
+    .select('*').order('created_at')
   if (error) throw new Error(error.message)
   res.json(data)
 }))
@@ -182,6 +182,7 @@ router.post('/users/:id/send-link', requireRole('admin'), h(async (req, res) => 
 
 router.post('/users/invite', requireRole('admin'), h(async (req, res) => {
   const { email, name = '', role = 'editor' } = req.body || {}
+  const position = String(req.body?.position || '').trim().slice(0, 80)
   if (!isEmail(email)) throw bad('Please enter a valid email address.')
   if (!ROLES.includes(role)) throw bad(`Role must be one of: ${ROLES.join(', ')}.`)
 
@@ -190,12 +191,18 @@ router.post('/users/invite', requireRole('admin'), h(async (req, res) => {
   const { user, via, message, warning } = await inviteUser({ actor: req.user, email, name, role, supabase: sb, redirectTo })
 
   // The auth trigger created an INACTIVE profile; this upsert activates it with the chosen role.
-  const { error: pErr } = await sb.from('profiles')
-    .upsert({ id: user.id, email, name, role, active: true }, { onConflict: 'id' })
+  let { error: pErr } = await sb.from('profiles')
+    .upsert({ id: user.id, email, name, role, active: true, ...(position ? { position } : {}) }, { onConflict: 'id' })
+  let positionWarning = null
+  if (pErr && position && /position/.test(pErr.message)) {   // migration 008 not applied yet: keep the invite, drop the position
+    positionWarning = 'Position not saved: run server/migrations/008_positions.sql in the Supabase SQL editor.'
+    ;({ error: pErr } = await sb.from('profiles').upsert({ id: user.id, email, name, role, active: true }, { onConflict: 'id' }))
+  }
   if (pErr) throw new Error(pErr.message)
 
   await audit({ actor: req.user, action: 'invite', entity: 'user', entityId: user.id, after: { email, name, role, via } })
-  res.status(201).json({ id: user.id, email, name, role, active: true, via, message_id: message?.id ?? null, ...(warning ? { warning } : {}) })
+  const warn = [warning, positionWarning].filter(Boolean).join(' ')
+  res.status(201).json({ id: user.id, email, name, role, active: true, position: positionWarning ? '' : position, via, message_id: message?.id ?? null, ...(warn ? { warning: warn } : {}) })
 }))
 
 router.patch('/users/:id', requireRole('admin'), h(async (req, res) => {
@@ -211,6 +218,7 @@ router.patch('/users/:id', requireRole('admin'), h(async (req, res) => {
     if (!isEmail(req.body.email)) throw bad('Please enter a valid email address.')
     patch.email = String(req.body.email).trim().toLowerCase()
   }
+  if (req.body.position !== undefined) patch.position = String(req.body.position || '').trim().slice(0, 80)
   if (!Object.keys(patch).length) throw bad('Nothing to update.')
   if (!UUID_RE.test(id)) throw bad('User not found.', 404)
 
@@ -236,7 +244,7 @@ router.patch('/users/:id', requireRole('admin'), h(async (req, res) => {
     if (aErr) throw bad(/already|exists/i.test(aErr.message) ? 'That email already has an account.' : aErr.message)
   }
   const { data: after, error } = await sb.from('profiles').update(patch).eq('id', id).select().single()
-  if (error) throw new Error(error.message)
+  if (error) throw /position/.test(error.message) ? bad('Positions need the database migration 008_positions.sql — run it in the Supabase SQL editor first.') : new Error(error.message)
   await audit({ actor: req.user, action: 'update', entity: 'user', entityId: id, before, after })
   res.json(after)
 }))
@@ -430,6 +438,13 @@ router.delete('/settings/mcp/token', settingsAdmin, h(async (req, res) => {
 }))
 
 /* Secrets (API keys) set from the panel: write-only, encrypted at rest. */
+// Departments: extra sender identities (name + address, optional reply-to and signature).
+router.get('/settings/departments', settingsAdmin, h(async (_req, res) => res.json(await content.listDepartments())))
+router.put('/settings/departments', settingsAdmin, h(async (req, res) => {
+  const list = await exposing(content.setDepartments)(req.body?.departments)
+  await audit({ actor: req.user, action: 'update', entity: 'departments', entityId: null, after: { departments: list.map(d => d.email) } })
+  res.json(list)
+}))
 router.put('/settings/secrets/:name', settingsAdmin, h(async (req, res) => {
   const { name } = req.params
   if (!SECRET_NAMES[name]) throw bad('Unknown secret.', 404)
@@ -511,7 +526,7 @@ router.get('/quotes/:id/pdf', inbox, h(async (req, res) => {
 }))
 router.post('/quotes/:id/send', mail, h(async (req, res) => {
   const b = req.body || {}
-  const r = await sendQuote(req.params.id, { actor: req.user, to: b.to, subject: b.subject, body: b.body, attachmentIds: b.attachment_ids || [] })
+  const r = await sendQuote(req.params.id, { actor: req.user, to: b.to, subject: b.subject, body: b.body, attachmentIds: b.attachment_ids || [], fromId: b.from_id || null })
   res.json({ ...r, link: quoteLink(r.quote) })
 }))
 router.post('/quotes/:id/convert', crm, h(async (req, res) => {
@@ -530,6 +545,8 @@ router.get('/messages', mail, h(async (req, res) => {
 router.get('/messages/threads', mail, h(async (req, res) => {
   res.json(await content.listThreads({ q: req.query.q || '', unread: req.query.unread === '1', label: req.query.label || '', client_id: idOrNull(req.query.client_id) }))
 }))
+// Sender identities for the composer: the default From plus the departments from Settings.
+router.get('/messages/senders', mail, h(async (_req, res) => res.json(await content.listDepartments())))
 router.get('/messages/labels', mail, h(async (_req, res) => {
   res.json({ labels: await content.getLabelCatalogue(), colors: content.LABEL_COLORS })
 }))
@@ -576,7 +593,7 @@ router.post('/messages', mail, h(async (req, res) => {
     if (!subject) subject = /^re:/i.test(inReplyTo.subject || '') ? inReplyTo.subject : `Re: ${inReplyTo.subject || ''}`.trim()
     clientId ??= inReplyTo.client_id; enquiryId ??= inReplyTo.enquiry_id; quoteId = inReplyTo.quote_id ?? null
   }
-  const msg = await deliver({ actor: req.user, to, toName, subject, body: b.body, attachmentIds: b.attachment_ids || [], clientId, enquiryId, quoteId, inReplyTo })
+  const msg = await deliver({ actor: req.user, to, toName, subject, body: b.body, attachmentIds: b.attachment_ids || [], clientId, enquiryId, quoteId, inReplyTo, fromId: b.from_id || null, signOff: true })
   res.status(201).json({ ...msg, thread_key: content.threadKeyOf(msg) })
 }))
 

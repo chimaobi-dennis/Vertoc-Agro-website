@@ -11,7 +11,7 @@ const ROLES = ['admin', 'editor', 'sales']
 export default function UsersAdmin() {
   const { me } = useAuth()
   const [rows, setRows] = useState(null); const [err, setErr] = useState(null)
-  const [inv, setInv] = useState({ email: '', name: '', role: 'editor' }); const [busy, setBusy] = useState(false)
+  const [inv, setInv] = useState({ email: '', name: '', position: '', role: 'editor' }); const [busy, setBusy] = useState(false)
   const [toast, toastEl] = useToast()
 
   const load = useCallback(() => adminFetch('/users').then(setRows).catch(e => setErr(e.message)), [])
@@ -19,7 +19,7 @@ export default function UsersAdmin() {
 
   const invite = async e => {
     e.preventDefault(); setBusy(true)
-    try { const r = await adminFetch('/users/invite', { method: 'POST', body: inv }); toast(r.warning ? `Invite sent to ${inv.email}. ${r.warning}` : `Invite sent to ${inv.email}${r.via === 'resend' ? ' with your template' : ''}`, r.warning ? 'error' : 'ok'); setInv({ email: '', name: '', role: 'editor' }); load() }
+    try { const r = await adminFetch('/users/invite', { method: 'POST', body: inv }); toast(r.warning ? `Invite sent to ${inv.email}. ${r.warning}` : `Invite sent to ${inv.email}${r.via === 'resend' ? ' with your template' : ''}`, r.warning ? 'error' : 'ok'); setInv({ email: '', name: '', position: '', role: 'editor' }); load() }
     catch (e) { toast(e.message, 'error') } finally { setBusy(false) }
   }
   const patch = async (u, body) => {
@@ -33,9 +33,10 @@ export default function UsersAdmin() {
       {err && <Alert>{err}</Alert>}
       <Card className="p-6 mb-6">
         <h2 className="text-sm font-semibold mb-4 flex items-center gap-2"><UserPlus className="w-4 h-4 text-accent" />Invite a user</h2>
-        <form onSubmit={invite} className="grid md:grid-cols-4 gap-4 items-end">
+        <form onSubmit={invite} className="grid md:grid-cols-5 gap-4 items-end">
           <Field label="Email"><Input type="email" required value={inv.email} onChange={e => setInv({ ...inv, email: e.target.value })} /></Field>
           <Field label="Name"><Input value={inv.name} onChange={e => setInv({ ...inv, name: e.target.value })} /></Field>
+          <Field label="Position" hint="e.g. CEO, Managing Director — shown in their emails"><Input value={inv.position} onChange={e => setInv({ ...inv, position: e.target.value })} placeholder="Sales Manager" /></Field>
           <Field label="Role"><Select value={inv.role} onChange={e => setInv({ ...inv, role: e.target.value })}>{ROLES.map(r => <option key={r}>{r}</option>)}</Select></Field>
           <Button type="submit" disabled={busy}>{busy ? 'Sending…' : 'Send invite'}</Button>
         </form>
@@ -47,7 +48,7 @@ export default function UsersAdmin() {
             const self = u.id === me.id
             return (
               <tr key={u.id} className="hover:bg-muted/40">
-                <Td><Link to={`/staff360/users/${u.id}`} className="font-medium hover:text-accent">{u.name || u.email}</Link>{self && <Badge tone="blue" className="ml-2">you</Badge>}<div className="text-xs text-muted-foreground">{u.email}</div></Td>
+                <Td><Link to={`/staff360/users/${u.id}`} className="font-medium hover:text-accent">{u.name || u.email}</Link>{self && <Badge tone="blue" className="ml-2">you</Badge>}<div className="text-xs text-muted-foreground">{u.email}{u.position ? ` · ${u.position}` : ''}</div></Td>
                 <Td><Select value={u.role} disabled={self} onChange={e => patch(u, { role: e.target.value })} className="w-32">{ROLES.map(r => <option key={r}>{r}</option>)}</Select></Td>
                 <Td><Badge tone={u.active ? 'green' : 'red'}>{u.active ? 'active' : 'inactive'}</Badge></Td>
                 <Td className="text-muted-foreground text-xs">{new Date(u.created_at).toLocaleDateString()}</Td>

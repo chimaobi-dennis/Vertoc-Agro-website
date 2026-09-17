@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { FileText, Paperclip, Send, Upload } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
-import { Alert, Button, Field, Input, Modal, Textarea } from './ui'
+import { Alert, Button, Field, Input, Modal, Select, Textarea } from './ui'
 import { ACCEPT, uploadDocument } from './documents'
 import { fmtBytes } from './format'
 
@@ -21,6 +21,8 @@ export default function Composer({ open, onClose, title = 'Send email', to = '',
   const fileRef = useRef(null)
   const [form, setForm] = useState({ to, subject, body })
   const [settings, setSettings] = useState(null)
+  const [senders, setSenders] = useState([])   // departments to send from; the first is the default From
+  const [fromId, setFromId] = useState('')
   const [docs, setDocs] = useState([])
   const [picked, setPicked] = useState(new Set())
   const [uploading, setUploading] = useState(false)
@@ -37,6 +39,7 @@ export default function Composer({ open, onClose, title = 'Send email', to = '',
         .catch(() => {})
     }
     adminFetch('/settings').then(setSettings).catch(() => setSettings({ email: {} }))
+    adminFetch('/messages/senders').then(l => { setSenders(l); setFromId(l[0]?.id || '') }).catch(() => setSenders([]))
     if (clientId) adminFetch(`/documents?client_id=${clientId}`).then(setDocs).catch(() => setDocs([]))
     else setDocs([])
   }, [open, to, subject, body, clientId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -51,14 +54,15 @@ export default function Composer({ open, onClose, title = 'Send email', to = '',
   const send = async e => {
     e.preventDefault(); setSending(true); setErr(null)
     try {
-      const payload = { to: form.to, subject: form.subject, body: form.body, attachment_ids: [...picked], client_id: clientId, enquiry_id: enquiryId, reply_to_id: replyToId }
+      const payload = { to: form.to, subject: form.subject, body: form.body, attachment_ids: [...picked], client_id: clientId, enquiry_id: enquiryId, reply_to_id: replyToId, from_id: fromId || null }
       const r = await adminFetch(quoteId ? `/quotes/${quoteId}/send` : '/messages', { method: 'POST', body: payload })
       onSent?.(r); onClose()
     } catch (x) { setErr(x.message) } finally { setSending(false) }
   }
 
   const configured = settings?.email?.configured
-  const from = settings?.email?.from
+  const chosen = senders.find(s => s.id === fromId)
+  const from = chosen ? `${chosen.name} <${chosen.email}>` : settings?.email?.from
 
   return (
     <Modal open={open} onClose={onClose} title={title} wide
@@ -74,6 +78,11 @@ export default function Composer({ open, onClose, title = 'Send email', to = '',
         {quoteId && <Alert tone="info">The invoice PDF and its unique online link are attached automatically. The text comes from the "Invoice to client" template — edit it here before sending.</Alert>}
         {replyToId && <Alert tone="info">Sent as a reply: it threads under their email in their mail app, so write only the new text.</Alert>}
         {err && <Alert>{err}</Alert>}
+        {senders.length > 1 && (
+          <Field label="From" hint="Departments are set up under Settings → Email">
+            <Select value={fromId} onChange={e => setFromId(e.target.value)}>{senders.map(s => <option key={s.id} value={s.id}>{s.name} &lt;{s.email}&gt;</option>)}</Select>
+          </Field>
+        )}
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="To"><Input type="email" required value={form.to} onChange={e => setForm({ ...form, to: e.target.value })} placeholder="client@company.com" /></Field>
           <Field label="Subject"><Input required value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} /></Field>

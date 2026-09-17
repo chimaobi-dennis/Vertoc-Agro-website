@@ -59,7 +59,7 @@ export const panelLink = path => `${publicUrl()}/staff360${path}`
  * @param {number|null} [o.quoteId]
  * @param {number|null} [o.enquiryId]
  */
-export async function deliver({ actor, to, toName = '', subject, body, attachmentIds = [], extraAttachments = [], cta = null, clientId = null, quoteId = null, enquiryId = null, inReplyTo = null, internal = false, auto = false }) {
+export async function deliver({ actor, to, toName = '', subject, body, attachmentIds = [], extraAttachments = [], cta = null, clientId = null, quoteId = null, enquiryId = null, inReplyTo = null, internal = false, auto = false, fromId = null, signOff = false }) {
   to = String(to || '').trim()
   if (!EMAIL_RE.test(to)) throw bad('Please enter a valid recipient email address.')
   subject = String(subject || '').trim().slice(0, 300)
@@ -68,9 +68,14 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
   if (!body) throw bad('Please write a message.')
 
   const settings = await content.getSettings()
-  const html = renderEmailHtml({ body, signature: settings.email.signature, company: settings.company, cta })
-  const text = settings.email.signature ? `${body}\n\n${settings.email.signature}` : body
-  const replyTo = settings.email.inbound_address || settings.email.reply_to
+  // Who it is from: the chosen department (or the default From), plus a sign-off line
+  // naming the staff member and their position on free-text emails.
+  const sender = await content.resolveSender(fromId, settings)
+  const who = signOff && actor?.name ? `${actor.name}${actor.position ? `, ${actor.position}` : ''}` : ''
+  const signature = [who, sender.signature].filter(Boolean).join('\n')
+  const html = renderEmailHtml({ body, signature, company: settings.company, cta })
+  const text = signature ? `${body}\n\n${signature}` : body
+  const replyTo = settings.email.inbound_address || sender.reply_to
 
   // Threading: a reply carries In-Reply-To / References pointing at the
   // message it answers, so the client's mail app files it in the same
@@ -90,7 +95,7 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
 
   const msg = await content.createMessage({
     client_id: clientId, quote_id: quoteId, enquiry_id: enquiryId, direction: 'out',
-    to_email: to, to_name: String(toName || '').slice(0, 200), from_email: settings.email.from,
+    to_email: to, to_name: String(toName || '').slice(0, 200), from_email: sender.from,
     subject, body, html, status: 'queued', attachments: meta, sent_by: actor?.id ?? null,
     // `internal` marks mail to the team itself (notifications), kept out of client conversations.
     headers: { ...(parentId ? { 'in-reply-to': parentId, references } : {}), ...(internal ? { internal: true } : {}) }, ...(parentId ? { in_reply_to: parentId } : {}),
@@ -102,7 +107,7 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
     else {
       key = (await resolveResendKey()).key
       if (!key) throw bad('Email is not set up yet. Add your Resend API key under Settings → Email.', 503)
-      sent = await sendEmail({ apiKey: key, from: settings.email.from, to, replyTo, subject, text, html, attachments, headers })
+      sent = await sendEmail({ apiKey: key, from: sender.from, to, replyTo, subject, text, html, attachments, headers })
     }
   } catch (e) {
     const failed = await content.updateMessage(msg.id, { status: 'failed', error: String(e.message).slice(0, 1000) })
@@ -124,7 +129,7 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
 }
 
 /** Email a quote: PDF attached, public link as the button, status -> sent. */
-export async function sendQuote(id, { actor, to, subject, body, attachmentIds = [] }) {
+export async function sendQuote(id, { actor, to, subject, body, attachmentIds = [], fromId = null }) {
   const q = await content.getQuote(id)
   if (!q) throw bad('invoice not found', 404)
   if (['accepted', 'declined'].includes(q.status)) throw bad(`This invoice was already ${q.status}; create a new one instead.`)
@@ -148,7 +153,7 @@ export async function sendQuote(id, { actor, to, subject, body, attachmentIds = 
     subject: subject || tpl.subject, body: body || tpl.body,
     attachmentIds: pdfDoc ? [pdfDoc.id, ...attachmentIds] : attachmentIds, extraAttachments: pdfDoc ? [] : [{ filename: `${q.number}.pdf`, content: pdf }],
     cta: tpl.cta || { label: 'View and respond online', url: link },
-    clientId: q.client_id, quoteId: q.id,
+    clientId: q.client_id, quoteId: q.id, fromId,
   })
   const quote = await content.markQuoteSent(q.id, { to: recipient })
   await audit({ actor, action: 'send', entity: 'quote', entityId: q.id, after: { number: q.number, to: recipient, message_id: msg.id } })

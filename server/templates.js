@@ -90,12 +90,13 @@ export async function templateFor(key) {
 }
 
 const fmtDate = d => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '')
-const senderName = (actor, settings) => actor?.name || (settings.email.from.match(/^(.*?)\s*</)?.[1] || '').trim() || settings.company.name
+// "Precious Ubadire, Managing Director" when the sender has a position; the From name or company otherwise.
+const senderName = (actor, settings) => (actor?.name ? `${actor.name}${actor.position ? `, ${actor.position}` : ''}` : '') || (settings.email.from.match(/^(.*?)\s*</)?.[1] || '').trim() || settings.company.name
 
 /** Variables for a template from the records it concerns. `link` is the CTA target. */
 export async function buildVars(key, ctx = {}) {
   const settings = ctx.settings || (await content.getSettings())
-  const base = { company_name: settings.company.name, site_name: settings.site.name, sender_name: senderName(ctx.actor, settings) }
+  const base = { company_name: settings.company.name, site_name: settings.site.name, sender_name: senderName(ctx.actor, settings), sender_position: ctx.actor?.position || '' }
   if (key === 'quote') {
     const q = ctx.quote
     return { ...base, client_name: q.client_name, client_email: q.client_email, quote_number: q.number, quote_title: q.title, total: formatMoney(q.total, q.currency), currency: q.currency, valid_until: fmtDate(q.valid_until), link: ctx.link || '' }

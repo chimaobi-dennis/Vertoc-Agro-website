@@ -108,6 +108,7 @@ try {
   await step('GET /users/:id shows sign-in facts + activity', async () => { const u = await api(`/users/${userId}`); if (!u.auth || !['accepted', 'pending'].includes(u.auth.invite) || !Array.isArray(u.activity)) throw new Error(JSON.stringify(u).slice(0, 120)); return `invite ${u.auth.invite} · password ${u.auth.password} · ${u.activity.length} actions` })
   await step('PATCH /users/:id name is mirrored to Auth', async () => { const u = await api(`/users/${userId}`, { method: 'PATCH', body: { name: 'E2E Admin' } }); if (u.name !== 'E2E Admin') throw new Error(u.name); const { data } = await svc.auth.admin.getUserById(userId); if (data?.user?.user_metadata?.name !== 'E2E Admin') throw new Error('auth metadata not updated'); return u.name })
   await step('PATCH /users/:id rejects a bad email', () => refused(() => api(`/users/${userId}`, { method: 'PATCH', body: { email: 'nope' } }), /valid email/, 'bad email'))
+  await step('PATCH /users/:id position (needs migration 008)', async () => { try { const u = await api(`/users/${userId}`, { method: 'PATCH', body: { position: 'E2E Director' } }); if (u.position !== 'E2E Director') throw new Error(JSON.stringify(u).slice(0, 100)); return u.position } catch (e) { if (/migration 008/.test(e.message)) return 'SKIPPED — run server/migrations/008_positions.sql'; throw e } })
   await step('GET /users/:id unknown → 404', async () => { const r = await fetch(`${API}/api/admin/users/00000000-0000-0000-0000-000000000000`, { headers: { Authorization: `Bearer ${token}` } }); if (r.status !== 404) throw new Error(r.status); return '404 ✓' })
 
   await step('audit log recorded this run', async () => {
@@ -216,6 +217,15 @@ try {
       if (m.status !== 'sent' || m.enquiry_id !== data.id) throw new Error(JSON.stringify(m).slice(0, 100)); return data.id
     })
     await step('reply moved the enquiry new → contacted', async () => { const e = await api(`/enquiries/${enq2}`); if (e.status !== 'contacted') throw new Error(e.status); return e.status })
+    settingsBefore.departments = (await svc.from('settings').select('value').eq('key', 'departments').maybeSingle()).data?.value ?? null
+    await step('PUT /settings/departments + send from one (dry run)', async () => {
+      const l = await api('/settings/departments', { method: 'PUT', body: { departments: [{ name: 'E2E Finance', email: 'finance@e2e.invalid', reply_to: '' }] } })
+      const fin = l.find(d => d.email === 'finance@e2e.invalid'); if (!fin || !l[0].is_default) throw new Error(JSON.stringify(l).slice(0, 160))
+      const s = await api('/messages/senders'); if (!s.some(d => d.id === fin.id)) throw new Error('composer does not list it')
+      const m = await api('/messages', { method: 'POST', body: { to: 'q2@e2e.invalid', subject: 'e2e-from-finance', body: 'Sent from finance.', from_id: fin.id } })
+      if (m.from_email !== 'E2E Finance <finance@e2e.invalid>' || !m.html.includes('E2E Admin')) throw new Error(JSON.stringify({ from: m.from_email, signoff: m.html.includes('E2E Admin') }))
+      return `${m.from_email} · signed off with the sender's name ✓`
+    })
     await step('POST /enquiries/:id/acknowledge sends the confirmation, request stays new (dry run)', async () => {
       const { data: fresh, error } = await svc.from('enquiries').insert({ kind: 'quote', name: 'e2e-enquirer3', email: 'q3@e2e.invalid', commodity: 'Maize', quantity: '50 MT', destination: 'Lagos' }).select().single(); if (error) throw error
       const m = await api(`/enquiries/${fresh.id}/acknowledge`, { method: 'POST', body: {} })

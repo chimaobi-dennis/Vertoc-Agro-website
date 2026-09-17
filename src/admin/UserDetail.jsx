@@ -20,11 +20,11 @@ export default function UserDetail() {
   const [sending, setSending] = useState(false)
   const [toast, toastEl] = useToast()
 
-  const load = useCallback(() => adminFetch(`/users/${id}`).then(u => { setUser(u); setForm({ name: u.name || '', email: u.email || '', role: u.role }) }).catch(e => setErr(e.message)), [id])
+  const load = useCallback(() => adminFetch(`/users/${id}`).then(u => { setUser(u); setForm({ name: u.name || '', email: u.email || '', role: u.role, position: u.position || '' }) }).catch(e => setErr(e.message)), [id])
   useEffect(() => { load() }, [load])
 
   const self = user && me && user.id === me.id
-  const dirty = user && form && (form.name !== (user.name || '') || form.email !== user.email || form.role !== user.role)
+  const dirty = user && form && (form.name !== (user.name || '') || form.email !== user.email || form.role !== user.role || form.position !== (user.position || ''))
 
   const save = async e => {
     e.preventDefault(); setBusy(true)
@@ -32,6 +32,7 @@ export default function UserDetail() {
     if (form.name !== (user.name || '')) body.name = form.name
     if (form.email !== user.email) body.email = form.email
     if (form.role !== user.role) body.role = form.role
+    if (form.position !== (user.position || '')) body.position = form.position
     try { await adminFetch(`/users/${id}`, { method: 'PATCH', body }); toast(body.email ? 'Saved. The new address is what they sign in with from now on.' : 'Saved'); load() }
     catch (x) { toast(x.message, 'error') } finally { setBusy(false) }
   }
@@ -79,6 +80,7 @@ export default function UserDetail() {
                   <Field label="Role" hint={self ? "You can't change your own role." : 'admin: everything · editor: catalogue and blog · sales: clients, invoices, email'}>
                     <Select value={form.role} disabled={self} onChange={e => setForm({ ...form, role: e.target.value })}>{ROLES.map(r => <option key={r}>{r}</option>)}</Select>
                   </Field>
+                  <Field label="Position" hint='Shown in their emails, e.g. "Precious Ubadire, Managing Director"'><Input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} placeholder="Managing Director" /></Field>
                   <Field label="Joined"><Input value={fmtDateTime(user.created_at)} readOnly className="bg-muted/50" /></Field>
                 </div>
                 <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
