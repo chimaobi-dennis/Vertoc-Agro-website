@@ -43,6 +43,7 @@ export const {
   createDocument, completeDocument, getDocument, listDocuments, documentUrl, downloadDocument, deleteDocument,
   listQuotes, getQuote, getQuoteByToken, createQuote, updateQuote, deleteQuote, markQuoteSent, markQuoteViewed, respondToQuote, publicQuote, convertQuoteToPurchase,
   createMessage, updateMessage, getMessage, listMessages, markMessageRead, getMessageByProviderId, latestOutboundTo, countUnreadInbound, findClientByEmail, getQuoteByNumber,
+  listThreads, getThread, markThreadRead, splitQuoted, parseThreadKey,
   listTemplates, getTemplate, upsertTemplate, updateTemplate, createDocumentFromBuffer,
   listPurchases, getPurchase, createPurchase, updatePurchase, deletePurchase,
 } = store

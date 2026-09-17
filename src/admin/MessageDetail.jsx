@@ -34,11 +34,11 @@ export default function MessageDetail() {
   if (!m) return <div className="max-w-4xl space-y-4"><Bone className="h-4 w-24" /><Bone className="h-9 w-2/3" /><Card className="p-6 space-y-3">{[...Array(6)].map((_, i) => <Bone key={i} className="h-4 w-full" />)}</Card></div>
 
   const inbound = m.direction === 'in'
-  const quoted = `\n\n\nOn ${fmtDateTime(m.created_at)}, ${m.from_name || m.from_email} wrote:\n${String(m.body || '').split('\n').map(l => '> ' + l).join('\n')}`
+  const threadKey = m.client_id ? `c${m.client_id}` : `e:${inbound ? m.from_email : m.to_email}`
 
   return (
     <>
-      <Link to={`/staff360/messages${inbound ? '' : '?direction=out'}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Messages</Link>
+      <Link to={`/staff360/messages?t=${encodeURIComponent(threadKey)}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Conversation</Link>
       <div className="grid lg:grid-cols-[1fr_320px] gap-6 max-w-6xl items-start">
         <Card className="animate-fade-up">
           <div className="p-6 border-b border-border">
@@ -99,9 +99,9 @@ export default function MessageDetail() {
         </div>
       </div>
       <Composer open={compose} onClose={() => setCompose(false)} title={inbound ? `Reply to ${m.from_name || m.from_email}` : `Email ${m.to_name || m.to_email}`}
-        to={inbound ? m.from_email : m.to_email} subject={inbound ? (/^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`) : m.subject} body={inbound ? quoted : ''}
-        clientId={m.client_id} quoteId={inbound ? null : m.quote_id} enquiryId={m.enquiry_id}
-        onSent={() => { toast('Sent'); nav('/staff360/messages?direction=out') }} />
+        to={inbound ? m.from_email : m.to_email} subject={inbound ? (/^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`) : m.subject} body=""
+        clientId={m.client_id} quoteId={inbound ? null : m.quote_id} enquiryId={m.enquiry_id} replyToId={inbound ? m.id : null}
+        onSent={() => { toast('Sent'); nav(`/staff360/messages?t=${encodeURIComponent(threadKey)}`) }} />
       {toastEl}
     </>
   )

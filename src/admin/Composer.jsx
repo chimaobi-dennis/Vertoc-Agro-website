@@ -16,7 +16,7 @@ import { fmtBytes } from './format'
  * `template` = { key, quote_id?, enquiry_id?, client_id? } pre-fills subject
  * and body from the editable email templates when the caller gives none.
  */
-export default function Composer({ open, onClose, title = 'Send email', to = '', subject = '', body = '', clientId = null, enquiryId = null, quoteId = null, template = null, onSent }) {
+export default function Composer({ open, onClose, title = 'Send email', to = '', subject = '', body = '', clientId = null, enquiryId = null, quoteId = null, replyToId = null, template = null, onSent }) {
   const { me } = useAuth()
   const fileRef = useRef(null)
   const [form, setForm] = useState({ to, subject, body })
@@ -51,7 +51,7 @@ export default function Composer({ open, onClose, title = 'Send email', to = '',
   const send = async e => {
     e.preventDefault(); setSending(true); setErr(null)
     try {
-      const payload = { to: form.to, subject: form.subject, body: form.body, attachment_ids: [...picked], client_id: clientId, enquiry_id: enquiryId }
+      const payload = { to: form.to, subject: form.subject, body: form.body, attachment_ids: [...picked], client_id: clientId, enquiry_id: enquiryId, reply_to_id: replyToId }
       const r = await adminFetch(quoteId ? `/quotes/${quoteId}/send` : '/messages', { method: 'POST', body: payload })
       onSent?.(r); onClose()
     } catch (x) { setErr(x.message) } finally { setSending(false) }
@@ -71,7 +71,8 @@ export default function Composer({ open, onClose, title = 'Send email', to = '',
         {settings && !configured && (
           <Alert tone="info">Email isn't connected yet.{me?.permissions?.settings ? <> Add your Resend API key under <Link to="/staff360/settings?tab=email" className="font-semibold text-accent">Settings → Email</Link>.</> : ' Ask an admin to add the Resend API key in Settings.'}</Alert>
         )}
-        {quoteId && <Alert tone="info">The invoice PDF and its unique online link are attached automatically. The text comes from the "Quotation to client" template — edit it here before sending.</Alert>}
+        {quoteId && <Alert tone="info">The invoice PDF and its unique online link are attached automatically. The text comes from the "Invoice to client" template — edit it here before sending.</Alert>}
+        {replyToId && <Alert tone="info">Sent as a reply: it threads under their email in their mail app, so write only the new text.</Alert>}
         {err && <Alert>{err}</Alert>}
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="To"><Input type="email" required value={form.to} onChange={e => setForm({ ...form, to: e.target.value })} placeholder="client@company.com" /></Field>

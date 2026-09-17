@@ -129,7 +129,7 @@ export default function ClientDetail() {
 
       {editing && client && tab === 'documents' && <DocumentsPanel clientId={client.id} />}
       {editing && client && tab === 'quotes' && <QuotesPanel clientId={client.id} />}
-      {editing && client && tab === 'messages' && <MessagesPanel clientId={client.id} refreshKey={msgKey} onCompose={openCompose} onReply={m => setCompose({ to: m.from_email, subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`, body: `\n\n\nOn ${new Date(m.created_at).toLocaleString('en-GB')}, ${m.from_name || m.from_email} wrote:\n${String(m.body || '').split('\n').map(l => '> ' + l).join('\n')}` })} />}
+      {editing && client && tab === 'messages' && <MessagesPanel clientId={client.id} email={email} refreshKey={msgKey} onCompose={openCompose} />}
       {editing && client && tab === 'purchases' && <PurchasesPanel clientId={client.id} />}
 
       {client && (

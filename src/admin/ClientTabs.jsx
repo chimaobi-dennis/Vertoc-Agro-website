@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronRight, Download, ExternalLink, FileText, Mail, Plus, Reply, Trash2, Upload } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
+import Thread from './Thread'
 import { Badge, Button, Card, Empty, Field, Input, Select, Table, Td, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import { ACCEPT, isImage, openDocument, uploadDocument } from './documents'
@@ -114,44 +115,17 @@ export function QuotesPanel({ clientId }) {
 
 /* ----------------------------------------------------------- messages --- */
 
-export function MessagesPanel({ clientId, onCompose, onReply, refreshKey = 0 }) {
-  const [rows, setRows] = useState(null)
-  const [openId, setOpenId] = useState(null)
-  useEffect(() => { setRows(null); adminFetch(`/messages?client_id=${clientId}`).then(setRows).catch(() => setRows([])) }, [clientId, refreshKey])
+export function MessagesPanel({ clientId, email = '', onCompose, refreshKey = 0 }) {
   return (
-    <Card className="animate-fade-up">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-        <h2 className="font-semibold">Emails</h2>
-        <Button variant="accent" className="h-9" onClick={onCompose}><Mail className="w-4 h-4" />New email</Button>
+    <Card className="animate-fade-up flex flex-col min-h-[60vh]">
+      <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border">
+        <div><h2 className="font-semibold">Conversation</h2><p className="text-xs text-muted-foreground">Every email with this client, newest at the bottom. Replies thread under their last email.</p></div>
+        <div className="flex items-center gap-3">
+          <Link to={`/staff360/messages?t=c${clientId}`} className="text-xs font-semibold text-accent whitespace-nowrap">Open in Messages →</Link>
+          <Button variant="accent" className="h-9" onClick={onCompose}><Mail className="w-4 h-4" />New email</Button>
+        </div>
       </div>
-      <ul className="divide-y divide-border">
-        {!rows && [0, 1, 2].map(i => <li key={i} className="px-5 py-4 space-y-2"><Bone className="h-4 w-64" /><Bone className="h-3 w-40" /></li>)}
-        {rows?.map(m => (
-          <li key={m.id}>
-            <button onClick={() => setOpenId(openId === m.id ? null : m.id)} className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-muted/40">
-              {openId === m.id ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
-              <span className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${m.direction === 'in' ? 'bg-accent/15 text-accent' : 'bg-primary/10 text-primary'}`}>{m.direction === 'in' ? <ArrowDownLeft className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5" />}</span>
-              <div className="min-w-0 flex-1">
-                <p className={`truncate ${m.direction === 'in' && !m.read_at ? 'font-bold' : 'font-medium'}`}>{m.subject}</p>
-                <p className="text-xs text-muted-foreground truncate">{m.direction === 'in' ? `from ${m.from_name || m.from_email}` : `to ${m.to_email}`} · {fmtDateTime(m.created_at)}{m.attachments?.length ? ` · ${m.attachments.length} attachment${m.attachments.length > 1 ? 's' : ''}` : ''}{m.quote_id ? ' · invoice' : ''}</p>
-              </div>
-              <Badge tone={messageTone(m.status)}>{m.status}</Badge>
-            </button>
-            {openId === m.id && (
-              <div className="px-5 pb-5 pl-12 text-sm">
-                {m.status === 'failed' && <p className="mb-3 rounded-xl bg-destructive/10 text-destructive px-3 py-2 text-xs">{m.error}</p>}
-                <p className="whitespace-pre-wrap text-foreground/90">{m.body}</p>
-                {m.attachments?.length > 0 && <p className="mt-3 text-xs text-muted-foreground">Attached: {m.attachments.map(a => a.name).join(', ')}</p>}
-                <div className="mt-3 flex gap-2">
-                  {m.direction === 'in' && onReply && <Button variant="outline" className="h-8 px-3 text-xs" onClick={() => onReply(m)}><Reply className="w-3.5 h-3.5" />Reply</Button>}
-                  <Link to={`/staff360/messages/${m.id}`} className="inline-flex items-center h-8 px-3 rounded-xl text-xs font-semibold text-accent hover:bg-muted">Open →</Link>
-                </div>
-              </div>
-            )}
-          </li>
-        ))}
-        {rows?.length === 0 && <li><Empty>Nothing sent yet.</Empty></li>}
-      </ul>
+      <Thread threadKey={`c${clientId}`} clientId={clientId} email={email} refreshKey={refreshKey} />
     </Card>
   )
 }

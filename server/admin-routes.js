@@ -517,6 +517,17 @@ router.get('/messages', mail, h(async (req, res) => {
     direction: req.query.direction || 'all', unread: req.query.unread === '1', q: req.query.q || '', limit: Math.min(Number(req.query.limit) || 200, 500),
   }))
 }))
+router.get('/messages/threads', mail, h(async (req, res) => {
+  res.json(await content.listThreads({ q: req.query.q || '', unread: req.query.unread === '1' }))
+}))
+router.get('/messages/thread', mail, h(async (req, res) => {
+  const rows = await content.getThread(req.query.key)
+  if (!rows) throw bad('conversation not found', 404)
+  res.json(rows)
+}))
+router.post('/messages/thread/read', mail, h(async (req, res) => {
+  res.json({ read: await content.markThreadRead(req.body?.key) })
+}))
 router.post('/messages/:id/read', mail, h(async (req, res) => {
   const m = await content.getMessage(req.params.id)
   if (!m) throw bad('message not found', 404)
@@ -532,7 +543,17 @@ router.post('/messages', mail, h(async (req, res) => {
   let clientId = idOrNull(b.client_id), enquiryId = idOrNull(b.enquiry_id), toName = b.to_name
   if (clientId != null) { const c = await content.getClient(clientId); if (!c) throw bad('client not found', 404); toName ??= c.name }
   if (enquiryId != null) { const e = await content.getEnquiry(enquiryId); if (!e) throw bad('enquiry not found', 404); toName ??= e.name; clientId ??= e.client_id }
-  const msg = await deliver({ actor: req.user, to: b.to, toName, subject: b.subject, body: b.body, attachmentIds: b.attachment_ids || [], clientId, enquiryId })
+  // A reply: address, subject and links default to the message being answered, and it threads under it.
+  let inReplyTo = null, to = b.to, subject = b.subject, quoteId = null
+  if (b.reply_to_id != null) {
+    inReplyTo = await content.getMessage(b.reply_to_id); if (!inReplyTo) throw bad('message to reply to not found', 404)
+    const theirs = inReplyTo.direction === 'in'
+    to ||= theirs ? inReplyTo.from_email : inReplyTo.to_email
+    toName ??= theirs ? inReplyTo.from_name : inReplyTo.to_name
+    if (!subject) subject = /^re:/i.test(inReplyTo.subject || '') ? inReplyTo.subject : `Re: ${inReplyTo.subject || ''}`.trim()
+    clientId ??= inReplyTo.client_id; enquiryId ??= inReplyTo.enquiry_id; quoteId = inReplyTo.quote_id ?? null
+  }
+  const msg = await deliver({ actor: req.user, to, toName, subject, body: b.body, attachmentIds: b.attachment_ids || [], clientId, enquiryId, quoteId, inReplyTo })
   res.status(201).json(msg)
 }))
 

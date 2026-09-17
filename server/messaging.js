@@ -14,7 +14,7 @@
  */
 import * as content from './content.js'
 import { audit } from './audit.js'
-import { sendEmail, renderEmailHtml } from './email.js'
+import { sendEmail, renderEmailHtml, fetchSentMessageId } from './email.js'
 import { decryptSecret } from './secrets.js'
 import { renderQuotePdf } from './quote-pdf.js'
 import { renderKey } from './templates.js'
@@ -59,7 +59,7 @@ export const panelLink = path => `${publicUrl()}/staff360${path}`
  * @param {number|null} [o.quoteId]
  * @param {number|null} [o.enquiryId]
  */
-export async function deliver({ actor, to, toName = '', subject, body, attachmentIds = [], extraAttachments = [], cta = null, clientId = null, quoteId = null, enquiryId = null }) {
+export async function deliver({ actor, to, toName = '', subject, body, attachmentIds = [], extraAttachments = [], cta = null, clientId = null, quoteId = null, enquiryId = null, inReplyTo = null, internal = false }) {
   to = String(to || '').trim()
   if (!EMAIL_RE.test(to)) throw bad('Please enter a valid recipient email address.')
   subject = String(subject || '').trim().slice(0, 300)
@@ -69,7 +69,15 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
 
   const settings = await content.getSettings()
   const html = renderEmailHtml({ body, signature: settings.email.signature, company: settings.company, cta })
+  const text = settings.email.signature ? `${body}\n\n${settings.email.signature}` : body
   const replyTo = settings.email.inbound_address || settings.email.reply_to
+
+  // Threading: a reply carries In-Reply-To / References pointing at the
+  // message it answers, so the client's mail app files it in the same
+  // thread. The old text is NOT pasted into the body.
+  const parentId = inReplyTo?.provider_message_id || null
+  const references = parentId ? [inReplyTo.headers?.references, inReplyTo.in_reply_to, parentId].filter(Boolean).join(' ') : null
+  const headers = parentId ? { 'In-Reply-To': parentId, References: references } : {}
 
   const attachments = [...extraAttachments]
   const meta = extraAttachments.map(a => ({ document_id: null, name: a.filename }))
@@ -84,15 +92,17 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
     client_id: clientId, quote_id: quoteId, enquiry_id: enquiryId, direction: 'out',
     to_email: to, to_name: String(toName || '').slice(0, 200), from_email: settings.email.from,
     subject, body, html, status: 'queued', attachments: meta, sent_by: actor?.id ?? null,
+    // `internal` marks mail to the team itself (notifications), kept out of client conversations.
+    headers: { ...(parentId ? { 'in-reply-to': parentId, references } : {}), ...(internal ? { internal: true } : {}) }, ...(parentId ? { in_reply_to: parentId } : {}),
   })
 
-  let sent
+  let sent, key = null
   try {
     if (dryRun()) sent = { id: `dry-run-${msg.id}` }
     else {
-      const { key } = await resolveResendKey()
+      key = (await resolveResendKey()).key
       if (!key) throw bad('Email is not set up yet. Add your Resend API key under Settings → Email.', 503)
-      sent = await sendEmail({ apiKey: key, from: settings.email.from, to, replyTo, subject, text: body, html, attachments })
+      sent = await sendEmail({ apiKey: key, from: settings.email.from, to, replyTo, subject, text, html, attachments, headers })
     }
   } catch (e) {
     const failed = await content.updateMessage(msg.id, { status: 'failed', error: String(e.message).slice(0, 1000) })
@@ -100,7 +110,8 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
     throw Object.assign(e, { expose: true, status: e.status || 502, message_id: msg.id, message: e.message, record: failed })
   }
 
-  const done = await content.updateMessage(msg.id, { status: 'sent', provider_id: sent.id })
+  const messageId = dryRun() ? `<dry-run-${msg.id}@vertocagro.local>` : await fetchSentMessageId({ apiKey: key, id: sent.id })
+  const done = await content.updateMessage(msg.id, { status: 'sent', provider_id: sent.id, ...(messageId ? { provider_message_id: messageId } : {}) })
   await audit({ actor, action: 'send', entity: 'message', entityId: msg.id, after: { to, subject, quote_id: quoteId, enquiry_id: enquiryId, attachments: meta.length } })
 
   // A reply to a fresh enquiry moves it out of "new" on its own.
@@ -167,7 +178,7 @@ export async function sendSetPasswordLink({ actor, profile, supabase, redirectTo
   if (!link) throw new Error('Supabase returned no link')
   const tpl = await renderKey(confirmed ? 'password_link' : 'user_invite', { name: profile.name, email: profile.email, role: profile.role, link, actor })
   try {
-    const message = await deliver({ actor, to: profile.email, toName: profile.name, subject: tpl.subject, body: tpl.body, cta: tpl.cta || { label: 'Set your password', url: link } })
+    const message = await deliver({ actor, to: profile.email, toName: profile.name, subject: tpl.subject, body: tpl.body, cta: tpl.cta || { label: 'Set your password', url: link }, internal: true })
     return { kind, via: 'resend', message }
   } catch (e) {
     const { error: fbErr } = confirmed
@@ -190,7 +201,7 @@ export async function notifyTeam(key, ctx) {
     if (!flag || !EMAIL_RE.test(to)) return null
     const tpl = await renderKey(key, { ...ctx, settings })
     if (!tpl.subject || !tpl.body) return null
-    return await deliver({ actor: SYSTEM_ACTOR, to, subject: tpl.subject, body: tpl.body, cta: tpl.cta, clientId: ctx.quote?.client_id ?? ctx.message?.client_id ?? null, quoteId: ctx.quote?.id ?? null })
+    return await deliver({ actor: SYSTEM_ACTOR, to, subject: tpl.subject, body: tpl.body, cta: tpl.cta, clientId: ctx.quote?.client_id ?? ctx.message?.client_id ?? null, quoteId: ctx.quote?.id ?? null, internal: true })
   } catch (e) { console.error(`[notify:${key}]`, e.message); return null }
 }
 
@@ -213,7 +224,7 @@ export async function inviteUser({ actor, email, name = '', role = 'editor', sup
   if (!link) throw new Error('Supabase returned no invite link')
   const tpl = await renderKey('user_invite', { name, email, role, link, actor })
   try {
-    const message = await deliver({ actor, to: email, toName: name, subject: tpl.subject, body: tpl.body, cta: tpl.cta || { label: 'Set your password', url: link } })
+    const message = await deliver({ actor, to: email, toName: name, subject: tpl.subject, body: tpl.body, cta: tpl.cta || { label: 'Set your password', url: link }, internal: true })
     return { user: data.user, via: 'resend', message }
   } catch (e) {
     // Resend refused (typically: domain not verified yet). Fall back to the

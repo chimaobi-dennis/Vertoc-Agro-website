@@ -34,15 +34,17 @@ function friendly(d) {
  * @param {string} o.text      plain-text body
  * @param {string} o.html
  * @param {{filename:string, content:Buffer}[]} [o.attachments]
+ * @param {Record<string,string>} [o.headers]  e.g. In-Reply-To / References for threading
  * @returns {Promise<{id:string}>}
  */
-export async function sendEmail({ apiKey, from, to, replyTo, subject, text, html, attachments = [] }) {
+export async function sendEmail({ apiKey, from, to, replyTo, subject, text, html, attachments = [], headers = {} }) {
   const key = apiKey || process.env.RESEND_API_KEY
   if (!key) throw expose('Email is not set up yet: add a Resend API key under Settings → Email.', 503)
 
   const payload = {
     from, to: [to], subject, text, html,
     ...(replyTo ? { reply_to: replyTo } : {}),
+    ...(Object.keys(headers).length ? { headers } : {}),
     ...(attachments.length ? { attachments: attachments.map(a => ({ filename: a.filename, content: a.content.toString('base64') })) } : {}),
   }
   const r = await fetch(API, {
@@ -53,6 +55,15 @@ export async function sendEmail({ apiKey, from, to, replyTo, subject, text, html
   const d = await r.json().catch(() => ({}))
   if (!r.ok) throw expose(friendly(d))
   return { id: d.id }
+}
+
+/** The RFC Message-ID Resend gave a sent email; needed so later replies can thread under it. Best effort. */
+export async function fetchSentMessageId({ apiKey, id }) {
+  try {
+    const r = await fetch(`${API}/${id}`, { headers: { Authorization: `Bearer ${apiKey || process.env.RESEND_API_KEY}` } })
+    const d = await r.json().catch(() => ({}))
+    return r.ok && d.message_id ? String(d.message_id) : null
+  } catch { return null }
 }
 
 /* ------------------------------------------------------------ template --- */
@@ -70,7 +81,7 @@ export function renderEmailHtml({ body, signature = '', company = {}, cta = null
   const button = cta
     ? `<p style="margin:22px 0"><a href="${esc(cta.url)}" style="display:inline-block;background:#7fbe37;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:12px">${esc(cta.label)}</a></p>`
     : ''
-  const sig = signature ? `<p style="margin:22px 0 0;color:#334155;white-space:pre-line">${esc(signature)}</p>` : ''
+  const sig = signature ? `<p style="margin:22px 0 0;color:#334155">${esc(signature).replace(/\n/g, '<br>')}</p>` : ''
   const footer = [company.name, company.address, company.phone, company.website].filter(Boolean).map(esc).join(' · ')
   return `<!doctype html><html><body style="margin:0;padding:0;background:#f4f1ec;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;color:#0f172a">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f1ec;padding:28px 12px"><tr><td align="center">
