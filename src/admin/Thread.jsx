@@ -116,7 +116,7 @@ export default function Thread({ threadKey, email = '', clientId = null, refresh
         <div ref={endRef} />
       </div>
 
-      <form onSubmit={send} className="shrink-0 border-t border-border p-4 space-y-3 bg-card rounded-b-2xl">
+      <form onSubmit={send} className="shrink-0 border-t border-border p-4 space-y-3 bg-card">
         <p className="text-xs text-muted-foreground truncate">Reply to <b className="text-foreground">{to || '—'}</b>{subject ? <> · {subject}</> : null}</p>
         <Textarea rows={3} value={body} onChange={e => setBody(e.target.value)} placeholder="Write a reply… only this text is sent; their mail app files it under this thread. A different topic? Use New email." />
         {files.length > 0 && (

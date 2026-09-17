@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Mail, MessageSquare, Search } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
-import { Badge, Button, Card, Empty, Input } from './ui'
+import { Badge, Button, Empty, Input } from './ui'
 import { Bone } from '../components/Skeleton'
 import { fmtShort } from './format'
 import Thread from './Thread'
@@ -17,7 +17,7 @@ const initials = s => String(s || '?').split(/[\s@.]+/).filter(Boolean).slice(0,
  * on the client record. "New email" starts a new thread; replies stay in
  * theirs.
  */
-export default function Conversations({ clientId = null, email = '', useUrl = false, title = false, onCompose = null, refreshKey = 0, className = '' }) {
+export default function Conversations({ clientId = null, email = '', useUrl = false, title = false, flush = false, onCompose = null, refreshKey = 0, className = '' }) {
   const [sp, setSp] = useSearchParams()
   const [localActive, setLocalActive] = useState('')
   const active = useUrl ? (sp.get('t') || '') : localActive
@@ -47,13 +47,15 @@ export default function Conversations({ clientId = null, email = '', useUrl = fa
   const current = threads?.find(t => t.key === active) || null
   const bump = () => setTick(x => x + 1)
   const startNew = () => (onCompose ? onCompose() : setCompose(true))
+  // `flush`: flat panes separated by a border (full-page workspace); otherwise two cards.
+  const pane = flush ? 'bg-card' : 'bg-card border border-border rounded-2xl shadow-sm'
 
   return (
     <div className={`flex flex-col ${className}`}>
       {err && <div className="mb-4 shrink-0 text-sm text-destructive">{err}</div>}
-      <div className="grid lg:grid-cols-[340px_1fr] gap-5 flex-1 min-h-0">
+      <div className={`grid lg:grid-cols-[340px_1fr] flex-1 min-h-0 ${flush ? 'gap-0 lg:divide-x divide-border' : 'gap-5'}`}>
         {/* threads: fixed top (title, search), the list scrolls on its own */}
-        <Card className={`animate-fade-up flex-col min-h-0 overflow-hidden ${active ? 'hidden lg:flex' : 'flex'}`}>
+        <div className={`${pane} animate-fade-up flex-col min-h-0 overflow-hidden ${active ? 'hidden lg:flex' : 'flex'}`}>
           <div className="p-4 border-b border-border space-y-3 shrink-0">
             <div className="flex items-end justify-between gap-3">
               {title
@@ -90,10 +92,10 @@ export default function Conversations({ clientId = null, email = '', useUrl = fa
             ))}
             {threads?.length === 0 && <li><Empty>{showUnread ? 'No unread threads.' : q ? 'No thread matches.' : clientId != null ? 'No emails with this client yet.' : 'No conversations yet.'}</Empty></li>}
           </ul>
-        </Card>
+        </div>
 
         {/* thread: fixed header, scrolling bubbles, fixed reply box */}
-        <Card className={`animate-fade-up flex-col min-h-0 overflow-hidden ${active ? 'flex' : 'hidden lg:flex'}`} style={{ animationDelay: '60ms' }}>
+        <div className={`${pane} animate-fade-up flex-col min-h-0 overflow-hidden ${active ? 'flex' : 'hidden lg:flex'}`} style={{ animationDelay: '60ms' }}>
           {active ? (
             <>
               <div className="flex items-center gap-3 px-4 md:px-6 py-4 border-b border-border shrink-0">
@@ -115,7 +117,7 @@ export default function Conversations({ clientId = null, email = '', useUrl = fa
               <p>{threads?.length ? 'Pick a thread on the left. Unread ones are bold.' : 'Start with New email.'}</p>
             </div>
           )}
-        </Card>
+        </div>
       </div>
 
       {!onCompose && (
