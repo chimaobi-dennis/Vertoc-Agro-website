@@ -435,6 +435,8 @@ export const DEFAULT_SETTINGS = {
   email: {
     from: 'Vertoc Agro <sales@vertocagro.com>', reply_to: 'sales@vertocagro.com', signature: 'Vertoc Agro\n+234 913 500 9001\nsales@vertocagro.com',
     inbound_address: '',        // address clients reply to once Resend receiving is set up; used as Reply-To when set
+    ack_enquiries: true,        // confirm website quote requests to the sender automatically
+    notify_enquiries: true,     // email the team when a quote request arrives
     notify_to: '',              // team address for notifications; falls back to reply_to
     notify_inbound: true, notify_responses: true,
   },

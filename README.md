@@ -334,6 +334,12 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
   `POST /messages/thread/read`, and `POST /messages` with `reply_to_id`.
   Team notifications and staff invitations are `internal` mail
   (`messages.headers.internal`) and never appear in conversations.
+- **Quote request pipeline.** A submission of the website's Request a Quote
+  form sends two emails from editable templates: *Quote request received* to
+  the sender (the request stays *new* for the team) and *New quote request*
+  to the notification address, each with its own switch under Settings →
+  Email. *Resend confirmation* on an enquiry sends the first one again
+  (`POST /enquiries/:id/acknowledge`).
 - **Thread labels.** Each thread shows an automatic *Awaiting reply* marker
   when we wrote last, and can carry one manual label from an editable list
   (presets: Waiting for client response, Deal pending approval, Deal closed,

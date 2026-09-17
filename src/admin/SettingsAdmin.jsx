@@ -170,6 +170,8 @@ function EmailSettings({ settings, onSaved, reload }) {
             <Field label="Inbound address" hint="Once Resend receiving is connected (below): replies go here and land in Messages. Used as Reply-To when set."><Input type="email" {...bind('inbound_address')} placeholder="sales@reply.vertocagro.com" /></Field>
             <Field label="Notify the team at" hint="Defaults to the Reply-to address"><Input type="email" {...bind('notify_to')} /></Field>
             <div className="md:col-span-2 flex flex-wrap gap-6 text-sm">
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_enquiries !== false} onChange={ev => setForm({ ...form, notify_enquiries: ev.target.checked })} />Email the team when a quote request is submitted on the website</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.ack_enquiries !== false} onChange={ev => setForm({ ...form, ack_enquiries: ev.target.checked })} />Send the sender a confirmation ("Quote request received" template)</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_responses !== false} onChange={ev => setForm({ ...form, notify_responses: ev.target.checked })} />Email the team when a client accepts or declines an invoice</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_inbound !== false} onChange={ev => setForm({ ...form, notify_inbound: ev.target.checked })} />Email the team when a client's email arrives</label>
             </div>

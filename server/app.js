@@ -25,7 +25,7 @@ import { driver } from './store/index.js'
 import { renderQuotePdf } from './quote-pdf.js'
 import { authorised } from './mcp-auth.js'
 import { verifySvix, ingestReceived } from './inbound.js'
-import { resolveResendKey, resolveWebhookSecret, notifyTeam, dryRun, panelLink } from './messaging.js'
+import { resolveResendKey, resolveWebhookSecret, notifyTeam, dryRun, panelLink, acknowledgeEnquiry } from './messaging.js'
 import { audit } from './audit.js'
 
 const PORT = process.env.PORT || 8787
@@ -190,7 +190,7 @@ app.post('/api/enquiries', async (req, res) => {
   }
 
   try {
-    const saved = content.createEnquiry({
+    const saved = await content.createEnquiry({
       kind: b.kind === 'quote' ? 'quote' : 'contact',
       name,
       email,
@@ -201,6 +201,15 @@ app.post('/api/enquiries', async (req, res) => {
       quantity: clean(b.quantity, 120),
       destination: clean(b.destination, 200),
     })
+    // Quote requests: confirm to the sender and tell the team, both from editable
+    // templates and both best-effort — awaited so a serverless function cannot
+    // freeze before they go out, but never able to fail the submission.
+    if (saved.kind === 'quote') {
+      await Promise.all([
+        acknowledgeEnquiry(saved),
+        notifyTeam('enquiry_notice', { enquiry: saved, link: panelLink(`/enquiries/${saved.id}`) }),
+      ])
+    }
     res.status(201).json({ ok: true, id: saved.id })
   } catch (e) {
     console.error('[enquiries]', e.message)

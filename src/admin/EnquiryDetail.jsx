@@ -70,6 +70,7 @@ export default function EnquiryDetail() {
             </dl>
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <Button variant="accent" onClick={() => setCompose(true)}><Mail className="w-4 h-4" />Reply by email</Button>
+              {isQuote && <Button variant="outline" onClick={async () => { try { await adminFetch(`/enquiries/${e.id}/acknowledge`, { method: 'POST', body: {} }); toast('Confirmation sent again') } catch (x) { toast(x.message, 'error') } }}>Resend confirmation</Button>}
               <a href={`mailto:${e.email}?subject=${encodeURIComponent('Re: your enquiry to Vertoc Agro')}`} className="text-xs text-muted-foreground hover:text-foreground">or use your own mail app</a>
             </div>
           </Card>

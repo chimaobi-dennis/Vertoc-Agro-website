@@ -15,6 +15,20 @@ export const DEFAULT_TEMPLATES = {
     cta_label: 'View and respond online',
     variables: ['client_name', 'client_email', 'quote_number', 'quote_title', 'total', 'currency', 'valid_until', 'link', 'company_name', 'sender_name'],
   },
+  enquiry_received: {
+    name: 'Quote request received (to the client)', description: 'Sent automatically to whoever submits the Request a Quote form, as soon as it arrives.',
+    subject: 'We received your request, {{name}}',
+    body: 'Dear {{name}},\n\nThank you for your interest in {{company_name}}. We have received your request{{#if commodity}} for {{commodity}}{{/if}}{{#if quantity}} ({{quantity}}){{/if}}{{#if destination}} to {{destination}}{{/if}} and our team is reviewing it now.\n\nWe usually reply within one business day with a priced offer. If you have anything to add in the meantime, simply reply to this email.\n\nKind regards,\n{{company_name}}',
+    cta_label: '',
+    variables: ['name', 'email', 'phone', 'commodity', 'quantity', 'destination', 'message', 'company_name', 'site_name'],
+  },
+  enquiry_notice: {
+    name: 'New quote request (to the team)', description: 'Sent to your notification address when the website\'s Request a Quote form is submitted.',
+    subject: 'New quote request from {{name}}{{#if commodity}}: {{commodity}}{{/if}}',
+    body: '{{name}} <{{email}}>{{#if phone}} · {{phone}}{{/if}} asked for a quote.{{#if commodity}}\n\nCommodity: {{commodity}}{{/if}}{{#if quantity}}\nQuantity: {{quantity}}{{/if}}{{#if destination}}\nDestination: {{destination}}{{/if}}{{#if message}}\n\nMessage:\n{{message}}{{/if}}',
+    cta_label: 'Open the request',
+    variables: ['name', 'email', 'phone', 'commodity', 'quantity', 'destination', 'message', 'link'],
+  },
   enquiry_reply: {
     name: 'Reply to a website enquiry', description: 'Pre-filled when you reply to a quote request or contact message from the inbox. Edit before sending.',
     subject: 'Re: your {{enquiry_type}} to {{company_name}}',
@@ -86,9 +100,9 @@ export async function buildVars(key, ctx = {}) {
     const q = ctx.quote
     return { ...base, client_name: q.client_name, client_email: q.client_email, quote_number: q.number, quote_title: q.title, total: formatMoney(q.total, q.currency), currency: q.currency, valid_until: fmtDate(q.valid_until), link: ctx.link || '' }
   }
-  if (key === 'enquiry_reply') {
+  if (key === 'enquiry_reply' || key === 'enquiry_received' || key === 'enquiry_notice') {
     const e = ctx.enquiry
-    return { ...base, name: e.name, email: e.email, enquiry_type: e.kind === 'quote' ? 'quote request' : 'message', commodity: e.commodity, quantity: e.quantity, destination: e.destination, subject: e.subject, message: e.message }
+    return { ...base, name: e.name, email: e.email, phone: e.phone || '', enquiry_type: e.kind === 'quote' ? 'quote request' : 'message', commodity: e.commodity, quantity: e.quantity, destination: e.destination, subject: e.subject, message: e.message, link: ctx.link || '' }
   }
   if (key === 'blank') {
     const c = ctx.client
@@ -109,6 +123,8 @@ export async function buildVars(key, ctx = {}) {
 export const SAMPLE_VARS = {
   quote: { client_name: 'Alessia Loghin', client_email: 'alessia@example.com', quote_number: 'VA-2026-0007', quote_title: 'Cocoa beans, 20 MT, CIF Rotterdam', total: 'USD 51,600.00', currency: 'USD', valid_until: '24 September 2026', link: 'https://vertocagro.com/q/example' },
   enquiry_reply: { name: 'Alessia Loghin', email: 'alessia@example.com', enquiry_type: 'quote request', commodity: 'Cocoa Beans', quantity: '20 MT', destination: 'Rotterdam', subject: '', message: 'Please quote for 20 MT of cocoa beans.' },
+  enquiry_received: { name: 'Alessia Loghin', email: 'alessia@example.com', phone: '+39 02 1234 5678', commodity: 'Cocoa Beans', quantity: '20 MT', destination: 'Rotterdam', message: 'Please quote for 20 MT of cocoa beans.' },
+  enquiry_notice: { name: 'Alessia Loghin', email: 'alessia@example.com', phone: '+39 02 1234 5678', commodity: 'Cocoa Beans', quantity: '20 MT', destination: 'Rotterdam', message: 'Please quote for 20 MT of cocoa beans.', link: 'https://vertocagro.com/staff360/enquiries/12' },
   blank: { name: 'Alessia Loghin', email: 'alessia@example.com' },
   user_invite: { name: 'Tunde', email: 'tunde@example.com', role: 'sales', inviter_name: 'Chimaobi', link: 'https://vertocagro.com/staff360/set-password' },
   password_link: { name: 'Tunde', email: 'tunde@example.com', role: 'sales', inviter_name: 'Chimaobi', link: 'https://vertocagro.com/staff360/set-password' },

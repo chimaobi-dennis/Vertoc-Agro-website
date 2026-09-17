@@ -9,7 +9,7 @@ import express, { Router } from 'express'
 import { authenticate, requireRole, PERMISSIONS } from './auth.js'
 import { audit } from './audit.js'
 import * as content from './content.js'
-import { deliver, sendQuote, inviteUser, sendSetPasswordLink, resolveResendKey, resolveWebhookSecret, dryRun, quoteLink, publicUrl, panelLink } from './messaging.js'
+import { deliver, sendQuote, inviteUser, sendSetPasswordLink, acknowledgeEnquiry, resolveResendKey, resolveWebhookSecret, dryRun, quoteLink, publicUrl, panelLink } from './messaging.js'
 import { DEFAULT_TEMPLATES, TEMPLATE_KEYS, SAMPLE_VARS, renderTemplate, renderKey, templateFor } from './templates.js'
 import { renderEmailHtml } from './email.js'
 import { renderQuotePdf } from './quote-pdf.js'
@@ -356,6 +356,16 @@ router.get('/enquiries/:id', inbox, h(async (req, res) => {
   res.json(e)
 }))
 
+// Send the "Quote request received" confirmation again (or for the first time, if it was off).
+router.post('/enquiries/:id/acknowledge', inbox, h(async (req, res) => {
+  const e = await content.getEnquiry(req.params.id)
+  if (!e) throw bad('enquiry not found', 404)
+  const settings = await content.getSettings()
+  const msg = await acknowledgeEnquiry(e, { settings: { ...settings, email: { ...settings.email, ack_enquiries: true } } })
+  if (!msg) throw bad('The confirmation could not be sent. Check Settings → Email.', 502)
+  await audit({ actor: req.user, action: 'acknowledge', entity: 'enquiry', entityId: e.id, after: { to: e.email, message_id: msg.id } })
+  res.json(msg)
+}))
 router.patch('/enquiries/:id', inbox, h(async (req, res) => {
   const before = await content.getEnquiry(req.params.id)
   if (!before) throw bad('enquiry not found', 404)

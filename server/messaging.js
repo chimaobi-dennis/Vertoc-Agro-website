@@ -59,7 +59,7 @@ export const panelLink = path => `${publicUrl()}/staff360${path}`
  * @param {number|null} [o.quoteId]
  * @param {number|null} [o.enquiryId]
  */
-export async function deliver({ actor, to, toName = '', subject, body, attachmentIds = [], extraAttachments = [], cta = null, clientId = null, quoteId = null, enquiryId = null, inReplyTo = null, internal = false }) {
+export async function deliver({ actor, to, toName = '', subject, body, attachmentIds = [], extraAttachments = [], cta = null, clientId = null, quoteId = null, enquiryId = null, inReplyTo = null, internal = false, auto = false }) {
   to = String(to || '').trim()
   if (!EMAIL_RE.test(to)) throw bad('Please enter a valid recipient email address.')
   subject = String(subject || '').trim().slice(0, 300)
@@ -114,8 +114,9 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
   const done = await content.updateMessage(msg.id, { status: 'sent', provider_id: sent.id, ...(messageId ? { provider_message_id: messageId } : {}) })
   await audit({ actor, action: 'send', entity: 'message', entityId: msg.id, after: { to, subject, quote_id: quoteId, enquiry_id: enquiryId, attachments: meta.length } })
 
-  // A reply to a fresh enquiry moves it out of "new" on its own.
-  if (enquiryId) {
+  // A reply to a fresh enquiry moves it out of "new" on its own — but an automatic
+  // acknowledgement is not a reply, so the request stays new for the team.
+  if (enquiryId && !auto) {
     const e = await content.getEnquiry(enquiryId).catch(() => null)
     if (e?.status === 'new') await content.updateEnquiry(e.id, { status: e.kind === 'quote' ? 'contacted' : 'replied' }).catch(() => {})
   }
@@ -190,13 +191,29 @@ export async function sendSetPasswordLink({ actor, profile, supabase, redirectTo
 }
 
 /**
+ * Automatic confirmation to whoever submitted the website's Request a Quote
+ * form, with the "Quote request received" template. Best effort: never
+ * throws, and the request stays "new" for the team. Returns the message row
+ * or null when acknowledgements are switched off / email is not set up.
+ */
+export async function acknowledgeEnquiry(enquiry, { settings: given } = {}) {
+  try {
+    const settings = given || (await content.getSettings())
+    if (settings.email.ack_enquiries === false || !EMAIL_RE.test(String(enquiry?.email || ''))) return null
+    const tpl = await renderKey('enquiry_received', { enquiry, settings })
+    if (!tpl.subject || !tpl.body) return null
+    return await deliver({ actor: SYSTEM_ACTOR, to: enquiry.email, toName: enquiry.name, subject: tpl.subject, body: tpl.body, cta: tpl.cta, enquiryId: enquiry.id, auto: true })
+  } catch (e) { console.error('[acknowledge]', e.message); return null }
+}
+
+/**
  * Notification to the team (quote answered, email received). Best effort:
  * never throws, never blocks the action that triggered it.
  */
 export async function notifyTeam(key, ctx) {
   try {
     const settings = ctx.settings || (await content.getSettings())
-    const flag = key === 'inbound_notice' ? settings.email.notify_inbound : settings.email.notify_responses
+    const flag = { inbound_notice: settings.email.notify_inbound, quote_response: settings.email.notify_responses, enquiry_notice: settings.email.notify_enquiries }[key]
     const to = settings.email.notify_to || settings.email.reply_to
     if (!flag || !EMAIL_RE.test(to)) return null
     const tpl = await renderKey(key, { ...ctx, settings })

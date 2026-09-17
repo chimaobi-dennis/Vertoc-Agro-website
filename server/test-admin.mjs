@@ -213,6 +213,14 @@ try {
       if (m.status !== 'sent' || m.enquiry_id !== data.id) throw new Error(JSON.stringify(m).slice(0, 100)); return data.id
     })
     await step('reply moved the enquiry new → contacted', async () => { const e = await api(`/enquiries/${enq2}`); if (e.status !== 'contacted') throw new Error(e.status); return e.status })
+    await step('POST /enquiries/:id/acknowledge sends the confirmation, request stays new (dry run)', async () => {
+      const { data: fresh, error } = await svc.from('enquiries').insert({ kind: 'quote', name: 'e2e-enquirer3', email: 'q3@e2e.invalid', commodity: 'Maize', quantity: '50 MT', destination: 'Lagos' }).select().single(); if (error) throw error
+      const m = await api(`/enquiries/${fresh.id}/acknowledge`, { method: 'POST', body: {} })
+      if (m.status !== 'sent' || m.to_email !== 'q3@e2e.invalid' || !/received/i.test(m.subject) || !m.html.includes('Maize') || m.enquiry_id !== fresh.id) throw new Error(JSON.stringify(m).slice(0, 160))
+      const e = await api(`/enquiries/${fresh.id}`); if (e.status !== 'new') throw new Error('status changed to ' + e.status)
+      const t = await api('/templates'); if (!t.some(x => x.key === 'enquiry_received') || !t.some(x => x.key === 'enquiry_notice')) throw new Error('templates missing')
+      return `${m.subject} · still new ✓ · templates listed ✓`
+    })
   } else {
     results.push(['·', 'send steps SKIPPED', 'live sending is off for this test (set EMAIL_DRY_RUN=1 on the backend to run them)'])
     await step('PATCH /quotes/:id status=sent (manual)', async () => (await api(`/quotes/${quote.id}`, { method: 'PATCH', body: { status: 'sent' } })).status)
@@ -333,6 +341,7 @@ finally {
   await svc.from('messages').delete().like('subject', 'e2e-%')
   await svc.from('messages').delete().like('subject', 'Re: e2e-%')
   await svc.from('messages').delete().like('to_email', 'e2e-invite-%')
+  await svc.from('messages').delete().like('to_email', '%@e2e.invalid')
   await svc.from('email_templates').delete().eq('key', 'e2e_never')
   await svc.from('documents').delete().like('name', 'e2e-%')
   await svc.from('quotes').delete().like('title', 'e2e-%')
