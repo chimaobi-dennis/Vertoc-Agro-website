@@ -17,12 +17,11 @@
 
     <script>
       // Set the theme before first paint so there is no flash of the wrong one.
+      // Light is the default; dark only when the visitor chose it with the toggle
+      // (the operating system's dark preference is deliberately not followed).
       (function () {
         try {
-          var t = localStorage.getItem('vertoc-theme');
-          if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-          }
+          if (localStorage.getItem('vertoc-theme') === 'dark') document.documentElement.classList.add('dark');
         } catch (e) {}
       })();
     </script>

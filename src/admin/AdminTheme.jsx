@@ -21,8 +21,7 @@ export function AdminThemeProvider({ children }) {
   useEffect(() => () => {
     let pub = null
     try { pub = localStorage.getItem('vertoc-theme') } catch { /* ignore */ }
-    const dark = pub === 'dark' || (!pub && window.matchMedia('(prefers-color-scheme: dark)').matches)
-    document.documentElement.classList.toggle('dark', dark)
+    document.documentElement.classList.toggle('dark', pub === 'dark')   // public site: light unless the visitor chose dark
   }, [])
 
   const toggle = useCallback(() => setTheme(t => (t === 'dark' ? 'light' : 'dark')), [])
