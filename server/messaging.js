@@ -226,7 +226,7 @@ export async function acknowledgeEnquiry(enquiry, { settings: given } = {}) {
 export async function notifyTeam(key, ctx) {
   try {
     const settings = ctx.settings || (await content.getSettings())
-    const flag = { inbound_notice: settings.email.notify_inbound, quote_response: settings.email.notify_responses, enquiry_notice: settings.email.notify_enquiries }[key]
+    const flag = { inbound_notice: settings.email.notify_inbound, quote_response: settings.email.notify_responses, enquiry_notice: settings.email.notify_enquiries, review_notice: settings.email.notify_reviews }[key]
     const to = settings.email.notify_to || settings.email.reply_to
     if (!flag || !EMAIL_RE.test(to)) return null
     const tpl = await renderKey(key, { ...ctx, settings })

@@ -8,6 +8,7 @@ import Dashboard from './Dashboard'
 import ProductsAdmin from './ProductsAdmin'
 import ProductForm from './ProductForm'
 import PostsAdmin from './PostsAdmin'
+import ReviewsAdmin from './ReviewsAdmin'
 import PostForm from './PostForm'
 import UsersAdmin from './UsersAdmin'
 import UserDetail from './UserDetail'
@@ -75,6 +76,7 @@ export default function AdminApp() {
           <Route path="products/new" element={P('products', <ProductForm />)} />
           <Route path="products/:slug" element={P('products', <ProductForm />)} />
           <Route path="posts" element={P('posts', <PostsAdmin />)} />
+          <Route path="reviews" element={P('posts', <ReviewsAdmin />)} />
           <Route path="posts/new" element={P('posts', <PostForm />)} />
           <Route path="posts/:slug" element={P('posts', <PostForm />)} />
           <Route path="users" element={P('users', <UsersAdmin />)} />

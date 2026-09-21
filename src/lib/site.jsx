@@ -24,6 +24,16 @@ export const SITE_DEFAULTS = {
     { icon: 'Package', value: 30, suffix: '+', label: 'Commodities' },
     { icon: 'Users', value: 500, suffix: '+', label: 'Partner Farmers' },
   ],
+  // Export-market flag tiles and client reviews; edited under Settings → Site.
+  markets: {
+    items: [{ name: 'United Kingdom', code: 'gb' }, { name: 'Netherlands', code: 'nl' }, { name: 'Germany', code: 'de' }, { name: 'Turkey', code: 'tr' }, { name: 'UAE', code: 'ae' }, { name: 'India', code: 'in' }, { name: 'China', code: 'cn' }, { name: 'USA', code: 'us' }],
+    caption_left: 'FOB Lagos', caption_right: '12+ Countries Served',
+  },
+  reviews: [
+    { quote: 'Vertoc Agro has been our most reliable maize supplier for over two years. Their quality consistency is unmatched.', name: 'Sanjay', role: 'Procurement Manager of an Indian Based Food Processing company', rating: 5 },
+    { quote: 'Working with Vertoc has been seamless. Their export documentation is always in order and shipments arrive on time.', name: 'Mitchell', role: 'Director of an International Grain company in the UK', rating: 5 },
+    { quote: 'We switched to Vertoc for our palm oil supply and have never looked back. Competitive pricing and premium quality.', name: 'Johnson', role: 'CEO of a Food Processing Company in Nigeria', rating: 5 },
+  ],
 }
 
 const Ctx = createContext(SITE_DEFAULTS)

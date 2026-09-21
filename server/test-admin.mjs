@@ -157,6 +157,26 @@ try {
     const pub = await fetch(`${API}/api/site`).then(x => x.json()); if (!Array.isArray(pub.stats) || pub.stats[0]?.label !== 'e2e Harvests') throw new Error('public site lacks the stats: ' + JSON.stringify(pub.stats).slice(0, 100))
     return `${r.stats.map(s => s.value + s.suffix + ' ' + s.label).join(' · ')} · public ✓ · unknown icon → Award ✓`
   })
+  settingsBefore.homepage_markets = (await svc.from('settings').select('value').eq('key', 'homepage_markets').maybeSingle()).data?.value ?? null
+  await step('PUT /settings/markets → public /api/site carries the flags', async () => {
+    const m = await api('/settings/markets', { method: 'PUT', body: { markets: [{ name: 'e2e Ghana', code: 'GH' }, { name: 'bad code', code: 'xyz' }], caption_left: 'e2e FOB Lagos', caption_right: '' } })
+    if (m.items.length !== 1 || m.items[0].code !== 'gh' || m.caption_left !== 'e2e FOB Lagos' || m.caption_right !== '') throw new Error(JSON.stringify(m))
+    const pub = await fetch(`${API}/api/site`).then(x => x.json()); if (pub.markets?.items?.[0]?.name !== 'e2e Ghana') throw new Error('public site lacks the markets: ' + JSON.stringify(pub.markets).slice(0, 120))
+    return `1 market (bad code dropped) · public ✓`
+  })
+  await step('reviews: add → public → hide → not public → delete (needs migration 009)', async () => {
+    let r
+    try { r = await api('/reviews', { method: 'POST', body: { quote: '“e2e excellent partner throughout the season”', name: 'e2e Reviewer', role: 'Buyer', rating: 4 } }) }
+    catch (e) { if (/migration 009/.test(e.message)) return 'SKIPPED — run server/migrations/009_reviews.sql'; throw e }
+    if (r.status !== 'approved' || r.rating !== 4 || !r.approved_at || /^“/.test(r.quote)) throw new Error(JSON.stringify(r).slice(0, 160))
+    let pub = await fetch(`${API}/api/site`).then(x => x.json()); if (!pub.reviews.some(x => x.name === 'e2e Reviewer')) throw new Error('approved review not public')
+    const hid = await api(`/reviews/${r.id}`, { method: 'PATCH', body: { status: 'hidden' } }); if (hid.status !== 'hidden') throw new Error(hid.status)
+    pub = await fetch(`${API}/api/site`).then(x => x.json()); if (pub.reviews.some(x => x.name === 'e2e Reviewer')) throw new Error('hidden review still public')
+    const list = await api('/reviews?status=hidden'); if (!list.some(x => x.id === r.id)) throw new Error('hidden filter missed it')
+    const st = await api('/stats'); if (typeof st.reviewsPending !== 'number') throw new Error('stats lack reviewsPending')
+    await api(`/reviews/${r.id}`, { method: 'DELETE' })
+    return 'approved → public ✓ · hidden → gone from the site ✓ · deleted ✓'
+  })
   await step('PUT /settings rejects a bad From', () => refused(() => api('/settings', { method: 'PUT', body: { email: { from: 'not an address' } } }), /From must/, 'bad from'))
   await step('MCP token: generate → works on /mcp → revoke', async () => {
     const r = await api('/settings/mcp/token', { method: 'POST' })
@@ -363,6 +383,7 @@ finally {
   await svc.from('messages').delete().like('subject', 'Re: e2e-%')
   await svc.from('messages').delete().like('to_email', 'e2e-invite-%')
   await svc.from('messages').delete().like('to_email', '%@e2e.invalid')
+  await svc.from('reviews').delete().like('name', 'e2e %').then(() => {}, () => {})
   await svc.from('email_templates').delete().eq('key', 'e2e_never')
   await svc.from('documents').delete().like('name', 'e2e-%')
   await svc.from('quotes').delete().like('title', 'e2e-%')

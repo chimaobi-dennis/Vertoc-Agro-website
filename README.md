@@ -334,6 +334,17 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
   `POST /messages/thread/read`, and `POST /messages` with `reply_to_id`.
   Team notifications and staff invitations are `internal` mail
   (`messages.headers.internal`) and never appear in conversations.
+- **Homepage markets.** Also under Settings → Site: the export-market flag
+  tiles (country name + two-letter code; bundled flags for the original
+  eight, flagcdn.com for the rest) with the two captions under the grid.
+  Settings row `homepage_markets`, served on `GET /api/site` as `markets`.
+- **Reviews** (`/staff360/reviews`, migration `009_reviews.sql`). Clients
+  submit a review from the homepage ("Share your experience": honeypot,
+  throttle, Turnstile) into `reviews` as *pending*; the team gets the
+  "New review awaiting approval" email (switch under Settings → Email). Staff
+  approve, hide, edit, delete, or add reviews that arrived on WhatsApp. Only
+  approved reviews are served on `GET /api/site` as `reviews`; until the
+  migration runs the homepage shows the original three.
 - **Homepage stats.** The number tiles under the hero are edited under
   Settings → Site (icon from a fixed set, number, suffix, label; reorder,
   add up to eight). Stored in the `settings` table under `homepage_stats`

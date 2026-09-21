@@ -62,6 +62,7 @@ router.get('/stats', h(async (_req, res) => {
     quotesOpen: await count('quotes', q => q.in('status', ['sent', 'viewed'])),
     purchasesPending: await count('purchases', q => q.eq('status', 'pending')),
     inboundUnread: await count('messages', q => q.eq('direction', 'in').is('read_at', null)),
+    reviewsPending: await Promise.resolve().then(() => count('reviews', q => q.eq('status', 'pending'))).catch(() => 0),   // 0 until migration 009 exists
   })
 }))
 
@@ -259,6 +260,30 @@ router.get('/audit', requireRole('admin'), h(async (req, res) => {
   res.json(data)
 }))
 
+/* ------------------------------------------------------------ reviews --- */
+// Same roles as the blog: content the public site shows.
+const reviewsPerm = requireRole(...PERMISSIONS.posts)
+router.get('/reviews', reviewsPerm, h(async (req, res) => res.json(await content.listReviews({ status: req.query.status || 'all' }))))
+router.post('/reviews', reviewsPerm, h(async (req, res) => {
+  const after = await exposing(content.createReview)(req.body || {}, { status: req.body?.status || 'approved', source: 'admin' })
+  await audit({ actor: req.user, action: 'create', entity: 'review', entityId: after.id, after })
+  res.status(201).json(after)
+}))
+router.patch('/reviews/:id', reviewsPerm, h(async (req, res) => {
+  const before = await content.getReview(req.params.id)
+  if (!before) throw bad('review not found', 404)
+  const after = await exposing(content.updateReview)(before.id, req.body || {})
+  await audit({ actor: req.user, action: before.status !== after.status ? after.status : 'update', entity: 'review', entityId: after.id, before, after })
+  res.json(after)
+}))
+router.delete('/reviews/:id', reviewsPerm, h(async (req, res) => {
+  const before = await content.getReview(req.params.id)
+  if (!before) throw bad('review not found', 404)
+  const r = await content.deleteReview(before.id)
+  await audit({ actor: req.user, action: 'delete', entity: 'review', entityId: before.id, before })
+  res.json(r)
+}))
+
 /* ------------------------------------------------------------- upload --- */
 // Images arrive as base64 JSON (no multipart parser needed, works on Vercel).
 // This route has its own larger body limit; app.js skips the global parser
@@ -444,6 +469,12 @@ router.put('/settings/stats', settingsAdmin, h(async (req, res) => {
   const stats = await exposing(content.setHomepageStats)(req.body?.stats)
   await audit({ actor: req.user, action: 'update', entity: 'homepage_stats', entityId: null, after: { stats } })
   res.json({ stats, icons: content.STAT_ICON_NAMES })
+}))
+router.get('/settings/markets', settingsAdmin, h(async (_req, res) => res.json(await content.getHomepageMarkets())))
+router.put('/settings/markets', settingsAdmin, h(async (req, res) => {
+  const value = await exposing(content.setHomepageMarkets)(req.body || {})
+  await audit({ actor: req.user, action: 'update', entity: 'homepage_markets', entityId: null, after: value })
+  res.json(value)
 }))
 // Departments: extra sender identities (name + address, optional reply-to and signature).
 router.get('/settings/departments', settingsAdmin, h(async (_req, res) => res.json(await content.listDepartments())))

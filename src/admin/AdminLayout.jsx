@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Briefcase, FileText, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Menu, Moon, Newspaper, Package, ScrollText, Settings, Sun, Users, X } from 'lucide-react'
+import { Briefcase, FileText, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Menu, Moon, Newspaper, Package, ScrollText, Settings, Sun, Users, X, Star } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { useAdminTheme } from './AdminTheme'
@@ -9,6 +9,7 @@ const NAV = [
   { to: '/staff360', label: 'Dashboard', icon: LayoutDashboard, end: true, group: 'Manage' },
   { to: '/staff360/products', label: 'Products', icon: Package, perm: 'products', group: 'Manage' },
   { to: '/staff360/posts', label: 'Blog', icon: Newspaper, perm: 'posts', group: 'Manage' },
+  { to: '/staff360/reviews', label: 'Reviews', icon: Star, perm: 'posts', group: 'Manage', badge: 'reviewsPending' },
   { to: '/staff360/enquiries', label: 'Enquiries', icon: Inbox, perm: 'quotes', group: 'Sales' },
   { to: '/staff360/quotes', label: 'Invoices', icon: FileText, perm: 'quotes', group: 'Sales' },
   { to: '/staff360/messages', label: 'Messages', icon: Mail, perm: 'email', group: 'Sales', badge: 'inboundUnread' },

@@ -29,6 +29,13 @@ export const DEFAULT_TEMPLATES = {
     cta_label: 'Open the request',
     variables: ['name', 'email', 'phone', 'commodity', 'quantity', 'destination', 'message', 'link'],
   },
+  review_notice: {
+    name: 'New review awaiting approval (to the team)', description: 'Sent to your notification address when a client submits a review on the website.',
+    subject: 'New review from {{name}} ({{rating}}/5) awaiting approval',
+    body: '{{name}}{{#if role}} ({{role}}){{/if}} left a {{rating}}-star review on the website:\n\n"{{quote}}"\n\nIt is not on the homepage until you approve it.',
+    cta_label: 'Review it in the panel',
+    variables: ['name', 'role', 'rating', 'quote', 'email', 'link'],
+  },
   enquiry_reply: {
     name: 'Reply to a website enquiry', description: 'Pre-filled when you reply to a quote request or contact message from the inbox. Edit before sending.',
     subject: 'Re: your {{enquiry_type}} to {{company_name}}',
@@ -110,6 +117,7 @@ export async function buildVars(key, ctx = {}) {
     const c = ctx.client
     return { ...base, name: c?.data?.contact_person || c?.name || '', email: c?.data?.email || '' }
   }
+  if (key === 'review_notice') { const r = ctx.review || {}; return { ...base, name: r.name, role: r.role || '', rating: String(r.rating ?? 5), quote: r.quote, email: r.email || '', link: ctx.link || '' } }
   if (key === 'user_invite' || key === 'password_link') return { ...base, name: ctx.name || '', email: ctx.email || '', role: ctx.role || '', inviter_name: ctx.actor?.name || ctx.actor?.email || 'An administrator', link: ctx.link || '' }
   if (key === 'quote_response') {
     const q = ctx.quote
@@ -125,6 +133,7 @@ export async function buildVars(key, ctx = {}) {
 export const SAMPLE_VARS = {
   quote: { client_name: 'Alessia Loghin', client_email: 'alessia@example.com', quote_number: 'VA-2026-0007', quote_title: 'Cocoa beans, 20 MT, CIF Rotterdam', total: 'USD 51,600.00', currency: 'USD', valid_until: '24 September 2026', link: 'https://vertocagro.com/q/example' },
   enquiry_reply: { name: 'Alessia Loghin', email: 'alessia@example.com', enquiry_type: 'quote request', commodity: 'Cocoa Beans', quantity: '20 MT', destination: 'Rotterdam', subject: '', message: 'Please quote for 20 MT of cocoa beans.' },
+  review_notice: { name: 'Alessia Loghin', role: 'Buyer, Loghin Foods', rating: '5', quote: 'Reliable supplier, on-time shipments every time.', email: 'alessia@example.com', link: 'https://vertocagro.com/staff360/reviews' },
   enquiry_received: { name: 'Alessia Loghin', email: 'alessia@example.com', phone: '+39 02 1234 5678', commodity: 'Cocoa Beans', quantity: '20 MT', destination: 'Rotterdam', message: 'Please quote for 20 MT of cocoa beans.' },
   enquiry_notice: { name: 'Alessia Loghin', email: 'alessia@example.com', phone: '+39 02 1234 5678', commodity: 'Cocoa Beans', quantity: '20 MT', destination: 'Rotterdam', message: 'Please quote for 20 MT of cocoa beans.', link: 'https://vertocagro.com/staff360/enquiries/12' },
   blank: { name: 'Alessia Loghin', email: 'alessia@example.com' },

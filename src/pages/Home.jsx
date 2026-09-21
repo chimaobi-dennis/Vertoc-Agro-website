@@ -5,6 +5,8 @@ import StatCounter from '../components/StatCounter'
 import { useApi } from '../lib/api'
 import { CardGridSkeleton, ProductCardSkeleton } from '../components/Skeleton'
 import { statIcon } from '../lib/statIcons'
+import { flagSrc, onFlagError } from '../lib/flags'
+import ReviewForm from '../components/ReviewForm'
 import { useSite } from '../lib/site'
 
 // The stat tiles come from Settings → Site (see src/lib/site.jsx for the defaults).
@@ -56,6 +58,7 @@ function FeaturedCommodities() {
 
 export default function Home() {
   const site = useSite()
+  const [reviewOpen, setReviewOpen] = useState(false)
   return (
     <main className="flex-grow">
       <script type="application/ld+json">{'{'}"@context":"https://schema.org","@graph":[{'{'}"@type":"Organization","@id":"https://vertocagro.com/#organization","name":"Vertoc Agro Products Limited","url":"https://vertocagro.com","logo":{'{'}"@type":"ImageObject","url":"/assets/img/logo.png"{'}'},"description":"Growing the Future, One Harvest at a Time. Cultivation, sourcing, processing, storage, logistics, and export of premium agricultural commodities across Nigeria and beyond.","address":{'{'}"@type":"PostalAddress","addressCountry":"NG","addressLocality":"Nigeria"{'}'},"contactPoint":{'{'}"@type":"ContactPoint","email":"sales@vertocagro.com","contactType":"sales","availableLanguage":"English"{'}'},"sameAs":[],"foundingDate":"2020","legalName":"Vertoc Agro Products Limited"{'}'},{'{'}"@type":"WebSite","@id":"https://vertocagro.com/#website","url":"https://vertocagro.com","name":"Vertoc Agro Products Limited","description":"Premium agricultural commodities export from Nigeria","publisher":{'{'}"@id":"https://vertocagro.com/#organization"{'}'},"potentialAction":{'{'}"@type":"SearchAction","target":{'{'}"@type":"EntryPoint","urlTemplate":"https://vertocagro.com/products?q={'{'}search_term_string{'}'}"{'}'},"query-input":"required name=search_term_string"{'}'}{'}'}]{'}'}</script>
@@ -274,67 +277,22 @@ export default function Home() {
       <p className="text-muted-foreground leading-relaxed">We ship premium commodities to buyers across Europe, Asia, the Middle East, and North America through trusted logistics partners.</p>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 md:gap-6">
-      <div className="bg-card border border-border rounded-2xl p-5 text-center hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
+      {(site.markets?.items || []).map((m, i) => (
+      <div key={`${m.code}-${i}`} className="bg-card border border-border rounded-2xl p-5 text-center hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
       <div className="w-12 h-9 mx-auto mb-3 rounded-md overflow-hidden border border-border/50">
-      <img src="/assets/img/flag-gb.png" alt="United Kingdom flag" className="w-full h-full object-cover" loading="lazy" />
+      <img src={flagSrc(m.code)} onError={onFlagError(m.code)} alt={`${m.name} flag`} className="w-full h-full object-cover" loading="lazy" />
       </div>
-      <p className="text-sm font-semibold text-foreground">United Kingdom</p>
+      <p className="text-sm font-semibold text-foreground">{m.name}</p>
       </div>
-      <div className="bg-card border border-border rounded-2xl p-5 text-center hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <div className="w-12 h-9 mx-auto mb-3 rounded-md overflow-hidden border border-border/50">
-      <img src="/assets/img/flag-nl.png" alt="Netherlands flag" className="w-full h-full object-cover" loading="lazy" />
+      ))}
       </div>
-      <p className="text-sm font-semibold text-foreground">Netherlands</p>
-      </div>
-      <div className="bg-card border border-border rounded-2xl p-5 text-center hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <div className="w-12 h-9 mx-auto mb-3 rounded-md overflow-hidden border border-border/50">
-      <img src="/assets/img/flag-de.png" alt="Germany flag" className="w-full h-full object-cover" loading="lazy" />
-      </div>
-      <p className="text-sm font-semibold text-foreground">Germany</p>
-      </div>
-      <div className="bg-card border border-border rounded-2xl p-5 text-center hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <div className="w-12 h-9 mx-auto mb-3 rounded-md overflow-hidden border border-border/50">
-      <img src="/assets/img/flag-tr.png" alt="Turkey flag" className="w-full h-full object-cover" loading="lazy" />
-      </div>
-      <p className="text-sm font-semibold text-foreground">Turkey</p>
-      </div>
-      <div className="bg-card border border-border rounded-2xl p-5 text-center hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <div className="w-12 h-9 mx-auto mb-3 rounded-md overflow-hidden border border-border/50">
-      <img src="/assets/img/flag-ae.png" alt="UAE flag" className="w-full h-full object-cover" loading="lazy" />
-      </div>
-      <p className="text-sm font-semibold text-foreground">UAE</p>
-      </div>
-      <div className="bg-card border border-border rounded-2xl p-5 text-center hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <div className="w-12 h-9 mx-auto mb-3 rounded-md overflow-hidden border border-border/50">
-      <img src="/assets/img/flag-in.png" alt="India flag" className="w-full h-full object-cover" loading="lazy" />
-      </div>
-      <p className="text-sm font-semibold text-foreground">India</p>
-      </div>
-      <div className="bg-card border border-border rounded-2xl p-5 text-center hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <div className="w-12 h-9 mx-auto mb-3 rounded-md overflow-hidden border border-border/50">
-      <img src="/assets/img/flag-cn.png" alt="China flag" className="w-full h-full object-cover" loading="lazy" />
-      </div>
-      <p className="text-sm font-semibold text-foreground">China</p>
-      </div>
-      <div className="bg-card border border-border rounded-2xl p-5 text-center hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <div className="w-12 h-9 mx-auto mb-3 rounded-md overflow-hidden border border-border/50">
-      <img src="/assets/img/flag-us.png" alt="USA flag" className="w-full h-full object-cover" loading="lazy" />
-      </div>
-      <p className="text-sm font-semibold text-foreground">USA</p>
-      </div>
-      </div>
+      {(site.markets?.caption_left || site.markets?.caption_right) && (
       <div className="mt-10 flex items-center justify-center gap-6 text-muted-foreground">
-      <div className="flex items-center gap-2">
-      <Ship className="w-5 h-5 text-primary" />
-      <span className="text-sm font-medium">FOB Lagos</span>
+      {site.markets?.caption_left && <div className="flex items-center gap-2"><Ship className="w-5 h-5 text-primary" /><span className="text-sm font-medium">{site.markets.caption_left}</span></div>}
+      {site.markets?.caption_left && site.markets?.caption_right && <div className="w-px h-5 bg-border" />}
+      {site.markets?.caption_right && <div className="flex items-center gap-2"><Globe className="w-5 h-5 text-primary" /><span className="text-sm font-medium">{site.markets.caption_right}</span></div>}
       </div>
-      <div className="w-px h-5 bg-border">
-      </div>
-      <div className="flex items-center gap-2">
-      <Globe className="w-5 h-5 text-primary" />
-      <span className="text-sm font-medium">12+ Countries Served</span>
-      </div>
-      </div>
+      )}
       </div>
       </section>
       <section className="py-20 md:py-28 bg-background">
@@ -345,46 +303,23 @@ export default function Home() {
       <p className="text-muted-foreground leading-relaxed">Trusted by procurement teams, food manufacturers, and international buyers across the globe.</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div className="bg-card border border-border p-6 rounded-2xl flex flex-col hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
+      {(site.reviews || []).map((r, i) => (
+      <div key={r.id ?? `${r.name}-${i}`} className="bg-card border border-border p-6 rounded-2xl flex flex-col hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
       <Quote className="w-8 h-8 text-accent/40 mb-4" />
-      <p className="text-sm leading-relaxed text-muted-foreground flex-1">“Vertoc Agro has been our most reliable maize supplier for over two years. Their quality consistency is unmatched.”</p>
-      <div className="flex items-center gap-1 mt-4 mb-3">
-      <Star className="w-4 h-4 text-accent fill-accent" />
-      <Star className="w-4 h-4 text-accent fill-accent" />
-      <Star className="w-4 h-4 text-accent fill-accent" />
-      <Star className="w-4 h-4 text-accent fill-accent" />
-      <Star className="w-4 h-4 text-accent fill-accent" />
+      <p className="text-sm leading-relaxed text-muted-foreground flex-1">“{r.quote}”</p>
+      <div className="flex items-center gap-1 mt-4 mb-3" aria-label={`${r.rating} out of 5 stars`}>
+      {[1, 2, 3, 4, 5].map(k => <Star key={k} className={`w-4 h-4 ${k <= (Number(r.rating) || 5) ? 'text-accent fill-accent' : 'text-border'}`} />)}
       </div>
-      <p className="text-sm font-bold text-foreground">Sanjay</p>
-      <p className="text-xs text-muted-foreground">Procurement Manager of an Indian Based Food Processing company</p>
+      <p className="text-sm font-bold text-foreground">{r.name}</p>
+      {r.role && <p className="text-xs text-muted-foreground">{r.role}</p>}
       </div>
-      <div className="bg-card border border-border p-6 rounded-2xl flex flex-col hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <Quote className="w-8 h-8 text-accent/40 mb-4" />
-      <p className="text-sm leading-relaxed text-muted-foreground flex-1">“Working with Vertoc has been seamless. Their export documentation is always in order and shipments arrive on time.”</p>
-      <div className="flex items-center gap-1 mt-4 mb-3">
-      <Star className="w-4 h-4 text-accent fill-accent" />
-      <Star className="w-4 h-4 text-accent fill-accent" />
-      <Star className="w-4 h-4 text-accent fill-accent" />
-      <Star className="w-4 h-4 text-accent fill-accent" />
-      <Star className="w-4 h-4 text-accent fill-accent" />
+      ))}
       </div>
-      <p className="text-sm font-bold text-foreground">Mitchell</p>
-      <p className="text-xs text-muted-foreground">Director of an International Grain company in the UK</p>
+      <div className="mt-10 text-center">
+      <button type="button" onClick={() => setReviewOpen(true)} className="inline-flex items-center justify-center gap-2 h-11 px-8 rounded-full border border-primary text-primary text-sm font-semibold hover:bg-primary hover:text-primary-foreground transition-colors">Share your experience<ArrowRight className="w-4 h-4" /></button>
+      <p className="text-xs text-muted-foreground mt-3">Reviews appear after our team approves them.</p>
       </div>
-      <div className="bg-card border border-border p-6 rounded-2xl flex flex-col hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <Quote className="w-8 h-8 text-accent/40 mb-4" />
-      <p className="text-sm leading-relaxed text-muted-foreground flex-1">“We switched to Vertoc for our palm oil supply and have never looked back. Competitive pricing and premium quality.”</p>
-      <div className="flex items-center gap-1 mt-4 mb-3">
-      <Star className="w-4 h-4 text-accent fill-accent" />
-      <Star className="w-4 h-4 text-accent fill-accent" />
-      <Star className="w-4 h-4 text-accent fill-accent" />
-      <Star className="w-4 h-4 text-accent fill-accent" />
-      <Star className="w-4 h-4 text-accent fill-accent" />
-      </div>
-      <p className="text-sm font-bold text-foreground">Johnson</p>
-      <p className="text-xs text-muted-foreground">CEO of a Food Processing Company in Nigeria</p>
-      </div>
-      </div>
+      <ReviewForm open={reviewOpen} onClose={() => setReviewOpen(false)} />
       </div>
       </section>
       <section className="py-20 md:py-28 bg-secondary/50">

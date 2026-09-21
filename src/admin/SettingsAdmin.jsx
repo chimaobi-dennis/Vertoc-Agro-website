@@ -8,6 +8,7 @@ import { Bone } from '../components/Skeleton'
 import ImageUpload from './ImageUpload'
 import { DraftNotice, useDraft } from './useDraft'
 import { statIcon } from '../lib/statIcons'
+import { flagSrc, onFlagError } from '../lib/flags'
 import { fmtDateTime } from './format'
 
 const TABS = [
@@ -90,6 +91,7 @@ export default function SettingsAdmin() {
           )}
 
           {tab === 'site' && <HomepageStatsCard />}
+          {tab === 'site' && <HomepageMarketsCard />}
           {tab === 'company' && (
             <Group group="company" settings={settings} onSaved={onSaved} title="Company block on invoices" description="Printed in the header of every invoice PDF and shown on the client's online view.">
               {({ bind }) => (
@@ -168,6 +170,53 @@ function HomepageStatsCard() {
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <Button type="button" variant="outline" className="h-9" disabled={rows.length >= 8} onClick={() => setRows(r => [...r, { icon: 'Award', value: 0, suffix: '+', label: '' }])}><Plus className="w-4 h-4" />Add a stat</Button>
             <Button type="button" variant="accent" onClick={save} disabled={busy || !rows.length}>{busy ? 'Saving…' : 'Save stats'}</Button>
+          </div>
+        </>
+      )}
+      {toastEl}
+    </Card>
+  )
+}
+
+/** "Our Export Markets": one flag tile per country, plus the two captions under the grid. */
+function HomepageMarketsCard() {
+  const [v, setV] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [toast, toastEl] = useToast()
+  useEffect(() => { adminFetch('/settings/markets').then(setV).catch(e => toast(e.message, 'error')) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const update = (i, patch) => setV(x => ({ ...x, items: x.items.map((m, j) => (j === i ? { ...m, ...patch } : m)) }))
+  const move = (i, d) => setV(x => { const n = [...x.items]; const j = i + d; if (j < 0 || j >= n.length) return x; [n[i], n[j]] = [n[j], n[i]]; return { ...x, items: n } })
+  const save = async () => {
+    setBusy(true)
+    try { const r = await adminFetch('/settings/markets', { method: 'PUT', body: { markets: v.items, caption_left: v.caption_left, caption_right: v.caption_right } }); setV(r); toast('Export markets saved') }
+    catch (x) { toast(x.message, 'error') } finally { setBusy(false) }
+  }
+  return (
+    <Card className="p-6 animate-fade-up mt-6">
+      <div className="mb-5"><h2 className="font-semibold">Export markets</h2><p className="text-sm text-muted-foreground mt-0.5">The flag tiles under "Our Export Markets". Enter the country name and its two-letter code (GB, NL, GH…); the flag is picked from the code. Up to 24; multiples of four fill the rows.</p></div>
+      {!v ? <Bone className="h-10 w-full" /> : (
+        <>
+          <ul className="space-y-2">
+            {v.items.map((m, i) => (
+              <li key={i} className="grid gap-3 md:grid-cols-[auto_1fr_120px_auto] items-end rounded-xl border border-border p-3">
+                <span className="w-12 h-9 rounded-md overflow-hidden border border-border/50 bg-muted mb-0.5"><img src={flagSrc(m.code)} onError={onFlagError(m.code)} alt="" className="w-full h-full object-cover" /></span>
+                <Field label="Country"><Input value={m.name} maxLength={40} onChange={e => update(i, { name: e.target.value })} placeholder="Ghana" /></Field>
+                <Field label="Code" hint="ISO, 2 letters"><Input value={m.code} maxLength={2} onChange={e => update(i, { code: e.target.value.toLowerCase().replace(/[^a-z]/g, '') })} placeholder="gh" className="uppercase" /></Field>
+                <div className="flex items-center gap-1 pb-0.5">
+                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="h-9 w-8 rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-30" aria-label="Move up">↑</button>
+                  <button type="button" onClick={() => move(i, 1)} disabled={i === v.items.length - 1} className="h-9 w-8 rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-30" aria-label="Move down">↓</button>
+                  <button type="button" onClick={() => setV(x => ({ ...x, items: x.items.filter((_, j) => j !== i) }))} className="h-9 w-9 rounded-lg text-destructive hover:bg-muted flex items-center justify-center" aria-label="Remove market"><Trash2 className="w-4 h-4" /></button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="grid md:grid-cols-2 gap-4 mt-4">
+            <Field label="Left caption" hint="Shown with a ship icon under the grid; empty hides it"><Input value={v.caption_left || ''} maxLength={60} onChange={e => setV(x => ({ ...x, caption_left: e.target.value }))} placeholder="FOB Lagos" /></Field>
+            <Field label="Right caption" hint="Shown with a globe icon; empty hides it"><Input value={v.caption_right || ''} maxLength={60} onChange={e => setV(x => ({ ...x, caption_right: e.target.value }))} placeholder="12+ Countries Served" /></Field>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <Button type="button" variant="outline" className="h-9" disabled={v.items.length >= 24} onClick={() => setV(x => ({ ...x, items: [...x.items, { name: '', code: '' }] }))}><Plus className="w-4 h-4" />Add a country</Button>
+            <Button type="button" variant="accent" onClick={save} disabled={busy || !v.items.length}>{busy ? 'Saving…' : 'Save markets'}</Button>
           </div>
         </>
       )}
@@ -270,6 +319,7 @@ function EmailSettings({ settings, onSaved, reload }) {
             <Field label="Notify the team at" hint="Defaults to the Reply-to address"><Input type="email" {...bind('notify_to')} /></Field>
             <div className="md:col-span-2 flex flex-wrap gap-6 text-sm">
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_enquiries !== false} onChange={ev => setForm({ ...form, notify_enquiries: ev.target.checked })} />Email the team when a quote request is submitted on the website</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_reviews !== false} onChange={ev => setForm({ ...form, notify_reviews: ev.target.checked })} />Email the team when a client submits a review on the website</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.ack_enquiries !== false} onChange={ev => setForm({ ...form, ack_enquiries: ev.target.checked })} />Send the sender a confirmation ("Quote request received" template)</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_responses !== false} onChange={ev => setForm({ ...form, notify_responses: ev.target.checked })} />Email the team when a client accepts or declines an invoice</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_inbound !== false} onChange={ev => setForm({ ...form, notify_inbound: ev.target.checked })} />Email the team when a client's email arrives</label>

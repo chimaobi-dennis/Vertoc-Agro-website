@@ -102,7 +102,10 @@ app.get('/api/posts/:slug', (req, res) =>
 
 // Site identity and contact details, edited under Settings → Site.
 app.get('/api/site', (_req, res) =>
-  send(res, async () => ({ ...(await content.getSettings()).site, stats: await content.getHomepageStats() })))
+  send(res, async () => {
+    const [settings, stats, markets, reviews] = await Promise.all([content.getSettings(), content.getHomepageStats(), content.getHomepageMarkets(), content.listApprovedReviews()])
+    return { ...settings.site, stats, markets, reviews }
+  }))
 
 /* ------------------------------------------------ public quote links --- */
 // /q/<token> in the browser calls these. The token is the only credential:
@@ -214,6 +217,30 @@ app.post('/api/enquiries', async (req, res) => {
   } catch (e) {
     console.error('[enquiries]', e.message)
     res.status(500).json({ error: 'Could not save your message. Please try again.' })
+  }
+})
+
+/* ------------------------------------------------------ public reviews --- */
+// "Share your experience" on the homepage. Same defences as the enquiry form;
+// the review waits for approval in the panel and the team is told.
+app.post('/api/reviews', async (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown'
+  const b = req.body || {}
+  if (clean(b.website)) return res.status(202).json({ ok: true })   // honeypot
+  const name = clean(b.name, 60), quote = clean(b.quote, 400), email = clean(b.email, 200)
+  if (name.length < 2) return res.status(400).json({ error: 'Please enter your name.' })
+  if (quote.length < 10) return res.status(400).json({ error: 'Please write at least a sentence.' })
+  if (email && !isEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address, or leave it empty.' })
+  if (throttled(ip, 3)) return res.status(429).json({ error: 'Too many submissions. Please try again later.' })
+  const captcha = await verifyTurnstile(b.captchaToken, ip)
+  if (!captcha.ok) return res.status(400).json({ error: 'Captcha verification failed. Please try again.' })
+  try {
+    const review = await content.createReview({ name, quote, email, role: clean(b.role, 120), rating: b.rating }, { status: 'pending', source: 'website' })
+    await notifyTeam('review_notice', { review, link: panelLink('/reviews') })
+    res.status(201).json({ ok: true, id: review.id })
+  } catch (e) {
+    console.error('[reviews]', e.message)
+    res.status(e.expose ? 503 : 500).json({ error: 'Could not save your review. Please try again later.' })
   }
 })
 

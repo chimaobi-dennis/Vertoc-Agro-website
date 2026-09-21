@@ -437,6 +437,7 @@ export const DEFAULT_SETTINGS = {
     inbound_address: '',        // address clients reply to once Resend receiving is set up; used as Reply-To when set
     ack_enquiries: true,        // confirm website quote requests to the sender automatically
     notify_enquiries: true,     // email the team when a quote request arrives
+    notify_reviews: true,       // email the team when a client submits a review on the website
     notify_to: '',              // team address for notifications; falls back to reply_to
     notify_inbound: true, notify_responses: true,
   },
@@ -891,6 +892,105 @@ export async function setHomepageStats(list) {
   if (!items.length) throw new Error('keep at least one stat')
   unwrap(await supabase.from('settings').upsert({ key: 'homepage_stats', value: { items } }, { onConflict: 'key' }), 'setHomepageStats')
   return items
+}
+
+/* ---------------------------------------------- homepage markets + reviews --- */
+// "Our Export Markets" flag tiles and "What Our Clients Say" cards, edited under
+// Settings → Site. Same settings-row pattern as the stat tiles.
+export const DEFAULT_MARKETS = {
+  items: [
+    { name: 'United Kingdom', code: 'gb' }, { name: 'Netherlands', code: 'nl' }, { name: 'Germany', code: 'de' }, { name: 'Turkey', code: 'tr' },
+    { name: 'UAE', code: 'ae' }, { name: 'India', code: 'in' }, { name: 'China', code: 'cn' }, { name: 'USA', code: 'us' },
+  ],
+  caption_left: 'FOB Lagos', caption_right: '12+ Countries Served',
+}
+export const DEFAULT_REVIEWS = [
+  { quote: 'Vertoc Agro has been our most reliable maize supplier for over two years. Their quality consistency is unmatched.', name: 'Sanjay', role: 'Procurement Manager of an Indian Based Food Processing company', rating: 5 },
+  { quote: 'Working with Vertoc has been seamless. Their export documentation is always in order and shipments arrive on time.', name: 'Mitchell', role: 'Director of an International Grain company in the UK', rating: 5 },
+  { quote: 'We switched to Vertoc for our palm oil supply and have never looked back. Competitive pricing and premium quality.', name: 'Johnson', role: 'CEO of a Food Processing Company in Nigeria', rating: 5 },
+]
+const tidy = (s, max) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
+export async function getHomepageMarkets() {
+  const rows = unwrap(await supabase.from('settings').select('value').eq('key', 'homepage_markets').limit(1), 'getHomepageMarkets')
+  const v = rows?.[0]?.value
+  return Array.isArray(v?.items) && v.items.length ? { items: v.items, caption_left: v.caption_left ?? '', caption_right: v.caption_right ?? '' } : structuredClone(DEFAULT_MARKETS)
+}
+export async function setHomepageMarkets({ markets, caption_left, caption_right } = {}) {
+  if (!Array.isArray(markets)) throw new Error('markets must be a list')
+  const items = []
+  for (const m of markets.slice(0, 24)) {
+    const name = tidy(m?.name, 40), code = String(m?.code || '').trim().toLowerCase()
+    if (!name || !/^[a-z]{2}$/.test(code)) continue
+    items.push({ name, code })
+  }
+  if (!items.length) throw new Error('keep at least one market, each with a two-letter country code')
+  const value = { items, caption_left: tidy(caption_left, 60), caption_right: tidy(caption_right, 60) }
+  unwrap(await supabase.from('settings').upsert({ key: 'homepage_markets', value }, { onConflict: 'key' }), 'setHomepageMarkets')
+  return value
+}
+/* ------------------------------------------------------------- reviews --- */
+// Table `reviews` (migration 009): clients submit from the site (pending),
+// staff approve/hide/add in the panel; only approved ones reach the homepage.
+// Until the migration runs, the homepage shows DEFAULT_REVIEWS and the panel
+// gets a clear hint instead of a 500.
+export const REVIEW_STATUSES = ['pending', 'approved', 'hidden']
+export const REVIEWS_MIGRATION_HINT = 'Reviews need the database migration 009: run server/migrations/009_reviews.sql in the Supabase SQL editor first.'
+const missingReviews = e => e?.code === '42P01' || /relation "public\.?reviews" does not exist|reviews.*does not exist|schema cache/i.test(String(e?.message || ''))
+const reviewErr = (e, ctx) => (missingReviews(e) ? Object.assign(new Error(REVIEWS_MIGRATION_HINT), { expose: true, status: 409 }) : new Error(`${ctx}: ${e.message}`))
+const cleanQuote = s => tidy(s, 400).replace(/^[“"']+|[”"']+$/g, '')
+const cleanRating = v => Math.min(5, Math.max(1, Math.round(Number(v)) || 5))
+export async function listReviews({ status = 'all', limit = 200 } = {}) {
+  let q = supabase.from('reviews').select('*').order('position').order('created_at', { ascending: false }).limit(limit)
+  if (REVIEW_STATUSES.includes(status)) q = q.eq('status', status)
+  const { data, error } = await q
+  if (error) throw reviewErr(error, 'listReviews')
+  return data ?? []
+}
+export async function listApprovedReviews() {
+  const { data, error } = await supabase.from('reviews').select('id,quote,name,role,rating').eq('status', 'approved').order('position').order('created_at', { ascending: false }).limit(12)
+  if (error) { if (missingReviews(error)) return structuredClone(DEFAULT_REVIEWS); throw new Error(`listApprovedReviews: ${error.message}`) }
+  return data ?? []
+}
+export async function getReview(id) {
+  const { data, error } = await supabase.from('reviews').select('*').eq('id', Number(id)).limit(1)
+  if (error) throw reviewErr(error, 'getReview')
+  return data?.[0] ?? null
+}
+export async function createReview(input, { status = 'approved', source = 'admin' } = {}) {
+  const quote = cleanQuote(input?.quote), name = tidy(input?.name, 60)
+  if (quote.length < 10) throw new Error('please write at least a sentence')
+  if (!name) throw new Error('name is required')
+  const st = REVIEW_STATUSES.includes(status) ? status : 'pending'
+  const row = { quote, name, role: tidy(input?.role, 120), email: tidy(input?.email, 200).toLowerCase(), rating: cleanRating(input?.rating), status: st, source: source === 'website' ? 'website' : 'admin', approved_at: st === 'approved' ? new Date().toISOString() : null }
+  const { data, error } = await supabase.from('reviews').insert(row).select().single()
+  if (error) throw reviewErr(error, 'createReview')
+  return data
+}
+export async function updateReview(id, patch) {
+  const existing = await getReview(id)
+  if (!existing) throw new Error(`no review with id ${id}`)
+  const row = {}
+  if (patch.quote !== undefined) { row.quote = cleanQuote(patch.quote); if (row.quote.length < 10) throw new Error('please write at least a sentence') }
+  if (patch.name !== undefined) { row.name = tidy(patch.name, 60); if (!row.name) throw new Error('name is required') }
+  if (patch.role !== undefined) row.role = tidy(patch.role, 120)
+  if (patch.rating !== undefined) row.rating = cleanRating(patch.rating)
+  if (patch.position !== undefined) row.position = Math.round(Number(patch.position)) || 0
+  if (patch.status !== undefined && patch.status !== existing.status) {
+    if (!REVIEW_STATUSES.includes(patch.status)) throw new Error(`status must be one of: ${REVIEW_STATUSES.join(', ')}`)
+    row.status = patch.status
+    if (patch.status === 'approved' && !existing.approved_at) row.approved_at = new Date().toISOString()
+  }
+  if (!Object.keys(row).length) return existing
+  const { data, error } = await supabase.from('reviews').update(row).eq('id', existing.id).select().single()
+  if (error) throw reviewErr(error, 'updateReview')
+  return data
+}
+export async function deleteReview(id) {
+  const r = await getReview(id)
+  if (!r) throw new Error(`no review with id ${id}`)
+  const { error } = await supabase.from('reviews').delete().eq('id', r.id)
+  if (error) throw reviewErr(error, 'deleteReview')
+  return { deleted: true, id: r.id }
 }
 
 /* --------------------------------------------------------- departments --- */

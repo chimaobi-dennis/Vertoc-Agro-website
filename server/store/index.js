@@ -47,6 +47,8 @@ export const {
   getLabelCatalogue, setLabelCatalogue, setThreadLabel, LABEL_COLORS, DEFAULT_LABELS,
   listDepartments, setDepartments, resolveSender,
   getHomepageStats, setHomepageStats, DEFAULT_STATS, STAT_ICON_NAMES,
+  getHomepageMarkets, setHomepageMarkets, DEFAULT_MARKETS, DEFAULT_REVIEWS,
+  listReviews, listApprovedReviews, getReview, createReview, updateReview, deleteReview, REVIEW_STATUSES, REVIEWS_MIGRATION_HINT,
   listTemplates, getTemplate, upsertTemplate, updateTemplate, createDocumentFromBuffer,
   listPurchases, getPurchase, createPurchase, updatePurchase, deletePurchase,
 } = store
