@@ -150,6 +150,13 @@ try {
     return `site=${s.site.name} · email ${s.email.configured ? 'via ' + s.email.source : 'off'}${s.email.dry_run ? ' · DRY RUN' : ''}`
   })
   await step('PUT /settings quotes.default_currency=eur → EUR', async () => (await api('/settings', { method: 'PUT', body: { quotes: { default_currency: 'eur' } } })).quotes.default_currency)
+  settingsBefore.homepage_stats = (await svc.from('settings').select('value').eq('key', 'homepage_stats').maybeSingle()).data?.value ?? null
+  await step('PUT /settings/stats → public /api/site carries the tiles', async () => {
+    const r = await api('/settings/stats', { method: 'PUT', body: { stats: [{ icon: 'Wheat', value: '42', suffix: '+', label: 'e2e Harvests' }, { icon: 'nope', value: 7, suffix: '%', label: 'e2e Share' }] } })
+    if (r.stats.length !== 2 || r.stats[0].icon !== 'Wheat' || r.stats[0].value !== 42 || r.stats[1].icon !== 'Award' || r.stats[1].suffix !== '%') throw new Error(JSON.stringify(r.stats))
+    const pub = await fetch(`${API}/api/site`).then(x => x.json()); if (!Array.isArray(pub.stats) || pub.stats[0]?.label !== 'e2e Harvests') throw new Error('public site lacks the stats: ' + JSON.stringify(pub.stats).slice(0, 100))
+    return `${r.stats.map(s => s.value + s.suffix + ' ' + s.label).join(' · ')} · public ✓ · unknown icon → Award ✓`
+  })
   await step('PUT /settings rejects a bad From', () => refused(() => api('/settings', { method: 'PUT', body: { email: { from: 'not an address' } } }), /From must/, 'bad from'))
   await step('MCP token: generate → works on /mcp → revoke', async () => {
     const r = await api('/settings/mcp/token', { method: 'POST' })

@@ -334,6 +334,11 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
   `POST /messages/thread/read`, and `POST /messages` with `reply_to_id`.
   Team notifications and staff invitations are `internal` mail
   (`messages.headers.internal`) and never appear in conversations.
+- **Homepage stats.** The number tiles under the hero are edited under
+  Settings → Site (icon from a fixed set, number, suffix, label; reorder,
+  add up to eight). Stored in the `settings` table under `homepage_stats`
+  and served with `GET /api/site` as `stats`; the site keeps the old values
+  as defaults for first paint.
 - **Departments.** Settings → Email → Departments adds sender identities
   (Finance <finance@…>, Logistics <…>) next to the default From. The composer
   and the reply box offer a From selector when more than one exists

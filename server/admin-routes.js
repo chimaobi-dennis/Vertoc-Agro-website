@@ -438,6 +438,13 @@ router.delete('/settings/mcp/token', settingsAdmin, h(async (req, res) => {
 }))
 
 /* Secrets (API keys) set from the panel: write-only, encrypted at rest. */
+// Homepage stat tiles (Settings → Site).
+router.get('/settings/stats', settingsAdmin, h(async (_req, res) => res.json({ stats: await content.getHomepageStats(), icons: content.STAT_ICON_NAMES })))
+router.put('/settings/stats', settingsAdmin, h(async (req, res) => {
+  const stats = await exposing(content.setHomepageStats)(req.body?.stats)
+  await audit({ actor: req.user, action: 'update', entity: 'homepage_stats', entityId: null, after: { stats } })
+  res.json({ stats, icons: content.STAT_ICON_NAMES })
+}))
 // Departments: extra sender identities (name + address, optional reply-to and signature).
 router.get('/settings/departments', settingsAdmin, h(async (_req, res) => res.json(await content.listDepartments())))
 router.put('/settings/departments', settingsAdmin, h(async (req, res) => {

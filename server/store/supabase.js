@@ -863,6 +863,36 @@ export async function findClientByEmail(email) {
   const e = String(email || '').trim(); if (!e) return null
   return (unwrap(await supabase.from('clients').select('*').ilike('data->>email', e).order('status').limit(1), 'findClientByEmail'))?.[0] ?? null
 }
+/* ------------------------------------------------------ homepage stats --- */
+// The four number tiles on the homepage ("8+ Years of Experience"). Stored in
+// the settings table under 'homepage_stats' (outside the settings groups) and
+// served with the public site data. Defaults equal the old hard-coded tiles.
+export const STAT_ICON_NAMES = ['Award', 'BadgeCheck', 'Boxes', 'CalendarCheck', 'Factory', 'Globe', 'Handshake', 'Leaf', 'MapPin', 'Package', 'ShieldCheck', 'Ship', 'Sprout', 'Star', 'Target', 'TrendingUp', 'Truck', 'Users', 'Warehouse', 'Wheat']
+export const DEFAULT_STATS = [
+  { icon: 'CalendarCheck', value: 8, suffix: '+', label: 'Years of Experience' },
+  { icon: 'Globe', value: 12, suffix: '+', label: 'Export Countries' },
+  { icon: 'Package', value: 30, suffix: '+', label: 'Commodities' },
+  { icon: 'Users', value: 500, suffix: '+', label: 'Partner Farmers' },
+]
+export async function getHomepageStats() {
+  const rows = unwrap(await supabase.from('settings').select('value').eq('key', 'homepage_stats').limit(1), 'getHomepageStats')
+  const items = rows?.[0]?.value?.items
+  return Array.isArray(items) && items.length ? items : structuredClone(DEFAULT_STATS)
+}
+export async function setHomepageStats(list) {
+  if (!Array.isArray(list)) throw new Error('stats must be a list')
+  const items = []
+  for (const s of list.slice(0, 8)) {
+    const label = String(s?.label || '').replace(/\s+/g, ' ').trim().slice(0, 40)
+    const value = Math.max(0, Math.round(Number(s?.value)))
+    if (!label || !Number.isFinite(value)) continue
+    items.push({ icon: STAT_ICON_NAMES.includes(s?.icon) ? s.icon : 'Award', value, suffix: String(s?.suffix ?? '+').trim().slice(0, 3), label })
+  }
+  if (!items.length) throw new Error('keep at least one stat')
+  unwrap(await supabase.from('settings').upsert({ key: 'homepage_stats', value: { items } }, { onConflict: 'key' }), 'setHomepageStats')
+  return items
+}
+
 /* --------------------------------------------------------- departments --- */
 // Sender identities ("departments"): each is a From address with a display
 // name, an optional reply-to and an optional signature. Stored in the

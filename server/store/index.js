@@ -46,6 +46,7 @@ export const {
   listThreads, getThread, markThreadRead, splitQuoted, parseThreadKey, threadKeyOf, cleanSubject,
   getLabelCatalogue, setLabelCatalogue, setThreadLabel, LABEL_COLORS, DEFAULT_LABELS,
   listDepartments, setDepartments, resolveSender,
+  getHomepageStats, setHomepageStats, DEFAULT_STATS, STAT_ICON_NAMES,
   listTemplates, getTemplate, upsertTemplate, updateTemplate, createDocumentFromBuffer,
   listPurchases, getPurchase, createPurchase, updatePurchase, deletePurchase,
 } = store

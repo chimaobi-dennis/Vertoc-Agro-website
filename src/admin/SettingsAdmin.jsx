@@ -3,10 +3,11 @@ import { useSearchParams } from 'react-router-dom'
 import { Building2, Check, Copy, FileText, Globe, Inbox, KeyRound, LayoutTemplate, Mail, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { adminFetch } from '../lib/adminApi'
-import { Alert, Badge, Button, Card, Field, Input, PageHeader, Tabs, Textarea, useToast } from './ui'
+import { Alert, Badge, Button, Card, Field, Input, PageHeader, Select, Tabs, Textarea, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import ImageUpload from './ImageUpload'
 import { DraftNotice, useDraft } from './useDraft'
+import { statIcon } from '../lib/statIcons'
 import { fmtDateTime } from './format'
 
 const TABS = [
@@ -88,6 +89,7 @@ export default function SettingsAdmin() {
             </Group>
           )}
 
+          {tab === 'site' && <HomepageStatsCard />}
           {tab === 'company' && (
             <Group group="company" settings={settings} onSaved={onSaved} title="Company block on invoices" description="Printed in the header of every invoice PDF and shown on the client's online view.">
               {({ bind }) => (
@@ -124,6 +126,55 @@ export default function SettingsAdmin() {
 }
 
 /* ---------------------------------------------------------------- email --- */
+
+/** The number tiles on the homepage: icon, number, suffix, label. */
+function HomepageStatsCard() {
+  const [rows, setRows] = useState(null)
+  const [icons, setIcons] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [toast, toastEl] = useToast()
+  useEffect(() => { adminFetch('/settings/stats').then(r => { setRows(r.stats); setIcons(r.icons) }).catch(e => toast(e.message, 'error')) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const update = (i, patch) => setRows(r => r.map((s, j) => (j === i ? { ...s, ...patch } : s)))
+  const move = (i, d) => setRows(r => { const n = [...r]; const j = i + d; if (j < 0 || j >= n.length) return r; [n[i], n[j]] = [n[j], n[i]]; return n })
+  const save = async () => {
+    setBusy(true)
+    try { const r = await adminFetch('/settings/stats', { method: 'PUT', body: { stats: rows } }); setRows(r.stats); toast('Homepage stats saved') }
+    catch (x) { toast(x.message, 'error') } finally { setBusy(false) }
+  }
+  return (
+    <Card className="p-6 animate-fade-up mt-6">
+      <div className="mb-5"><h2 className="font-semibold">Homepage stats</h2><p className="text-sm text-muted-foreground mt-0.5">The number tiles under the hero ("8+ Years of Experience"). The number counts up when the section scrolls into view; the suffix is printed after it. Up to eight; four fit the row best.</p></div>
+      {!rows ? <Bone className="h-10 w-full" /> : (
+        <>
+          <ul className="space-y-3">
+            {rows.map((s, i) => {
+              const Icon = statIcon(s.icon)
+              return (
+                <li key={i} className="rounded-xl border border-border p-4 grid gap-3 md:grid-cols-[auto_1fr_1fr_1fr_1.5fr_auto] items-end">
+                  <span className="w-11 h-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center"><Icon className="w-5 h-5" /></span>
+                  <Field label="Icon"><Select value={s.icon} onChange={e => update(i, { icon: e.target.value })}>{icons.map(n => <option key={n} value={n}>{n.replace(/([a-z])([A-Z])/g, '$1 $2')}</option>)}</Select></Field>
+                  <Field label="Number"><Input type="number" min="0" step="1" value={s.value} onChange={e => update(i, { value: e.target.value })} /></Field>
+                  <Field label="Suffix" hint="e.g. + or %"><Input value={s.suffix ?? ''} maxLength={3} onChange={e => update(i, { suffix: e.target.value })} /></Field>
+                  <Field label="Label"><Input value={s.label} maxLength={40} onChange={e => update(i, { label: e.target.value })} placeholder="Years of Experience" /></Field>
+                  <div className="flex items-center gap-1 pb-0.5">
+                    <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="h-9 w-8 rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-30" aria-label="Move up">↑</button>
+                    <button type="button" onClick={() => move(i, 1)} disabled={i === rows.length - 1} className="h-9 w-8 rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-30" aria-label="Move down">↓</button>
+                    <button type="button" onClick={() => setRows(r => r.filter((_, j) => j !== i))} className="h-9 w-9 rounded-lg text-destructive hover:bg-muted flex items-center justify-center" aria-label="Remove stat"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <Button type="button" variant="outline" className="h-9" disabled={rows.length >= 8} onClick={() => setRows(r => [...r, { icon: 'Award', value: 0, suffix: '+', label: '' }])}><Plus className="w-4 h-4" />Add a stat</Button>
+            <Button type="button" variant="accent" onClick={save} disabled={busy || !rows.length}>{busy ? 'Saving…' : 'Save stats'}</Button>
+          </div>
+        </>
+      )}
+      {toastEl}
+    </Card>
+  )
+}
 
 /** Extra sender identities: Finance <finance@…>, Logistics <…>. The From above stays the default. */
 function DepartmentsCard() {

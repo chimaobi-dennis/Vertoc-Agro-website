@@ -102,7 +102,7 @@ app.get('/api/posts/:slug', (req, res) =>
 
 // Site identity and contact details, edited under Settings → Site.
 app.get('/api/site', (_req, res) =>
-  send(res, async () => (await content.getSettings()).site))
+  send(res, async () => ({ ...(await content.getSettings()).site, stats: await content.getHomepageStats() })))
 
 /* ------------------------------------------------ public quote links --- */
 // /q/<token> in the browser calls these. The token is the only credential:

@@ -17,6 +17,13 @@ export const SITE_DEFAULTS = {
   address: 'Akala Express Way, Ibadan, Oyo State, Nigeria', hours: CONTACT.hours, hours_short: CONTACT.hoursShort,
   facebook: 'https://facebook.com/VertocAgro', instagram: 'https://instagram.com/vertocagro', linkedin: 'https://linkedin.com/company/vertocagro',
   twitter: 'https://x.com/vertocagro', threads: 'https://www.threads.com/@vertocagro',
+  // Homepage stat tiles; edited under Settings → Site. Same values the page used to hard-code.
+  stats: [
+    { icon: 'CalendarCheck', value: 8, suffix: '+', label: 'Years of Experience' },
+    { icon: 'Globe', value: 12, suffix: '+', label: 'Export Countries' },
+    { icon: 'Package', value: 30, suffix: '+', label: 'Commodities' },
+    { icon: 'Users', value: 500, suffix: '+', label: 'Partner Farmers' },
+  ],
 }
 
 const Ctx = createContext(SITE_DEFAULTS)

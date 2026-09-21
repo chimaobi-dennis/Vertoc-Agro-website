@@ -1,16 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Award, CalendarCheck, Eye, Factory, FlaskConical, Globe, Handshake, Leaf, Package, PackageSearch, Quote, ShieldCheck, Ship, Star, Target, TrendingUp, Truck, Users, Warehouse } from 'lucide-react'
+import { ArrowRight, Award, Eye, Factory, FlaskConical, Globe, Handshake, Leaf, PackageSearch, Quote, ShieldCheck, Ship, Star, Target, TrendingUp, Truck, Warehouse } from 'lucide-react'
 import StatCounter from '../components/StatCounter'
 import { useApi } from '../lib/api'
 import { CardGridSkeleton, ProductCardSkeleton } from '../components/Skeleton'
+import { statIcon } from '../lib/statIcons'
+import { useSite } from '../lib/site'
 
-const STATS = [
-  { icon: CalendarCheck, value: 8, label: 'Years of Experience' },
-  { icon: Globe, value: 12, label: 'Export Countries' },
-  { icon: Package, value: 30, label: 'Commodities' },
-  { icon: Users, value: 500, label: 'Partner Farmers' },
-]
+// The stat tiles come from Settings → Site (see src/lib/site.jsx for the defaults).
 
 const FILTERS = ['All Products', 'Agro Commodities', 'Solid Minerals']
 const inFilter = (p, f) => f === 'All Products' || f.toLowerCase().startsWith(String(p.category || '').toLowerCase())
@@ -58,6 +55,7 @@ function FeaturedCommodities() {
 }
 
 export default function Home() {
+  const site = useSite()
   return (
     <main className="flex-grow">
       <script type="application/ld+json">{'{'}"@context":"https://schema.org","@graph":[{'{'}"@type":"Organization","@id":"https://vertocagro.com/#organization","name":"Vertoc Agro Products Limited","url":"https://vertocagro.com","logo":{'{'}"@type":"ImageObject","url":"/assets/img/logo.png"{'}'},"description":"Growing the Future, One Harvest at a Time. Cultivation, sourcing, processing, storage, logistics, and export of premium agricultural commodities across Nigeria and beyond.","address":{'{'}"@type":"PostalAddress","addressCountry":"NG","addressLocality":"Nigeria"{'}'},"contactPoint":{'{'}"@type":"ContactPoint","email":"sales@vertocagro.com","contactType":"sales","availableLanguage":"English"{'}'},"sameAs":[],"foundingDate":"2020","legalName":"Vertoc Agro Products Limited"{'}'},{'{'}"@type":"WebSite","@id":"https://vertocagro.com/#website","url":"https://vertocagro.com","name":"Vertoc Agro Products Limited","description":"Premium agricultural commodities export from Nigeria","publisher":{'{'}"@id":"https://vertocagro.com/#organization"{'}'},"potentialAction":{'{'}"@type":"SearchAction","target":{'{'}"@type":"EntryPoint","urlTemplate":"https://vertocagro.com/products?q={'{'}search_term_string{'}'}"{'}'},"query-input":"required name=search_term_string"{'}'}{'}'}]{'}'}</script>
@@ -118,8 +116,8 @@ export default function Home() {
       <section className="py-16 md:py-20 bg-background">
         <div className="container mx-auto px-4 md:px-6">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-            {STATS.map(s => (
-              <StatCounter key={s.label} {...s} />
+            {(site.stats || []).map((s, i) => (
+              <StatCounter key={`${s.label}-${i}`} icon={statIcon(s.icon)} value={Number(s.value) || 0} suffix={s.suffix ?? '+'} label={s.label} />
             ))}
           </div>
         </div>
