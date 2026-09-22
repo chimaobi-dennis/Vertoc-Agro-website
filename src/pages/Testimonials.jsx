@@ -5,6 +5,7 @@ import { useApi } from '../lib/api'
 import { useSite } from '../lib/site'
 import ReviewForm from '../components/ReviewForm'
 import { Bone } from '../components/Skeleton'
+import { Editable } from '../lib/editing'
 
 /* Every approved client review (the homepage shows the first six). Clients can submit their own; it appears once the team approves it. */
 export default function Testimonials() {
@@ -32,7 +33,7 @@ export default function Testimonials() {
               <div key={i} className="bg-card border border-border p-6 rounded-2xl space-y-3"><Bone className="h-8 w-8" /><Bone className="h-4 w-full" /><Bone className="h-4 w-5/6" /><Bone className="h-4 w-2/3" /><Bone className="h-3 w-1/3 mt-4" /></div>
             ))}
             {reviews.map((r, i) => (
-              <div key={r.id ?? `${r.name}-${i}`} className="bg-card border border-border p-6 rounded-2xl flex flex-col hover:-translate-y-1 transition-transform duration-200">
+              <Editable key={r.id ?? `${r.name}-${i}`} section="review" id={r.id} label="review"><div className="bg-card border border-border p-6 rounded-2xl flex flex-col hover:-translate-y-1 transition-transform duration-200 h-full">
                 <Quote className="w-8 h-8 text-accent/50 mb-4" />
                 <p className="text-sm leading-relaxed text-muted-foreground flex-1">“{r.quote}”</p>
                 <div className="flex items-center gap-1 mt-4 mb-3" aria-label={`${r.rating} out of 5 stars`}>
@@ -42,8 +43,9 @@ export default function Testimonials() {
                   <p className="text-sm font-semibold text-foreground">{r.name}</p>
                   {r.role && <p className="text-xs text-muted-foreground">{r.role}</p>}
                 </div>
-              </div>
+              </div></Editable>
             ))}
+            <Editable section="review" add label="review" />
             {!loading && reviews.length === 0 && <p className="col-span-full text-center text-sm text-muted-foreground py-10">No reviews yet. Be the first to share your experience.</p>}
           </div>
           <div className="bg-primary rounded-2xl p-8 md:p-10 text-center">

@@ -23,6 +23,7 @@ import Disclaimer from './pages/Disclaimer'
 import TermsOfService from './pages/TermsOfService'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import { SiteProvider } from './lib/site'
+import { EditingProvider } from './lib/editing'
 
 // Code-split: public visitors never download the admin panel.
 const AdminApp = lazy(() => import('./admin/AdminApp'))
@@ -35,6 +36,7 @@ function LegacyAdminRedirect() {
 export default function App() {
   return (
     <SiteProvider>
+    <EditingProvider>
     <Routes>
       <Route
         path="/staff360/*"
@@ -66,6 +68,7 @@ export default function App() {
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
+    </EditingProvider>
     </SiteProvider>
   )
 }

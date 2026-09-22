@@ -463,21 +463,29 @@ router.delete('/settings/mcp/token', settingsAdmin, h(async (req, res) => {
 }))
 
 /* Secrets (API keys) set from the panel: write-only, encrypted at rest. */
+// Public-page content: editable in place on the site by staff with the 'frontpages' permission (admin, editor).
+const frontpages = requireRole(...PERMISSIONS.frontpages)
+router.get('/settings/gallery', frontpages, h(async (_req, res) => res.json({ items: await content.getGallery() })))
+router.put('/settings/gallery', frontpages, h(async (req, res) => { const items = await exposing(content.setGallery)(req.body?.items); await audit({ actor: req.user, action: 'update', entity: 'gallery', entityId: null, after: { count: items.length } }); res.json({ items }) }))
+router.get('/settings/faq', frontpages, h(async (_req, res) => res.json({ items: await content.getFaq() })))
+router.put('/settings/faq', frontpages, h(async (req, res) => { const items = await exposing(content.setFaq)(req.body?.items); await audit({ actor: req.user, action: 'update', entity: 'faq', entityId: null, after: { count: items.length } }); res.json({ items }) }))
+router.get('/settings/services', frontpages, h(async (_req, res) => res.json({ items: await content.getServices(), icons: content.STAT_ICON_NAMES })))
+router.put('/settings/services', frontpages, h(async (req, res) => { const items = await exposing(content.setServices)(req.body?.items); await audit({ actor: req.user, action: 'update', entity: 'services', entityId: null, after: { count: items.length } }); res.json({ items, icons: content.STAT_ICON_NAMES }) }))
 // Homepage stat tiles (Settings → Site).
-router.get('/settings/stats', settingsAdmin, h(async (_req, res) => res.json({ stats: await content.getHomepageStats(), icons: content.STAT_ICON_NAMES })))
-router.put('/settings/stats', settingsAdmin, h(async (req, res) => {
+router.get('/settings/stats', frontpages, h(async (_req, res) => res.json({ stats: await content.getHomepageStats(), icons: content.STAT_ICON_NAMES })))
+router.put('/settings/stats', frontpages, h(async (req, res) => {
   const stats = await exposing(content.setHomepageStats)(req.body?.stats)
   await audit({ actor: req.user, action: 'update', entity: 'homepage_stats', entityId: null, after: { stats } })
   res.json({ stats, icons: content.STAT_ICON_NAMES })
 }))
-router.get('/settings/about', settingsAdmin, h(async (_req, res) => res.json({ profile: await content.getCompanyProfile(), icons: content.STAT_ICON_NAMES })))
-router.put('/settings/about', settingsAdmin, h(async (req, res) => {
+router.get('/settings/about', frontpages, h(async (_req, res) => res.json({ profile: await content.getCompanyProfile(), icons: content.STAT_ICON_NAMES })))
+router.put('/settings/about', frontpages, h(async (req, res) => {
   const profile = await exposing(content.setCompanyProfile)(req.body || {})
   await audit({ actor: req.user, action: 'update', entity: 'company_profile', entityId: null, after: { registrations: profile.registrations.length, values: profile.values.length, industries: profile.industries.length } })
   res.json({ profile, icons: content.STAT_ICON_NAMES })
 }))
-router.get('/settings/markets', settingsAdmin, h(async (_req, res) => res.json(await content.getHomepageMarkets())))
-router.put('/settings/markets', settingsAdmin, h(async (req, res) => {
+router.get('/settings/markets', frontpages, h(async (_req, res) => res.json(await content.getHomepageMarkets())))
+router.put('/settings/markets', frontpages, h(async (req, res) => {
   const value = await exposing(content.setHomepageMarkets)(req.body || {})
   await audit({ actor: req.user, action: 'update', entity: 'homepage_markets', entityId: null, after: value })
   res.json(value)

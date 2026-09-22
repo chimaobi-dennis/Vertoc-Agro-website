@@ -334,6 +334,15 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
   `POST /messages/thread/read`, and `POST /messages` with `reply_to_id`.
   Team notifications and staff invitations are `internal` mail
   (`messages.headers.internal`) and never appear in conversations.
+- **In-place editing.** Staff with the `frontpages` permission (admin, editor)
+  who are signed in see an *Edit* control when hovering any card on the public
+  pages (stat tiles, export markets and their captions, mission and vision,
+  registrations, core values, industries, services, FAQ questions, gallery
+  photos, reviews) plus an *Add* tile at the end of each list. The editor
+  (`src/admin/InlineEditor.jsx`, loaded only for staff) saves through the same
+  endpoints as the panel and re-fetches the site data, so the change is live at
+  once. Gallery, FAQ and services live in settings rows `gallery`, `faq`,
+  `services` (`GET/PUT /settings/<row>`) and ship with `GET /api/site`.
 - **Company profile.** Settings → Company edits the About page and the homepage's
   mission/vision cards: mission, vision (plus optional short homepage summaries),
   registrations (CAC, NEPC… any number), core values and industries served,

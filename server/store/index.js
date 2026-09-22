@@ -49,6 +49,7 @@ export const {
   getHomepageStats, setHomepageStats, DEFAULT_STATS, STAT_ICON_NAMES,
   getHomepageMarkets, setHomepageMarkets, DEFAULT_MARKETS, DEFAULT_REVIEWS,
   getCompanyProfile, setCompanyProfile, DEFAULT_ABOUT,
+  getGallery, setGallery, getFaq, setFaq, getServices, setServices, DEFAULT_GALLERY, DEFAULT_FAQ, DEFAULT_SERVICES,
   listReviews, listApprovedReviews, getReview, createReview, updateReview, deleteReview, REVIEW_STATUSES, REVIEWS_MIGRATION_HINT,
   listTemplates, getTemplate, upsertTemplate, updateTemplate, createDocumentFromBuffer,
   listPurchases, getPurchase, createPurchase, updatePurchase, deletePurchase,

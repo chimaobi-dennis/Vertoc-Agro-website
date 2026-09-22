@@ -68,4 +68,5 @@ export const PERMISSIONS = {
   quotes:   ['admin', 'sales'],
   email:    ['admin', 'sales'],
   settings: ['admin'],
+  frontpages: ['admin', 'editor'],   // edit the public pages' content in place (stats, markets, profile, services, gallery, FAQ)
 }

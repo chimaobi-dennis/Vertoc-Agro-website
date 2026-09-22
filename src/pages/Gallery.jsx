@@ -1,22 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { useSite } from '../lib/site'
+import { Editable } from '../lib/editing'
 
-const PHOTOS = [
-  { src: '/assets/img/file_00000000a91c71f4907a39cb638741b8.png', alt: 'Vertoc Agro factory and processing facility', title: 'Factory', caption: 'Vertoc Agro factory and processing facility' },
-  { src: '/assets/img/h11102d4d7702475faebf710f672b997dr.jpg', alt: 'Industrial processing equipment and storage tanks', title: 'Processing', caption: 'Industrial processing equipment and storage tanks' },
-  { src: '/assets/img/img-20260701-wa0028.jpg', alt: 'Warehouse with stacked commodity bags ready for shipment', title: 'Warehouse', caption: 'Warehouse with stacked commodity bags ready for shipment' },
-  { src: '/assets/img/img-20260702-wa0046.jpg', alt: 'Burlap sacks of agricultural commodities on pallets', title: 'Storage', caption: 'Burlap sacks of agricultural commodities on pallets' },
-  { src: '/assets/img/ce0b7f_8e81ef90b3ec4f219e3d24d81c544cd5-mv2.jpg', alt: 'Traditional palm oil fruit processing in large cooking pots', title: 'Palm Oil', caption: 'Traditional palm oil fruit processing in large cooking pots' },
-  { src: '/assets/img/img-20260702-wa0049.jpg', alt: 'Cocoa beans being weighed on a digital scale', title: 'Cocoa', caption: 'Cocoa beans being weighed on a digital scale' },
-  { src: '/assets/img/vertocimage11.jpg', alt: 'Soybeans packed in large bulk sacks', title: 'Soybeans', caption: 'Soybeans packed in large bulk sacks' },
-  { src: '/assets/img/vertocimage13.jpeg', alt: 'Maize harvest bagged at the farm', title: 'Maize', caption: 'Maize harvest bagged at the farm' },
-  { src: '/assets/img/vertocimage14.jpeg', alt: 'Bulk sacks of dried maize kernels', title: 'Maize', caption: 'Bulk sacks of dried maize kernels' },
-  { src: '/assets/img/vertocimage15.jpeg', alt: 'Stacked commodity bags ready for distribution', title: 'Storage', caption: 'Stacked commodity bags ready for distribution' }
-]
+/* Photos come from the site data (edited in place by signed-in staff). */
 
 /** Full-screen viewer: arrows, keyboard, backdrop click and Escape all work. */
-function Lightbox({ index, onClose, onStep }) {
-  const photo = PHOTOS[index]
+function Lightbox({ photos, index, onClose, onStep }) {
+  const photo = photos[index]
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') onClose(); if (e.key === 'ArrowRight') onStep(1); if (e.key === 'ArrowLeft') onStep(-1) }
     window.addEventListener('keydown', onKey); document.body.style.overflow = 'hidden'
@@ -31,7 +22,7 @@ function Lightbox({ index, onClose, onStep }) {
         <img key={photo.src} src={photo.src} alt={photo.alt} className="w-full max-h-[78vh] object-contain rounded-2xl animate-fade-in" />
         <figcaption className="text-center mt-4">
           <p className="text-white font-semibold">{photo.title}</p>
-          <p className="text-white/70 text-sm">{photo.caption} · {index + 1} / {PHOTOS.length}</p>
+          <p className="text-white/70 text-sm">{photo.caption} · {index + 1} / {photos.length}</p>
         </figcaption>
       </figure>
     </div>
@@ -39,9 +30,11 @@ function Lightbox({ index, onClose, onStep }) {
 }
 
 export default function Gallery() {
+  const site = useSite()
+  const photos = site.gallery || []
   const [open, setOpen] = useState(null)   // index of the photo in the lightbox
   const close = useCallback(() => setOpen(null), [])
-  const step = useCallback(d => setOpen(i => (i + d + PHOTOS.length) % PHOTOS.length), [])
+  const step = useCallback(d => setOpen(i => (i + d + photos.length) % photos.length), [photos.length])
   return (
     <main className="flex-grow">
       <div className="pt-20 pb-16 bg-background min-h-screen">
@@ -52,8 +45,9 @@ export default function Gallery() {
       <p className="text-muted-foreground mt-3 max-w-2xl mx-auto">A glimpse into our farms, facilities, logistics, and daily operations across Nigeria.</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-      {PHOTOS.map((ph, i) => (
-      <button key={ph.src} type="button" onClick={() => setOpen(i)} aria-label={`Open ${ph.title}: ${ph.alt}`} className="relative aspect-[4/3] overflow-hidden rounded-2xl group border border-border bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+      {photos.map((ph, i) => (
+      <Editable key={`${ph.src}-${i}`} section="gallery" index={i} label="photo">
+      <button type="button" onClick={() => setOpen(i)} aria-label={`Open ${ph.title}: ${ph.alt}`} className="relative w-full aspect-[4/3] overflow-hidden rounded-2xl group border border-border bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
       <img src={ph.src} alt={ph.alt} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
       <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/30 transition-colors duration-300">
       </div>
@@ -62,11 +56,13 @@ export default function Gallery() {
       <p className="text-white/80 text-xs">{ph.caption}</p>
       </div>
       </button>
+      </Editable>
       ))}
+      <Editable section="gallery" add label="photo" className="aspect-[4/3]" />
       </div>
       </div>
       </div>
-      {open !== null && <Lightbox index={open} onClose={close} onStep={step} />}
+      {open !== null && photos[open] && <Lightbox photos={photos} index={open} onClose={close} onStep={step} />}
     </main>
   )
 }

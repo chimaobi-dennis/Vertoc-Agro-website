@@ -7,6 +7,7 @@ import { CardGridSkeleton, ProductCardSkeleton } from '../components/Skeleton'
 import { statIcon } from '../lib/statIcons'
 import { flagSrc, onFlagError } from '../lib/flags'
 import ReviewForm from '../components/ReviewForm'
+import { Editable } from '../lib/editing'
 import { useSite } from '../lib/site'
 
 // The stat tiles come from Settings → Site (see src/lib/site.jsx for the defaults).
@@ -122,7 +123,7 @@ export default function Home() {
         <div className="container mx-auto px-4 md:px-6">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
             {(site.stats || []).map((s, i) => (
-              <StatCounter key={`${s.label}-${i}`} icon={statIcon(s.icon)} value={Number(s.value) || 0} suffix={s.suffix ?? '+'} label={s.label} />
+              <Editable key={`${s.label}-${i}`} section="stats" index={i} label="stat"><StatCounter icon={statIcon(s.icon)} value={Number(s.value) || 0} suffix={s.suffix ?? '+'} label={s.label} /></Editable>
             ))}
           </div>
         </div>
@@ -146,16 +147,16 @@ export default function Home() {
       <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground mb-5">Connecting Farmers with Global Markets</h2>
       <p className="text-muted-foreground leading-relaxed mb-6">Vertoc Agro Products Limited is a leading Nigerian agribusiness committed to the cultivation of crops, sourcing, processing, storage, logistics, and export of premium agricultural commodities across Nigeria and beyond.</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-      <div className="bg-card border border-border p-5 rounded-2xl">
+      <Editable section="mission" label="mission"><div className="bg-card border border-border p-5 rounded-2xl h-full">
       <Target className="w-5 h-5 text-primary mb-2" />
       <h4 className="text-sm font-bold text-foreground">Our Mission</h4>
       <p className="text-xs text-muted-foreground mt-1">{site.about?.mission_short || site.about?.mission}</p>
-      </div>
-      <div className="bg-card border border-border p-5 rounded-2xl">
+      </div></Editable>
+      <Editable section="vision" label="vision"><div className="bg-card border border-border p-5 rounded-2xl h-full">
       <Eye className="w-5 h-5 text-accent mb-2" />
       <h4 className="text-sm font-bold text-foreground">Our Vision</h4>
       <p className="text-xs text-muted-foreground mt-1">{site.about?.vision_short || site.about?.vision}</p>
-      </div>
+      </div></Editable>
       </div>
       <Link className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border bg-background h-9 py-2 font-semibold rounded-full px-6 border-primary text-primary hover:bg-primary hover:text-primary-foreground" to="/about">Learn More About Us <ArrowRight className="w-4 h-4 ml-2" />
       </Link>
@@ -282,20 +283,23 @@ export default function Home() {
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 md:gap-6">
       {(site.markets?.items || []).map((m, i) => (
-      <div key={`${m.code}-${i}`} className="bg-card border border-border rounded-2xl p-5 text-center hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
+      <Editable key={`${m.code}-${i}`} section="markets" index={i} label="market">
+      <div className="bg-card border border-border rounded-2xl p-5 text-center hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
       <div className="w-12 h-9 mx-auto mb-3 rounded-md overflow-hidden border border-border/50">
       <img src={flagSrc(m.code)} onError={onFlagError(m.code)} alt={`${m.name} flag`} className="w-full h-full object-cover" loading="lazy" />
       </div>
       <p className="text-sm font-semibold text-foreground">{m.name}</p>
       </div>
+      </Editable>
       ))}
+      <Editable section="markets" add label="country" />
       </div>
       {(site.markets?.caption_left || site.markets?.caption_right) && (
-      <div className="mt-10 flex items-center justify-center gap-6 text-muted-foreground">
+      <Editable section="markets_captions" label="captions" className="mt-10"><div className="flex items-center justify-center gap-6 text-muted-foreground">
       {site.markets?.caption_left && <div className="flex items-center gap-2"><Ship className="w-5 h-5 text-primary" /><span className="text-sm font-medium">{site.markets.caption_left}</span></div>}
       {site.markets?.caption_left && site.markets?.caption_right && <div className="w-px h-5 bg-border" />}
       {site.markets?.caption_right && <div className="flex items-center gap-2"><Globe className="w-5 h-5 text-primary" /><span className="text-sm font-medium">{site.markets.caption_right}</span></div>}
-      </div>
+      </div></Editable>
       )}
       </div>
       </section>
@@ -308,7 +312,7 @@ export default function Home() {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       {(site.reviews || []).map((r, i) => (
-      <div key={r.id ?? `${r.name}-${i}`} className="bg-card border border-border p-6 rounded-2xl flex flex-col hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
+      <Editable key={r.id ?? `${r.name}-${i}`} section="review" id={r.id} label="review"><div className="bg-card border border-border p-6 rounded-2xl flex flex-col hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover h-full">
       <Quote className="w-8 h-8 text-accent/40 mb-4" />
       <p className="text-sm leading-relaxed text-muted-foreground flex-1">“{r.quote}”</p>
       <div className="flex items-center gap-1 mt-4 mb-3" aria-label={`${r.rating} out of 5 stars`}>
@@ -316,8 +320,9 @@ export default function Home() {
       </div>
       <p className="text-sm font-bold text-foreground">{r.name}</p>
       {r.role && <p className="text-xs text-muted-foreground">{r.role}</p>}
-      </div>
+      </div></Editable>
       ))}
+      <Editable section="review" add label="review" />
       </div>
       <div className="mt-10 text-center">
       <button type="button" onClick={() => setReviewOpen(true)} className="inline-flex items-center justify-center gap-2 h-11 px-8 rounded-full border border-primary text-primary text-sm font-semibold hover:bg-primary hover:text-primary-foreground transition-colors">Share your experience<ArrowRight className="w-4 h-4" /></button>

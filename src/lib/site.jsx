@@ -24,6 +24,41 @@ export const SITE_DEFAULTS = {
     { icon: 'Package', value: 30, suffix: '+', label: 'Commodities' },
     { icon: 'Users', value: 500, suffix: '+', label: 'Partner Farmers' },
   ],
+  // Gallery, FAQ and Services pages; edited in place on the site by signed-in staff.
+  gallery: [
+    { src: '/assets/img/file_00000000a91c71f4907a39cb638741b8.png', alt: 'Vertoc Agro factory and processing facility', title: 'Factory', caption: 'Vertoc Agro factory and processing facility' },
+    { src: '/assets/img/h11102d4d7702475faebf710f672b997dr.jpg', alt: 'Industrial processing equipment and storage tanks', title: 'Processing', caption: 'Industrial processing equipment and storage tanks' },
+    { src: '/assets/img/img-20260701-wa0028.jpg', alt: 'Warehouse with stacked commodity bags ready for shipment', title: 'Warehouse', caption: 'Warehouse with stacked commodity bags ready for shipment' },
+    { src: '/assets/img/img-20260702-wa0046.jpg', alt: 'Burlap sacks of agricultural commodities on pallets', title: 'Storage', caption: 'Burlap sacks of agricultural commodities on pallets' },
+    { src: '/assets/img/ce0b7f_8e81ef90b3ec4f219e3d24d81c544cd5-mv2.jpg', alt: 'Traditional palm oil fruit processing in large cooking pots', title: 'Palm Oil', caption: 'Traditional palm oil fruit processing in large cooking pots' },
+    { src: '/assets/img/img-20260702-wa0049.jpg', alt: 'Cocoa beans being weighed on a digital scale', title: 'Cocoa', caption: 'Cocoa beans being weighed on a digital scale' },
+    { src: '/assets/img/vertocimage11.jpg', alt: 'Soybeans packed in large bulk sacks', title: 'Soybeans', caption: 'Soybeans packed in large bulk sacks' },
+    { src: '/assets/img/vertocimage13.jpeg', alt: 'Maize harvest bagged at the farm', title: 'Maize', caption: 'Maize harvest bagged at the farm' },
+    { src: '/assets/img/vertocimage14.jpeg', alt: 'Bulk sacks of dried maize kernels', title: 'Maize', caption: 'Bulk sacks of dried maize kernels' },
+    { src: '/assets/img/vertocimage15.jpeg', alt: 'Stacked commodity bags ready for distribution', title: 'Storage', caption: 'Stacked commodity bags ready for distribution' },
+  ],
+  faq: [
+    { q: 'What agricultural commodities does Vertoc Agro trade in?', a: 'We trade in a wide range of premium Nigerian agricultural commodities including palm oil, maize, soybeans, cocoa, plantain, cassava, sesame seeds, ginger, rice, sorghum, millet, and groundnuts. If you need a specific commodity not listed, please contact us and we will source it for you.' },
+    { q: 'Do you export commodities outside Nigeria?', a: 'Yes, export services are a core part of our business. We handle end-to-end export management including documentation, compliance, customs clearance, and international shipping coordination. We currently export to over 25 countries across Africa, Europe, Asia, and the Americas.' },
+    { q: 'What is your minimum order quantity?', a: 'Our minimum order quantities vary by commodity. For most products, we can accommodate orders starting from 5 metric tonnes. For export shipments, typical minimums range from 1 to 5 full container loads depending on the commodity. Contact us for specific details.' },
+    { q: 'How do you ensure product quality?', a: 'Quality assurance is embedded in every stage of our process. We conduct rigorous field inspections, laboratory testing, and grading before acceptance. Our processing and warehousing facilities maintain strict hygiene and climate control standards. All shipments come with certificates of analysis and quality assurance documentation.' },
+    { q: 'What payment terms do you offer?', a: 'We offer flexible payment terms depending on the relationship and order size. Standard terms include advance payment, letter of credit (LC), and payment against documents. For established partners, we may offer open account terms with approved credit limits.' },
+    { q: 'How long does delivery take after placing an order?', a: 'Delivery timelines depend on the commodity, order size, and destination. Domestic deliveries within Nigeria typically take 3-10 business days. Export shipments require additional time for documentation and logistics, generally 2-6 weeks depending on the destination port.' },
+    { q: 'Do you work with smallholder farmers?', a: 'Absolutely. Partnership with smallholder farmers is central to our mission. We work directly with farming cooperatives and individual farmers, providing training, fair pricing, and reliable offtake agreements that help improve their livelihoods and productivity.' },
+    { q: 'Can I visit your processing or warehousing facilities?', a: 'Yes, we welcome facility visits by qualified buyers and partners. Please contact us to schedule a visit. Our team will arrange a guided tour of our processing plants, warehouses, or farm sourcing locations depending on your interests.' },
+    { q: 'Do you provide commodity price forecasts?', a: 'We regularly publish market analysis and price outlooks on our blog. For contracted partners, we provide personalized market intelligence and pricing updates relevant to their specific commodities and trading windows.' },
+    { q: 'How can I become a registered buyer or partner?', a: 'Simply fill out the contact form on our website or send us an email at sales@vertocagro.com with your company details and commodity requirements. Our business development team will reach out to discuss your needs and onboarding process.' },
+  ],
+  services: [
+    { icon: 'TrendingUp', title: 'Agro Commodity Trading', description: 'We buy and sell high-quality agricultural commodities across local and international markets, ensuring competitive prices and reliable supply.' },
+    { icon: 'PackageSearch', title: 'Commodity Sourcing & Aggregation', description: 'Direct sourcing from smallholder and commercial farmers, aggregating produce to meet bulk demand with strict quality standards.' },
+    { icon: 'Factory', title: 'Processing', description: 'State-of-the-art processing facilities to clean, grade, and prepare commodities for market-ready distribution and export.' },
+    { icon: 'Warehouse', title: 'Warehousing', description: 'Secure, climate-controlled storage solutions that preserve commodity quality from harvest to delivery.' },
+    { icon: 'Ship', title: 'Export Services', description: 'End-to-end export management including documentation, compliance, customs clearance, and international shipping coordination.' },
+    { icon: 'Truck', title: 'Supply Chain & Logistics', description: 'Efficient transportation and logistics network ensuring timely delivery from farm gate to final destination.' },
+    { icon: 'Boxes', title: 'Bulk Supply', description: 'Large-volume supply agreements for manufacturers, exporters, and industrial buyers with consistent quality assurance.' },
+    { icon: 'ShoppingCart', title: 'Procurement Services', description: 'Strategic procurement consulting to help clients source the right commodities at the best value for their operations.' },
+  ],
   // About page + homepage mission/vision; edited under Settings → Company.
   about: {
     mission: "To provide quality agricultural products while creating sustainable value for farmers, businesses, and global markets. We bridge the gap between farm and table with efficiency and excellence.",
@@ -66,11 +101,14 @@ const Ctx = createContext(SITE_DEFAULTS)
 
 export function SiteProvider({ children }) {
   const [site, setSite] = useState(SITE_DEFAULTS)
+  const [tick, setTick] = useState(0)
   useEffect(() => {
     let alive = true
-    fetchJson('/site').then(d => alive && d && typeof d === 'object' && setSite({ ...SITE_DEFAULTS, ...d })).catch(() => {})
+    fetchJson('/site').then(d => alive && d && typeof d === 'object' && setSite(s => ({ ...SITE_DEFAULTS, ...d, reload: s.reload }))).catch(() => {})
     return () => { alive = false }
-  }, [])
+  }, [tick])
+  // reload(): re-fetch after an in-place edit so the page shows the saved content.
+  useEffect(() => { setSite(s => ({ ...s, reload: () => setTick(t => t + 1) })) }, [])
   useEffect(() => {
     for (const rel of ['icon', 'apple-touch-icon']) {
       const link = document.querySelector(`link[rel="${rel}"]`)

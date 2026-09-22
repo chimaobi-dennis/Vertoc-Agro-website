@@ -159,6 +159,21 @@ try {
   })
   settingsBefore.homepage_markets = (await svc.from('settings').select('value').eq('key', 'homepage_markets').maybeSingle()).data?.value ?? null
   settingsBefore.about = (await svc.from('settings').select('value').eq('key', 'about').maybeSingle()).data?.value ?? null
+  for (const k of ['gallery', 'faq', 'services']) settingsBefore[k] = (await svc.from('settings').select('value').eq('key', k).maybeSingle()).data?.value ?? null
+  await step('PUT /settings/{gallery,faq,services} → public /api/site', async () => {
+    const g = await api('/settings/gallery', { method: 'PUT', body: { items: [{ src: '/assets/img/flag-gb.png', title: 'e2e Photo', caption: 'e2e caption' }, { src: 'javascript:alert(1)', title: 'bad' }] } })
+    if (g.items.length !== 1 || g.items[0].alt !== 'e2e caption') throw new Error(JSON.stringify(g))
+    const f = await api('/settings/faq', { method: 'PUT', body: { items: [{ q: 'e2e question?', a: 'e2e answer' }, { q: 'no answer', a: '' }] } })
+    if (f.items.length !== 1) throw new Error(JSON.stringify(f))
+    const s = await api('/settings/services', { method: 'PUT', body: { items: [{ icon: 'nope', title: 'e2e Service', description: 'x' }] } })
+    if (s.items.length !== 1 || s.items[0].icon !== 'Star') throw new Error(JSON.stringify(s))
+    const pub = await fetch(`${API}/api/site`).then(x => x.json())
+    if (pub.gallery?.[0]?.title !== 'e2e Photo' || pub.faq?.[0]?.q !== 'e2e question?' || pub.services?.[0]?.title !== 'e2e Service') throw new Error('public site lacks them')
+    return 'gallery (unsafe src dropped, alt from caption) · faq (empty answer dropped) · services (unknown icon → Star) · public ✓'
+  })
+  await step('editor role may edit page content, not settings', async () => {
+    const me = await api('/me'); if (!me.permissions?.frontpages) throw new Error('admin lacks frontpages'); return 'frontpages ✓ (admin, editor)'
+  })
   await step('PUT /settings/about → public /api/site.about', async () => {
     const cur = (await api('/settings/about')).profile
     const r = await api('/settings/about', { method: 'PUT', body: { ...cur, vision: 'e2e vision text', registrations: [...cur.registrations, { icon: 'nope', label: 'e2e Cert', value: 'No: 1' }], industries: cur.industries.slice(0, 2), values: [{ icon: 'Scale', title: 'e2e Fairness', description: 'x' }] } })
