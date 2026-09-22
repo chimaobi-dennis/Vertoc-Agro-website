@@ -19,6 +19,10 @@ const NIGERIA = [9.08, 8.68]
  */
 export default function RouteMap({ origin, destination, checkpoints = [], picked = null, delivered = false, onPick, className = 'h-72', wheelZoom = 'always' }) {
   const el = useRef(null), map = useRef(null), layer = useRef(null)
+  // The view to apply once the container has a size (a lazy chunk, a modal or a
+  // collapsed column can mount the map at 0×0; fitting then would leave it at zoom 0).
+  const pendingFit = useRef(null)
+  const applyFit = () => { const m = map.current; const size = m?.getSize(); if (m && pendingFit.current && size.x > 0 && size.y > 0) { const f = pendingFit.current; pendingFit.current = null; f(m) } }
 
   useEffect(() => {
     const m = L.map(el.current, { scrollWheelZoom: wheelZoom === 'always', dragging: true, touchZoom: true, doubleClickZoom: true, zoomControl: true, wheelPxPerZoomLevel: 90 })
@@ -29,11 +33,12 @@ export default function RouteMap({ origin, destination, checkpoints = [], picked
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors' }).addTo(m)
     m.setView(NIGERIA, 6)
     layer.current = L.layerGroup().addTo(m); map.current = m
+    el.current.__map = m   // for checks from the console / tests
     // Modals and column layouts size the container after mount.
-    const ro = new ResizeObserver(() => m.invalidateSize())
+    const ro = new ResizeObserver(() => { m.invalidateSize(); applyFit() })
     ro.observe(el.current)
     return () => { ro.disconnect(); m.remove(); map.current = null }
-  }, [wheelZoom])
+  }, [wheelZoom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const m = map.current; if (!m || !onPick) return
@@ -60,9 +65,9 @@ export default function RouteMap({ origin, destination, checkpoints = [], picked
     const last = cps[cps.length - 1] || (hasPoint(origin) ? origin : null)
     if (last && hasPoint(destination) && !delivered) L.polyline([[last.lat, last.lng], [destination.lat, destination.lng]], { color: '#1e3a5f', weight: 3, dashArray: '6 8', opacity: 0.7 }).addTo(g)
     if (hasPoint(picked)) dot(picked, { label: 'New location', fill: '#dc2626', radius: 8, permanent: true })
-    if (pts.length > 1) m.fitBounds(L.latLngBounds(pts).pad(0.3), { maxZoom: 10 })
-    else if (pts.length === 1) m.setView(pts[0], 8)
-  }, [origin, destination, checkpoints, picked, delivered])
+    pendingFit.current = mm => { if (pts.length > 1) mm.fitBounds(L.latLngBounds(pts).pad(0.3), { maxZoom: 10 }); else if (pts.length === 1) mm.setView(pts[0], 8) }
+    m.invalidateSize(); applyFit()
+  }, [origin, destination, checkpoints, picked, delivered]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div ref={el} className={`relative z-0 w-full rounded-2xl overflow-hidden border border-border bg-muted ${className}`} role="img" aria-label="Shipment route map" />
 }
