@@ -170,8 +170,9 @@ function Shipments({ shipments, items }) {
             {hasPoint(s.origin) && hasPoint(s.destination) && (
               <div className="px-5 md:px-6">
                 <Suspense fallback={<Bone className="h-64 w-full rounded-2xl" />}>
-                  <RouteMap className="h-64 md:h-80" origin={s.origin} destination={s.destination} checkpoints={cps} delivered={s.status === 'delivered'} />
+                  <RouteMap className="h-64 md:h-80" origin={s.origin} destination={s.destination} checkpoints={cps} delivered={s.status === 'delivered'} wheelZoom="focus" />
                 </Suspense>
+                <p className="text-[11px] text-muted-foreground mt-1.5">Drag to move the map; click it to zoom with the mouse wheel, or use the + and − buttons.</p>
               </div>
             )}
             <div className="p-5 md:p-6 grid md:grid-cols-[1fr_1fr] gap-6">

@@ -11,11 +11,21 @@ import { hasPoint } from '../lib/shipments'
 
 const NIGERIA = [9.08, 8.68]
 
-export default function RouteMap({ origin, destination, checkpoints = [], picked = null, delivered = false, onPick, className = 'h-72' }) {
+/**
+ * wheelZoom: 'always' — the wheel zooms as soon as the pointer is over the map (staff pages);
+ *            'focus'  — only after the map is clicked, until the pointer leaves (public page, so
+ *                       scrolling the invoice past the map does not zoom it by accident).
+ * Dragging, pinch-zoom, double-click zoom and the +/- control are always on.
+ */
+export default function RouteMap({ origin, destination, checkpoints = [], picked = null, delivered = false, onPick, className = 'h-72', wheelZoom = 'always' }) {
   const el = useRef(null), map = useRef(null), layer = useRef(null)
 
   useEffect(() => {
-    const m = L.map(el.current, { scrollWheelZoom: false })
+    const m = L.map(el.current, { scrollWheelZoom: wheelZoom === 'always', dragging: true, touchZoom: true, doubleClickZoom: true, zoomControl: true, wheelPxPerZoomLevel: 90 })
+    if (wheelZoom === 'focus') {
+      m.on('click', () => m.scrollWheelZoom.enable())
+      m.on('mouseout', () => m.scrollWheelZoom.disable())
+    }
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors' }).addTo(m)
     m.setView(NIGERIA, 6)
     layer.current = L.layerGroup().addTo(m); map.current = m
@@ -23,7 +33,7 @@ export default function RouteMap({ origin, destination, checkpoints = [], picked
     const ro = new ResizeObserver(() => m.invalidateSize())
     ro.observe(el.current)
     return () => { ro.disconnect(); m.remove(); map.current = null }
-  }, [])
+  }, [wheelZoom])
 
   useEffect(() => {
     const m = map.current; if (!m || !onPick) return

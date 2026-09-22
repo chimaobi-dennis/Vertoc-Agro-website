@@ -62,7 +62,7 @@ export default function ShipmentDetail() {
               <Suspense fallback={<Bone className="h-[420px] w-full rounded-2xl" />}>
                 <RouteMap className="h-[420px]" origin={s.origin} destination={s.destination} checkpoints={cps} picked={closed ? null : cp} delivered={s.status === 'delivered'} onPick={closed ? undefined : onPick} />
               </Suspense>
-              {!closed && <p className="text-xs text-muted-foreground mt-2">Click anywhere on the map to place the next pin, or pick a state on the right.</p>}
+              <p className="text-xs text-muted-foreground mt-2">Scroll to zoom, drag to move the map{closed ? '.' : ', click anywhere to place the next pin — or pick a state on the right.'}</p>
               {carries.length > 0 && <ul className="mt-3 flex flex-wrap gap-2 text-xs">{carries.map(c => <li key={c.index} className="rounded-full bg-muted px-2.5 py-1">{c.text}</li>)}</ul>}
             </Card>
 

@@ -417,7 +417,9 @@ A shipment travels by road, sea or air with the matching vehicle number
 of arrival, an origin and a destination (a Nigerian state capital, a
 seaport, or any place with coordinates — `server/ng-states.js`), notes, and
 a trail of **checkpoints**: on the shipment page staff pick a state or
-click the map (OpenStreetMap via Leaflet, no API key) to drop the next pin;
+click the map (OpenStreetMap via Leaflet, no API key — scroll to zoom,
+drag to pan; on the client page the wheel zooms once the map is clicked)
+to drop the next pin;
 the first pin moves it to *in transit*, **Mark delivered** pins it at the
 destination, cancelling frees its lines. The client sees every shipment on
 the invoice link (`/q/<token>`): what it carries, the route on a map, the
