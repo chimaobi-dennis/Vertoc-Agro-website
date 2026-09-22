@@ -338,11 +338,15 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
   who are signed in see an *Edit* control when hovering any card on the public
   pages (stat tiles, export markets and their captions, mission and vision,
   registrations, core values, industries, services, FAQ questions, gallery
-  photos, reviews) plus an *Add* tile at the end of each list. The editor
+  photos, reviews, the homepage hero and its trust chips, the About intro,
+  the industries list which the About and Industries pages share, the
+  reasons on Why choose us (the homepage shows the first six of the same
+  list), and the sustainability policies with their sections) plus an *Add* tile at the end of each list. The editor
   (`src/admin/InlineEditor.jsx`, loaded only for staff) saves through the same
   endpoints as the panel and re-fetches the site data, so the change is live at
-  once. Gallery, FAQ and services live in settings rows `gallery`, `faq`,
-  `services` (`GET/PUT /settings/<row>`) and ship with `GET /api/site`.
+  once. Gallery, FAQ, services and the sustainability policies live in
+  settings rows `gallery`, `faq`, `services`, `why`, `hero`, `sustainability`
+  (`GET/PUT /settings/<row>`) and ship with `GET /api/site`.
 - **Company profile.** Settings → Company edits the About page and the homepage's
   mission/vision cards: mission, vision (plus optional short homepage summaries),
   registrations (CAC, NEPC… any number), core values and industries served,

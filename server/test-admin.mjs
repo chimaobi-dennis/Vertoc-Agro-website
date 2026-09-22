@@ -159,7 +159,7 @@ try {
   })
   settingsBefore.homepage_markets = (await svc.from('settings').select('value').eq('key', 'homepage_markets').maybeSingle()).data?.value ?? null
   settingsBefore.about = (await svc.from('settings').select('value').eq('key', 'about').maybeSingle()).data?.value ?? null
-  for (const k of ['gallery', 'faq', 'services']) settingsBefore[k] = (await svc.from('settings').select('value').eq('key', k).maybeSingle()).data?.value ?? null
+  for (const k of ['gallery', 'faq', 'services', 'sustainability', 'why', 'hero']) settingsBefore[k] = (await svc.from('settings').select('value').eq('key', k).maybeSingle()).data?.value ?? null
   await step('PUT /settings/{gallery,faq,services} → public /api/site', async () => {
     const g = await api('/settings/gallery', { method: 'PUT', body: { items: [{ src: '/assets/img/flag-gb.png', title: 'e2e Photo', caption: 'e2e caption' }, { src: 'javascript:alert(1)', title: 'bad' }] } })
     if (g.items.length !== 1 || g.items[0].alt !== 'e2e caption') throw new Error(JSON.stringify(g))
@@ -170,6 +170,25 @@ try {
     const pub = await fetch(`${API}/api/site`).then(x => x.json())
     if (pub.gallery?.[0]?.title !== 'e2e Photo' || pub.faq?.[0]?.q !== 'e2e question?' || pub.services?.[0]?.title !== 'e2e Service') throw new Error('public site lacks them')
     return 'gallery (unsafe src dropped, alt from caption) · faq (empty answer dropped) · services (unknown icon → Star) · public ✓'
+  })
+  await step('PUT /settings/hero → public /api/site', async () => {
+    const r = await api('/settings/hero', { method: 'PUT', body: { badge: '', title_1: 'e2e Hero', title_accent: 'Line', title_2: '', subtitle: 's', chips: [{ icon: 'Ship', title: 'Chip A', caption: 'c' }, { icon: 'nope', title: '', caption: 'dropped' }] } })
+    if (r.hero.title_1 !== 'e2e Hero' || r.hero.chips.length !== 1 || r.hero.badge !== '') throw new Error(JSON.stringify(r.hero))
+    await api('/settings/hero', { method: 'PUT', body: { chips: [] } }).then(() => { throw new Error('accepted an empty title') }, e => { if (!/title/.test(e.message)) throw e })
+    const pub = await fetch(`${API}/api/site`).then(x => x.json()); if (pub.hero?.title_1 !== 'e2e Hero') throw new Error('public site lacks the hero')
+    return 'saved (untitled chip dropped) · empty title rejected · public ✓'
+  })
+  await step('PUT /settings/why → public /api/site', async () => {
+    const r = await api('/settings/why', { method: 'PUT', body: { items: [{ icon: 'Clock', title: 'e2e Reason', description: 'd' }, { icon: 'nope', title: '', description: 'dropped' }] } })
+    if (r.items.length !== 1 || r.items[0].icon !== 'Clock') throw new Error(JSON.stringify(r.items))
+    const pub = await fetch(`${API}/api/site`).then(x => x.json()); if (pub.why?.[0]?.title !== 'e2e Reason') throw new Error('public site lacks why')
+    return '1 reason kept (untitled dropped) · public ✓'
+  })
+  await step('PUT /settings/sustainability → public /api/site', async () => {
+    const r = await api('/settings/sustainability', { method: 'PUT', body: { items: [{ label: 'e2e Policy', icon: 'nope', color: 'pink', title: 'e2e Policy Title', tagline: 't', intro: 'i', sections: [{ heading: 'H1', body: 'B1' }, { heading: '', body: 'orphan' }] }, { label: 'e2e Policy', title: 'Dup key' }] } })
+    const [a, b] = r.items; if (r.items.length !== 2 || a.icon !== 'Leaf' || a.color !== 'accent' || a.sections.length !== 1 || a.key !== 'e2e-policy' || b.key !== 'e2e-policy-2') throw new Error(JSON.stringify(r.items).slice(0, 200))
+    const pub = await fetch(`${API}/api/site`).then(x => x.json()); if (pub.sustainability?.[0]?.title !== 'e2e Policy Title') throw new Error('public site lacks the policies')
+    return `${r.items.length} policies (bad icon/colour → defaults, empty section dropped, duplicate key suffixed) · public ✓`
   })
   await step('editor role may edit page content, not settings', async () => {
     const me = await api('/me'); if (!me.permissions?.frontpages) throw new Error('admin lacks frontpages'); return 'frontpages ✓ (admin, editor)'

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Award, Eye, Factory, FlaskConical, Globe, Handshake, Leaf, PackageSearch, Quote, ShieldCheck, Ship, Star, Target, TrendingUp, Truck, Warehouse } from 'lucide-react'
+import { ArrowRight, Award, Eye, Globe, Quote, Ship, Star, Target, TrendingUp } from 'lucide-react'
 import StatCounter from '../components/StatCounter'
 import { useApi } from '../lib/api'
 import { CardGridSkeleton, ProductCardSkeleton } from '../components/Skeleton'
@@ -62,6 +62,10 @@ export default function Home() {
   const [reviewOpen, setReviewOpen] = useState(false)
   // The badge on the About picture follows the "years" stat tile (Settings → Site → Homepage stats).
   const years = (site.stats || []).find(s => /year/i.test(s.label)) || site.stats?.[0]
+  // Hero text and trust chips come from the `hero` row; the Export Countries stat tile is appended as the last chip.
+  const hero = site.hero || {}
+  const countries = (site.stats || []).find(s => /countr|market/i.test(s.label))
+  const chips = [...(hero.chips || []), ...(countries ? [{ icon: 'Globe', title: `${countries.value}${countries.suffix ?? '+'} Countries`, caption: 'Export Markets' }] : [])]
   return (
     <main className="flex-grow">
       <script type="application/ld+json">{'{'}"@context":"https://schema.org","@graph":[{'{'}"@type":"Organization","@id":"https://vertocagro.com/#organization","name":"Vertoc Agro Products Limited","url":"https://vertocagro.com","logo":{'{'}"@type":"ImageObject","url":"/assets/img/logo.png"{'}'},"description":"Growing the Future, One Harvest at a Time. Cultivation, sourcing, processing, storage, logistics, and export of premium agricultural commodities across Nigeria and beyond.","address":{'{'}"@type":"PostalAddress","addressCountry":"NG","addressLocality":"Nigeria"{'}'},"contactPoint":{'{'}"@type":"ContactPoint","email":"sales@vertocagro.com","contactType":"sales","availableLanguage":"English"{'}'},"sameAs":[],"foundingDate":"2020","legalName":"Vertoc Agro Products Limited"{'}'},{'{'}"@type":"WebSite","@id":"https://vertocagro.com/#website","url":"https://vertocagro.com","name":"Vertoc Agro Products Limited","description":"Premium agricultural commodities export from Nigeria","publisher":{'{'}"@id":"https://vertocagro.com/#organization"{'}'},"potentialAction":{'{'}"@type":"SearchAction","target":{'{'}"@type":"EntryPoint","urlTemplate":"https://vertocagro.com/products?q={'{'}search_term_string{'}'}"{'}'},"query-input":"required name=search_term_string"{'}'}{'}'}]{'}'}</script>
@@ -71,50 +75,36 @@ export default function Home() {
       </div>
       </div>
       <div className="relative z-10 container mx-auto px-4 md:px-6 pt-36 pb-20">
-      <div className="max-w-3xl">
+      <Editable section="hero" label="hero" className="max-w-3xl">
+      {hero.badge && (
       <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2 mb-6">
       <Award className="w-4 h-4 text-accent" />
-      <span className="text-sm font-semibold text-white">NEPC Registered Exporter</span>
+      <span className="text-sm font-semibold text-white">{hero.badge}</span>
       </div>
-      <h1 className="font-serif text-4xl md:text-5xl lg:text-7xl font-bold text-white leading-[1.05] mb-6">Premium Nigerian<br />
-      <span className="text-accent">Agro Commodities</span>
-      <br />for the World</h1>
-      <p className="text-base md:text-lg text-white/80 max-w-xl mb-8 leading-relaxed">Cultivation of crops, sourcing, processing, storage, logistics, and export of premium agricultural commodities. Certified quality, reliable logistics, FOB Lagos.</p>
+      )}
+      <h1 className="font-serif text-4xl md:text-5xl lg:text-7xl font-bold text-white leading-[1.05] mb-6">{hero.title_1}{hero.title_1 && <br />}
+      <span className="text-accent">{hero.title_accent}</span>
+      {hero.title_2 && <><br />{hero.title_2}</>}</h1>
+      <p className="text-base md:text-lg text-white/80 max-w-xl mb-8 leading-relaxed">{hero.subtitle}</p>
       <div className="flex flex-col sm:flex-row gap-4 mb-10">
       <Link className="inline-flex items-center justify-center gap-2 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow bg-accent text-white hover:bg-accent/90 font-semibold rounded-full px-8 h-12 text-base" to="/products">
       <ArrowRight className="w-4 h-4 mr-2" />Explore Products</Link>
       <Link className="inline-flex items-center justify-center gap-2 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 hover:text-accent-foreground border border-white/40 text-white hover:bg-white/10 font-semibold rounded-full px-8 h-12 text-base" to="/quote">Request a Quote</Link>
       </div>
       <div className="flex flex-wrap items-center gap-6 md:gap-8">
-      <div className="flex items-center gap-2.5">
+      {chips.map((c, i) => { const Icon = statIcon(c.icon); return (
+      <div key={`${c.title}-${i}`} className="flex items-center gap-2.5">
       <div className="w-10 h-10 bg-white/15 rounded-full flex items-center justify-center">
-      <Ship className="w-4 h-4 text-white" />
+      <Icon className="w-4 h-4 text-white" />
       </div>
       <div>
-      <p className="text-sm font-semibold text-white">FOB Lagos</p>
-      <p className="text-xs text-white/60">Global Shipping</p>
+      <p className="text-sm font-semibold text-white">{c.title}</p>
+      {c.caption && <p className="text-xs text-white/60">{c.caption}</p>}
       </div>
       </div>
-      <div className="flex items-center gap-2.5">
-      <div className="w-10 h-10 bg-white/15 rounded-full flex items-center justify-center">
-      <FlaskConical className="w-4 h-4 text-white" />
+      ) })}
       </div>
-      <div>
-      <p className="text-sm font-semibold text-white">Lab Tested</p>
-      <p className="text-xs text-white/60">Quality Assured</p>
-      </div>
-      </div>
-      <div className="flex items-center gap-2.5">
-      <div className="w-10 h-10 bg-white/15 rounded-full flex items-center justify-center">
-      <Globe className="w-4 h-4 text-white" />
-      </div>
-      <div>
-      <p className="text-sm font-semibold text-white">12+ Countries</p>
-      <p className="text-xs text-white/60">Export Markets</p>
-      </div>
-      </div>
-      </div>
-      </div>
+      </Editable>
       </div>
       <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent">
       </div>
@@ -144,8 +134,10 @@ export default function Home() {
       </div>
       <div>
       <span className="inline-block text-sm font-semibold uppercase tracking-widest text-accent mb-3">About Vertoc</span>
-      <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground mb-5">Connecting Farmers with Global Markets</h2>
-      <p className="text-muted-foreground leading-relaxed mb-6">Vertoc Agro Products Limited is a leading Nigerian agribusiness committed to the cultivation of crops, sourcing, processing, storage, logistics, and export of premium agricultural commodities across Nigeria and beyond.</p>
+      <Editable section="about_intro" label="intro">
+      <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground mb-5 pr-16">{site.about?.headline}</h2>
+      <p className="text-muted-foreground leading-relaxed mb-6">{site.about?.summary}</p>
+      </Editable>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
       <Editable section="mission" label="mission"><div className="bg-card border border-border p-5 rounded-2xl h-full">
       <Target className="w-5 h-5 text-primary mb-2" />
@@ -168,34 +160,15 @@ export default function Home() {
       <p className="text-muted-foreground leading-relaxed">Comprehensive agribusiness solutions covering the entire value chain from farm to port.</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-      <div className="bg-card border border-border p-6 rounded-2xl hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover h-full flex flex-col">
+      {(site.services || []).slice(0, 4).map((x, i) => { const Icon = statIcon(x.icon); return (
+      <Editable key={`${x.title}-${i}`} section="services" index={i} label="service" className="h-full"><div className="bg-card border border-border p-6 rounded-2xl hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover h-full flex flex-col">
       <div className="w-12 h-12 bg-primary/10 flex items-center justify-center rounded-2xl mb-4 shrink-0">
-      <TrendingUp className="w-6 h-6 text-primary" />
+      <Icon className="w-6 h-6 text-primary" />
       </div>
-      <h4 className="text-base font-bold mb-2 text-foreground">Agro Commodity Trading</h4>
-      <p className="text-sm text-muted-foreground leading-relaxed flex-1">Buy and sell high-quality agricultural commodities across local and international markets.</p>
-      </div>
-      <div className="bg-card border border-border p-6 rounded-2xl hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover h-full flex flex-col">
-      <div className="w-12 h-12 bg-primary/10 flex items-center justify-center rounded-2xl mb-4 shrink-0">
-      <PackageSearch className="w-6 h-6 text-primary" />
-      </div>
-      <h4 className="text-base font-bold mb-2 text-foreground">Sourcing &amp; Aggregation</h4>
-      <p className="text-sm text-muted-foreground leading-relaxed flex-1">Direct sourcing from smallholder and commercial farmers with strict quality standards.</p>
-      </div>
-      <div className="bg-card border border-border p-6 rounded-2xl hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover h-full flex flex-col">
-      <div className="w-12 h-12 bg-primary/10 flex items-center justify-center rounded-2xl mb-4 shrink-0">
-      <Factory className="w-6 h-6 text-primary" />
-      </div>
-      <h4 className="text-base font-bold mb-2 text-foreground">Processing</h4>
-      <p className="text-sm text-muted-foreground leading-relaxed flex-1">Modern processing facilities to clean, grade, and prepare commodities for market.</p>
-      </div>
-      <div className="bg-card border border-border p-6 rounded-2xl hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover h-full flex flex-col">
-      <div className="w-12 h-12 bg-primary/10 flex items-center justify-center rounded-2xl mb-4 shrink-0">
-      <Warehouse className="w-6 h-6 text-primary" />
-      </div>
-      <h4 className="text-base font-bold mb-2 text-foreground">Warehousing</h4>
-      <p className="text-sm text-muted-foreground leading-relaxed flex-1">Secure, climate-controlled storage preserving quality from harvest to delivery.</p>
-      </div>
+      <h4 className="text-base font-bold mb-2 text-foreground">{x.title}</h4>
+      <p className="text-sm text-muted-foreground leading-relaxed flex-1">{x.description}</p>
+      </div></Editable>
+      ) })}
       </div>
       <div className="mt-10 text-center">
       <Link className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border bg-background h-9 py-2 font-semibold rounded-full px-6 border-primary text-primary hover:bg-primary hover:text-primary-foreground" to="/services">View All Services <ArrowRight className="w-4 h-4 ml-2" />
@@ -225,51 +198,19 @@ export default function Home() {
       <p className="text-muted-foreground leading-relaxed">From farm to port, we handle every step with precision, transparency, and a commitment to excellence that our global partners count on.</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-      <div className="bg-card border border-border rounded-2xl p-6 hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
+      {(site.why || []).slice(0, 6).map((x, i) => { const Icon = statIcon(x.icon); return (
+      <Editable key={`${x.title}-${i}`} section="why" index={i} label="reason" className="h-full"><div className="bg-card border border-border rounded-2xl p-6 hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover h-full">
       <div className="w-12 h-12 bg-primary/10 flex items-center justify-center rounded-2xl mb-4">
-      <ShieldCheck className="w-6 h-6 text-primary" />
+      <Icon className="w-6 h-6 text-primary" />
       </div>
-      <h4 className="text-lg font-bold mb-2 text-foreground">Certified Quality</h4>
-      <p className="text-sm text-muted-foreground leading-relaxed">All products meet international quality standards with full traceability and lab certification.</p>
-      </div>
-      <div className="bg-card border border-border rounded-2xl p-6 hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <div className="w-12 h-12 bg-primary/10 flex items-center justify-center rounded-2xl mb-4">
-      <Truck className="w-6 h-6 text-primary" />
-      </div>
-      <h4 className="text-lg font-bold mb-2 text-foreground">Reliable Logistics</h4>
-      <p className="text-sm text-muted-foreground leading-relaxed">End-to-end shipping coordination from farm gate to FOB Lagos with real-time tracking.</p>
-      </div>
-      <div className="bg-card border border-border rounded-2xl p-6 hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <div className="w-12 h-12 bg-primary/10 flex items-center justify-center rounded-2xl mb-4">
-      <Factory className="w-6 h-6 text-primary" />
-      </div>
-      <h4 className="text-lg font-bold mb-2 text-foreground">Modern Processing</h4>
-      <p className="text-sm text-muted-foreground leading-relaxed">State-of-the-art cleaning, sorting, drying, and packaging facilities ensuring premium grade.</p>
-      </div>
-      <div className="bg-card border border-border rounded-2xl p-6 hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <div className="w-12 h-12 bg-primary/10 flex items-center justify-center rounded-2xl mb-4">
-      <Handshake className="w-6 h-6 text-primary" />
-      </div>
-      <h4 className="text-lg font-bold mb-2 text-foreground">Farmer Partnerships</h4>
-      <p className="text-sm text-muted-foreground leading-relaxed">Direct relationships with 500+ smallholder farmers across Nigeria for consistent supply.</p>
-      </div>
-      <div className="bg-card border border-border rounded-2xl p-6 hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <div className="w-12 h-12 bg-primary/10 flex items-center justify-center rounded-2xl mb-4">
-      <Award className="w-6 h-6 text-primary" />
-      </div>
-      <h4 className="text-lg font-bold mb-2 text-foreground">NEPC Registered</h4>
-      <p className="text-sm text-muted-foreground leading-relaxed">Fully registered with the Nigerian Export Promotion Council for seamless export operations.</p>
-      </div>
-      <div className="bg-card border border-border rounded-2xl p-6 hover:-translate-y-1 transition-all duration-300 shadow-card hover:shadow-hover">
-      <div className="w-12 h-12 bg-primary/10 flex items-center justify-center rounded-2xl mb-4">
-      <Leaf className="w-6 h-6 text-primary" />
-      </div>
-      <h4 className="text-lg font-bold mb-2 text-foreground">Sustainable Sourcing</h4>
-      <p className="text-sm text-muted-foreground leading-relaxed">Ethical and environmentally conscious practices that support local farming communities.</p>
-      </div>
+      <h4 className="text-lg font-bold mb-2 text-foreground pr-10">{x.title}</h4>
+      <p className="text-sm text-muted-foreground leading-relaxed">{x.description}</p>
+      </div></Editable>
+      ) })}
+      {(site.why || []).length < 6 && <Editable section="why" add label="reason" />}
       </div>
       <div className="mt-12 text-center">
-      <Link className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border bg-background py-2 font-semibold rounded-full px-8 h-11 border-primary text-primary hover:bg-primary hover:text-primary-foreground" to="/why-choose-us">More Reasons to Choose Us<ArrowRight className="w-4 h-4 ml-2" />
+      <Link className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border bg-background py-2 font-semibold rounded-full px-8 h-11 border-primary text-primary hover:bg-primary hover:text-primary-foreground" to="/industries/why-choose-us">More Reasons to Choose Us<ArrowRight className="w-4 h-4 ml-2" />
       </Link>
       </div>
       </div>

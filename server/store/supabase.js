@@ -868,7 +868,7 @@ export async function findClientByEmail(email) {
 // The four number tiles on the homepage ("8+ Years of Experience"). Stored in
 // the settings table under 'homepage_stats' (outside the settings groups) and
 // served with the public site data. Defaults equal the old hard-coded tiles.
-export const STAT_ICON_NAMES = ['Anchor', 'Award', 'BadgeCheck', 'Beef', 'Boxes', 'Building2', 'CalendarCheck', 'Coins', 'Container', 'Eye', 'Factory', 'Globe', 'Handshake', 'HeartHandshake', 'Landmark', 'Leaf', 'Lightbulb', 'MapPin', 'Package', 'Plane', 'Recycle', 'Scale', 'Shield', 'ShieldCheck', 'Ship', 'ShoppingBag', 'Sprout', 'Star', 'Store', 'Target', 'Tractor', 'TrendingUp', 'Truck', 'Users', 'UtensilsCrossed', 'Warehouse', 'Wheat']
+export const STAT_ICON_NAMES = ['Anchor', 'Award', 'Earth', 'BadgeCheck', 'BadgeDollarSign', 'Beef', 'Boxes', 'Building2', 'CalendarCheck', 'Clock', 'Coins', 'Container', 'Eye', 'Factory', 'FlaskConical', 'Globe', 'Handshake', 'HeartHandshake', 'Landmark', 'Leaf', 'Lightbulb', 'Link2', 'MapPin', 'Package', 'PackageSearch', 'Plane', 'Recycle', 'Scale', 'Shield', 'ShieldCheck', 'Ship', 'ShoppingBag', 'Sprout', 'Star', 'Store', 'Target', 'Tractor', 'TrendingUp', 'Truck', 'UserCheck', 'Users', 'UtensilsCrossed', 'Warehouse', 'Wheat']
 export const DEFAULT_STATS = [
   { icon: 'CalendarCheck', value: 8, suffix: '+', label: 'Years of Experience' },
   { icon: 'Globe', value: 12, suffix: '+', label: 'Export Countries' },
@@ -959,10 +959,140 @@ export async function setServices(list) {
   return writeItems('services', items)
 }
 
+/* ------------------------------------------------------------- hero --- */
+// The homepage hero: badge, three title lines, subtitle and the trust chips. The Export
+// Countries stat tile is appended to the chips automatically by the page.
+export const DEFAULT_HERO = {
+  badge: 'NEPC Registered Exporter',
+  title_1: 'Premium Nigerian', title_accent: 'Agro Commodities', title_2: 'for the World',
+  subtitle: 'Cultivation of crops, sourcing, processing, storage, logistics, and export of premium agricultural commodities. Certified quality, reliable logistics, FOB Lagos.',
+  chips: [
+    { icon: 'Ship', title: 'FOB Lagos', caption: 'Global Shipping' },
+    { icon: 'FlaskConical', title: 'Lab Tested', caption: 'Quality Assured' },
+  ],
+}
+export async function getHero() {
+  const rows = unwrap(await supabase.from('settings').select('value').eq('key', 'hero').limit(1), 'getHero')
+  const v = rows?.[0]?.value
+  return v && typeof v === 'object' && v.title_1 ? { ...structuredClone(DEFAULT_HERO), ...v } : structuredClone(DEFAULT_HERO)
+}
+export async function setHero(input = {}) {
+  const value = {
+    badge: tt(input.badge, 60), title_1: tt(input.title_1, 60), title_accent: tt(input.title_accent, 60), title_2: tt(input.title_2, 60), subtitle: tt(input.subtitle, 400),
+    chips: (Array.isArray(input.chips) ? input.chips : []).slice(0, 5).map(c => ({ icon: STAT_ICON_NAMES.includes(c?.icon) ? c.icon : 'Star', title: tt(c?.title, 30), caption: tt(c?.caption, 30) })).filter(c => c.title),
+  }
+  if (!value.title_1 && !value.title_accent && !value.title_2) throw new Error('the hero needs a title')
+  unwrap(await supabase.from('settings').upsert({ key: 'hero', value }, { onConflict: 'key' }), 'setHero')
+  return value
+}
+
+/* ---------------------------------------------------- why choose us --- */
+// The reasons on /industries/why-choose-us.
+export const DEFAULT_WHY = [
+  { icon: 'ShieldCheck', title: 'Certified Quality', description: 'All products meet international quality standards with full traceability and lab certification.' },
+  { icon: 'Truck', title: 'Reliable Logistics', description: 'End-to-end shipping coordination from farm gate to FOB Lagos with real-time tracking.' },
+  { icon: 'Factory', title: 'Modern Processing', description: 'State-of-the-art cleaning, sorting, drying, and packaging facilities ensuring premium grade.' },
+  { icon: 'Handshake', title: 'Farmer Partnerships', description: 'Direct relationships with 500+ smallholder farmers across Nigeria for consistent supply.' },
+  { icon: 'Award', title: 'NEPC Registered', description: 'Fully registered with the Nigerian Export Promotion Council for seamless export operations.' },
+  { icon: 'Leaf', title: 'Sustainable Sourcing', description: 'Ethical and environmentally conscious practices that support local farming communities.' },
+  { icon: 'BadgeCheck', title: 'Premium Quality Products', description: 'Rigorous quality control ensures every commodity meets international standards.' },
+  { icon: 'Link2', title: 'Reliable Supply Chain', description: 'End-to-end logistics from farm to port with full traceability and transparency.' },
+  { icon: 'BadgeDollarSign', title: 'Competitive Pricing', description: 'Direct farmer relationships and efficient operations translate to better prices.' },
+  { icon: 'Clock', title: 'Timely Delivery', description: 'Commitment to on-time shipments with proactive communication at every stage.' },
+  { icon: 'UserCheck', title: 'Experienced Team', description: 'Seasoned professionals with deep knowledge of Nigerian agriculture and global trade.' },
+  { icon: 'Globe', title: 'Export Ready', description: 'Full export compliance, certifications, and documentation for international markets.' },
+  { icon: 'Sprout', title: 'Sustainable Practices', description: 'Eco-friendly sourcing and processing methods that support long-term farm productivity.' },
+  { icon: 'Handshake', title: 'Strong Relationships', description: 'Trusted partnerships with farmers, cooperatives, and buyers built over years.' },
+]
+export const getWhy = () => readItems('why', DEFAULT_WHY)
+export async function setWhy(list) {
+  if (!Array.isArray(list)) throw new Error('reasons must be a list')
+  const items = list.slice(0, 16).map(s => ({ icon: STAT_ICON_NAMES.includes(s?.icon) ? s.icon : 'Star', title: tt(s?.title, 60), description: tt(s?.description, 300) })).filter(s => s.title)
+  if (!items.length) throw new Error('keep at least one reason')
+  return writeItems('why', items)
+}
+
+/* -------------------------------------------------- sustainability --- */
+// The five policy frameworks on /sustainability, each with its sections.
+export const POLICY_COLORS = ['accent', 'primary', 'info', 'chart-1', 'chart-2', 'chart-3', 'chart-4', 'chart-5']
+export const DEFAULT_SUSTAINABILITY = [
+  {
+    key: 'esg', label: 'ESG Policy', icon: 'Leaf', color: 'accent',
+    title: 'Environmental, Social & Governance Policy', tagline: 'Responsible growth that protects people and planet.',
+    intro: 'Vertoc Agro Products Limited is committed to integrating Environmental, Social, and Governance (ESG) principles at the heart of our business strategy. We believe that sustainable commerce is not just ethical — it is essential for long-term value creation.',
+    sections: [
+      { heading: 'Environmental Commitment', body: 'We minimise our environmental footprint by promoting responsible land-use practices, reducing post-harvest losses through improved processing and storage, and optimising logistics to lower carbon emissions. We work exclusively with farmers and suppliers who adopt sustainable agronomic practices, including appropriate use of inputs, soil conservation, and water management. We actively monitor and seek to reduce greenhouse gas emissions across our supply chain, with a target of full Scope 1 and 2 mapping by 2026.' },
+      { heading: 'Social Responsibility', body: 'Our business creates direct and indirect livelihoods for thousands of smallholder farmers, processors, and logistics providers across Nigeria. We pay fair prices, provide technical knowledge transfer, and ensure timely payments to all our suppliers. We invest in community development programmes in our source communities, including access to clean water, road infrastructure support, and educational sponsorships. We maintain a zero-tolerance policy for child labour, forced labour, and any form of exploitation throughout our value chain.' },
+      { heading: 'Governance & Ethics', body: "Vertoc Agro operates with the highest standards of corporate governance. We maintain transparent financial reporting, uphold Anti-Bribery and Anti-Corruption (ABAC) standards aligned with the UK Bribery Act and Nigeria's EFCC/ICPC frameworks, and enforce a strict conflict-of-interest policy for all directors and employees. Our Board of Directors reviews ESG performance annually. We publish our ESG disclosures to relevant stakeholders and continuously improve our practices based on internationally recognised frameworks including GRI and UN SDGs." },
+      { heading: 'Targets & Accountability', body: 'We set measurable ESG targets reviewed annually. Our key commitments include: achieving a fully documented and auditable supply chain by 2027; reducing food and commodity waste by 30% through improved storage and grading; ensuring 100% of our direct-sourcing contracts include a sustainability rider; and maintaining ISO 14001-aligned environmental management practices at our facilities.' },
+    ],
+  },
+  {
+    key: 'dei', label: 'DEI Policy', icon: 'Users', color: 'chart-2',
+    title: 'Diversity, Equity & Inclusion Policy', tagline: 'Every voice matters. Every person belongs.',
+    intro: 'Vertoc Agro Products Limited is dedicated to building a workplace and supply chain where diversity is celebrated, equity is practised, and inclusion is guaranteed. We recognise that diverse perspectives drive better decisions and stronger outcomes.',
+    sections: [
+      { heading: 'Our Commitment to Diversity', body: "We actively recruit from diverse talent pools across Nigeria and the global diaspora, without discrimination based on gender, age, ethnicity, religion, disability, sexual orientation, national origin, or socioeconomic background. We are committed to gender balance in our workforce and actively work to increase women's representation at all levels of the organisation, including leadership. By 2027, we target a minimum 40% female representation across all job grades." },
+      { heading: 'Equity in Practice', body: 'Equity means ensuring fair access to opportunities, resources, and recognition. Vertoc Agro conducts annual equal-pay audits to identify and address any unjustified pay disparities. Promotion and performance review processes are standardised and transparent, with clear criteria accessible to all employees. We provide targeted support — including mentoring, training bursaries, and flexible working arrangements — to ensure that historically underrepresented groups can thrive and advance.' },
+      { heading: 'Inclusive Culture', body: 'We foster a culture where all employees feel safe, respected, and empowered to contribute. Our Inclusion Charter commits every team leader to: conducting anonymous quarterly feedback surveys; acting on reported concerns within 10 working days; and completing mandatory unconscious-bias and inclusive-leadership training annually. We have zero tolerance for harassment, bullying, or discrimination in any form. Reports can be made confidentially via our independent Ethics Hotline.' },
+      { heading: 'DEI in Our Supply Chain', body: 'Our DEI commitment extends beyond our own walls. We prioritise partnerships with women-owned, youth-led, and smallholder-farmer cooperatives. We embed DEI clauses in our supplier contracts and conduct periodic supplier assessments to verify compliance. We target 30% of our sourcing spend directed to women-led agricultural businesses by 2026.' },
+    ],
+  },
+  {
+    key: 'human-rights', label: 'Human Rights Policy', icon: 'HeartHandshake', color: 'chart-5',
+    title: 'Human Rights Policy', tagline: 'Upholding dignity, rights and fair treatment for all.',
+    intro: 'Vertoc Agro Products Limited respects and supports the protection of internationally recognised human rights as set out in the UN Guiding Principles on Business and Human Rights (UNGPs), the ILO Core Conventions, and the Universal Declaration of Human Rights.',
+    sections: [
+      { heading: 'Our Human Rights Commitments', body: 'We are committed to: (1) Prohibiting all forms of forced, bonded, trafficked, or compulsory labour in our operations and supply chain. (2) Prohibiting child labour — we do not employ persons under 18 years in any capacity and require the same of all suppliers. (3) Ensuring all workers receive at least the applicable minimum wage and have their labour rights respected, including the right to freedom of association and collective bargaining. (4) Providing safe, healthy, and dignified working conditions at all our facilities.' },
+      { heading: 'Supply Chain Due Diligence', body: 'We conduct Human Rights Due Diligence (HRDD) across our supply chain. This includes risk-based assessments of all new and existing suppliers against ILO conventions and Nigerian labour law. Where risks are identified, we work with suppliers through capacity building and corrective action plans rather than immediate termination, unless the violation is severe. Suppliers who refuse to engage with our HRDD process or who commit grievous violations will be delisted.' },
+      { heading: 'Land Rights & Communities', body: 'We respect the land rights of communities in our sourcing regions and do not engage with suppliers who have obtained land through forcible displacement, coercion, or without Free, Prior and Informed Consent (FPIC) from affected communities. We actively engage with host communities through structured community liaison programmes and provide accessible grievance mechanisms for community members who believe their rights have been affected by our activities.' },
+      { heading: 'Grievance Mechanism & Remedy', body: "Any worker, supplier, community member, or stakeholder who believes their human rights have been violated in connection with Vertoc Agro's operations may submit a complaint through our confidential Ethics Hotline or in writing to our Compliance Officer. All complaints are investigated promptly and impartially, with a target of acknowledging receipt within 5 working days and providing a resolution or update within 30 working days. Where violations are confirmed, we provide appropriate remedy." },
+    ],
+  },
+  {
+    key: 'ims', label: 'IMS Policy', icon: 'ShieldCheck', color: 'info',
+    title: 'Integrated Management System (IMS) Policy', tagline: 'Quality, safety and environment — managed as one.',
+    intro: 'Vertoc Agro Products Limited operates an Integrated Management System (IMS) that combines Quality Management (ISO 9001), Food Safety Management (ISO 22000 / HACCP), and Environmental Management (ISO 14001) into a unified, auditable framework.',
+    sections: [
+      { heading: 'Quality Management', body: 'We are committed to consistently delivering agricultural commodities that meet or exceed customer specifications and applicable regulatory requirements. Our quality management processes cover procurement, processing, grading, storage, and export — with documented Standard Operating Procedures (SOPs) at every stage. We conduct regular internal audits and management reviews, and we set annual quality objectives. Customer feedback is systematically collected, analysed, and used to drive continuous improvement. Our target is to achieve and maintain a customer complaint rate of less than 1% of all transactions.' },
+      { heading: 'Food Safety', body: 'All agricultural commodities handled by Vertoc Agro are subject to rigorous food safety controls based on Hazard Analysis and Critical Control Points (HACCP) principles. We identify, evaluate, and control food safety hazards including biological, chemical, and physical contaminants. Our facilities are maintained under strict hygiene and sanitation protocols. All relevant products carry required certifications including NAFDAC registration, SGS verification, and phytosanitary certification. We conduct pre-shipment inspections on all export consignments.' },
+      { heading: 'Environmental Management', body: 'Our IMS includes environmental management commitments aligned with ISO 14001. We identify environmental aspects and impacts associated with our operations and set controls to minimise negative effects. This includes responsible waste management (packaging, food waste, and processing by-products), energy efficiency at our facilities, and ensuring our water use does not adversely impact local water bodies. Environmental performance is reviewed quarterly by our Operations Management Team.' },
+      { heading: 'Continual Improvement & Compliance', body: 'We are committed to the continual improvement of our IMS through regular internal and external audits, corrective and preventive actions, and management reviews. We comply with all applicable Nigerian laws, export destination regulations, and international standards. All employees receive IMS training relevant to their role upon onboarding and annually thereafter. The IMS Policy is reviewed at least annually or following significant organisational changes by the Managing Director.' },
+    ],
+  },
+  {
+    key: 'eudr', label: 'EUDR Compliance', icon: 'Earth', color: 'chart-4',
+    title: 'EU Deforestation Regulation (EUDR) Compliance', tagline: 'Deforestation-free supply chains — by regulation and by conviction.',
+    intro: 'Vertoc Agro Products Limited fully supports the objectives of the EU Deforestation Regulation (EU) 2023/1115 (EUDR), which requires that commodities and products placed on the EU market must not have contributed to deforestation or forest degradation after December 31, 2020.',
+    sections: [
+      { heading: 'Scope of Our EUDR Obligations', body: 'The EUDR applies to several commodities in our portfolio that are exported to EU markets, including palm oil, cocoa, soybeans, and their derived products. As an operator placing these commodities on the EU market (directly or via intermediaries), Vertoc Agro accepts full responsibility for conducting due diligence to ensure these products are: (1) produced on land not subject to deforestation after 31 December 2020; (2) produced in compliance with the relevant legislation of the country of production; and (3) covered by a due diligence statement submitted to the EU Information System.' },
+      { heading: 'Geolocation & Traceability', body: "We have invested in geolocation systems and supply chain traceability tools to map the exact plots of land from which our commodities originate. All supplying farmers and cooperatives are required to provide GPS coordinates of their farms, which are verified against satellite deforestation data using third-party databases including Global Forest Watch and the EU's own reference system. We are progressively onboarding all our supplier base into our traceability platform, with a target of 100% coverage for EU-destined commodities by end of 2025." },
+      { heading: 'Due Diligence System', body: "Our EUDR Due Diligence System (DDS) includes three mandatory steps for every EU-destined consignment: (1) Information Collection — gathering evidence of origin, land-use status, legal compliance, and geolocation data from all relevant suppliers. (2) Risk Assessment — evaluating the risk of non-compliance using country and product-level risk benchmarks, including the EU's country benchmarking classification and independent audits. (3) Risk Mitigation — where standard or high risk is identified, additional supplier audits, third-party verification, and corrective actions are implemented before shipment is approved." },
+      { heading: 'Legal Compliance & Certification', body: 'We require all suppliers of EUDR-relevant commodities to confirm compliance with Nigerian land and forest law, including the Forestry Law, Land Use Act, and NESREA regulations. We work with certification schemes — including RSPO for palm oil and Rainforest Alliance for cocoa — to strengthen our compliance evidence base. EUDR-specific declarations and supporting documentation are archived for a minimum of five years and are available for inspection by EU customs authorities or appointed competent authorities upon request.' },
+    ],
+  },
+]
+export const getSustainability = () => readItems('sustainability', DEFAULT_SUSTAINABILITY)
+export async function setSustainability(list) {
+  if (!Array.isArray(list)) throw new Error('policies must be a list')
+  const slug = s => tt(s, 60).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  const items = list.slice(0, 12).map(p => ({
+    key: slug(p?.key) || slug(p?.label) || 'policy', label: tt(p?.label, 40), icon: STAT_ICON_NAMES.includes(p?.icon) ? p.icon : 'Leaf',
+    color: POLICY_COLORS.includes(p?.color) ? p.color : 'accent', title: tt(p?.title, 120), tagline: tt(p?.tagline, 160), intro: tt(p?.intro, 1000),
+    sections: (Array.isArray(p?.sections) ? p.sections : []).slice(0, 8).map(s => ({ heading: tt(s?.heading, 80), body: tt(s?.body, 2000) })).filter(s => s.heading && s.body),
+  })).filter(p => p.label && p.title)
+  if (!items.length) throw new Error('keep at least one policy')
+  const seen = new Set(); for (const p of items) { let k = p.key, n = 2; while (seen.has(k)) k = `${p.key}-${n++}`; p.key = k; seen.add(k) }
+  return writeItems('sustainability', items)
+}
+
 /* ------------------------------------------------------ company profile --- */
 // The About page (mission, vision, registrations, core values, industries)
 // and the homepage's mission/vision cards. Settings row 'about'.
 export const DEFAULT_ABOUT = {
+  headline: 'Connecting Farmers with Global Markets',
+  summary: 'Vertoc Agro Products Limited is a leading Nigerian agribusiness committed to the cultivation of crops, sourcing, processing, storage, logistics, and export of premium agricultural commodities across Nigeria and beyond.',
+  slogan: 'Growing the Future, One Harvest at a Time.',
   mission: "To provide quality agricultural products while creating sustainable value for farmers, businesses, and global markets. We bridge the gap between farm and table with efficiency and excellence.",
   vision: "To become one of Africa's most trusted agro commodity companies, recognized for reliability, quality, and innovation in agricultural trade and export across international markets.",
   mission_short: 'Provide quality products while creating sustainable value for farmers and global markets.',
@@ -1003,7 +1133,7 @@ export async function setCompanyProfile(input = {}) {
     .map(x => ({ icon: iconOr(x?.icon, 'Award'), title: t(x?.title, 40), description: t(x?.description, 200) })).filter(x => x.title)
   const industries = (Array.isArray(input.industries) ? input.industries : []).slice(0, 12)
     .map(x => ({ icon: iconOr(x?.icon, 'Factory'), name: t(x?.name, 60), description: t(x?.description, 200) })).filter(x => x.name)
-  const value = { mission, vision, mission_short: t(input.mission_short, 200), vision_short: t(input.vision_short, 200), registrations, values, industries }
+  const value = { headline: t(input.headline, 80), summary: t(input.summary, 600), slogan: t(input.slogan, 120), mission, vision, mission_short: t(input.mission_short, 200), vision_short: t(input.vision_short, 200), registrations, values, industries }
   unwrap(await supabase.from('settings').upsert({ key: 'about', value }, { onConflict: 'key' }), 'setCompanyProfile')
   return value
 }

@@ -469,6 +469,12 @@ router.get('/settings/gallery', frontpages, h(async (_req, res) => res.json({ it
 router.put('/settings/gallery', frontpages, h(async (req, res) => { const items = await exposing(content.setGallery)(req.body?.items); await audit({ actor: req.user, action: 'update', entity: 'gallery', entityId: null, after: { count: items.length } }); res.json({ items }) }))
 router.get('/settings/faq', frontpages, h(async (_req, res) => res.json({ items: await content.getFaq() })))
 router.put('/settings/faq', frontpages, h(async (req, res) => { const items = await exposing(content.setFaq)(req.body?.items); await audit({ actor: req.user, action: 'update', entity: 'faq', entityId: null, after: { count: items.length } }); res.json({ items }) }))
+router.get('/settings/hero', frontpages, h(async (_req, res) => res.json({ hero: await content.getHero() })))
+router.put('/settings/hero', frontpages, h(async (req, res) => { const hero = await exposing(content.setHero)(req.body); await audit({ actor: req.user, action: 'update', entity: 'hero', entityId: null, after: hero }); res.json({ hero }) }))
+router.get('/settings/why', frontpages, h(async (_req, res) => res.json({ items: await content.getWhy() })))
+router.put('/settings/why', frontpages, h(async (req, res) => { const items = await exposing(content.setWhy)(req.body?.items); await audit({ actor: req.user, action: 'update', entity: 'why', entityId: null, after: { count: items.length } }); res.json({ items }) }))
+router.get('/settings/sustainability', frontpages, h(async (_req, res) => res.json({ items: await content.getSustainability(), colors: content.POLICY_COLORS })))
+router.put('/settings/sustainability', frontpages, h(async (req, res) => { const items = await exposing(content.setSustainability)(req.body?.items); await audit({ actor: req.user, action: 'update', entity: 'sustainability', entityId: null, after: { count: items.length } }); res.json({ items, colors: content.POLICY_COLORS }) }))
 router.get('/settings/services', frontpages, h(async (_req, res) => res.json({ items: await content.getServices(), icons: content.STAT_ICON_NAMES })))
 router.put('/settings/services', frontpages, h(async (req, res) => { const items = await exposing(content.setServices)(req.body?.items); await audit({ actor: req.user, action: 'update', entity: 'services', entityId: null, after: { count: items.length } }); res.json({ items, icons: content.STAT_ICON_NAMES }) }))
 // Homepage stat tiles (Settings → Site).

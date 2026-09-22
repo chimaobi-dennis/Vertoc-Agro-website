@@ -22,11 +22,18 @@ const F = {
   image: (k, label) => ({ k, label, type: 'image' }),
   rating: (k, label = 'Stars') => ({ k, label, type: 'rating' }),
   code: (k, label) => ({ k, label, type: 'code' }),
+  color: (k, label = 'Colour') => ({ k, label, type: 'color' }),
+  // A nested list of small records (policy sections, hero chips): `fields` describe one record.
+  list: (k, label, { fields, max = 8, blank = {}, hint } = {}) => ({ k, label, type: 'list', fields, max, blank, hint }),
 }
+const POLICY_COLORS = ['accent', 'primary', 'info', 'chart-1', 'chart-2', 'chart-3', 'chart-4', 'chart-5']
+const SWATCH = { accent: 'bg-accent', primary: 'bg-primary', info: 'bg-info', 'chart-1': 'bg-chart-1', 'chart-2': 'bg-chart-2', 'chart-3': 'bg-chart-3', 'chart-4': 'bg-chart-4', 'chart-5': 'bg-chart-5' }
 const SECTIONS = {
   stats: { label: 'Stat tile', get: '/settings/stats', list: r => r.stats, put: items => ({ stats: items }), fields: [F.icon('icon'), F.num('value', 'Number'), F.text('suffix', 'Suffix', { maxLength: 3, hint: 'e.g. + or %' }), F.text('label', 'Label', { maxLength: 40 })], blank: { icon: 'Award', value: 0, suffix: '+', label: '' } },
   markets: { label: 'Export market', get: '/settings/markets', list: r => r.items, put: (items, row) => ({ markets: items, caption_left: row.caption_left, caption_right: row.caption_right }), fields: [F.text('name', 'Country', { maxLength: 40 }), F.code('code', 'Two-letter code')], blank: { name: '', code: '' } },
   markets_captions: { label: 'Captions under the markets', get: '/settings/markets', scalar: true, put: row => ({ markets: row.items, caption_left: row.caption_left, caption_right: row.caption_right }), fields: [F.text('caption_left', 'Left caption', { maxLength: 60, hint: 'Empty hides it' }), F.text('caption_right', 'Right caption', { maxLength: 60, hint: 'Empty hides it' })] },
+  hero: { label: 'Hero', get: '/settings/hero', row: r => r.hero, scalar: true, put: row => row, fields: [F.text('badge', 'Badge', { maxLength: 60, hint: 'Empty hides it' }), F.text('title_1', 'Title, first line', { maxLength: 60 }), F.text('title_accent', 'Title, highlighted line', { maxLength: 60 }), F.text('title_2', 'Title, last line', { maxLength: 60 }), F.area('subtitle', 'Subtitle', { maxLength: 400, rows: 3 }), F.list('chips', 'Trust chips', { fields: [F.icon('icon'), F.text('title', 'Title', { maxLength: 30 }), F.text('caption', 'Caption', { maxLength: 30 })], max: 5, blank: { icon: 'Star', title: '', caption: '' }, hint: 'The Export Countries stat tile is shown automatically as the last chip' })] },
+  about_intro: { label: 'About intro', get: '/settings/about', row: r => r.profile, scalar: true, put: row => row, fields: [F.text('headline', 'Headline (homepage)', { maxLength: 80 }), F.area('summary', 'Summary', { maxLength: 600, rows: 4 }), F.text('slogan', 'Slogan (About page)', { maxLength: 120, hint: 'Empty hides it' })] },
   mission: { label: 'Our mission', get: '/settings/about', row: r => r.profile, scalar: true, put: row => row, fields: [F.area('mission', 'Mission', { maxLength: 600 }), F.text('mission_short', 'Short version for the homepage card', { maxLength: 200, hint: 'Optional' })] },
   vision: { label: 'Our vision', get: '/settings/about', row: r => r.profile, scalar: true, put: row => row, fields: [F.area('vision', 'Vision', { maxLength: 600 }), F.text('vision_short', 'Short version for the homepage card', { maxLength: 200, hint: 'Optional' })] },
   registrations: { label: 'Registration', get: '/settings/about', row: r => r.profile, listKey: 'registrations', put: row => row, fields: [F.icon('icon'), F.text('label', 'Label', { maxLength: 60 }), F.text('value', 'Number / detail', { maxLength: 80 })], blank: { icon: 'BadgeCheck', label: '', value: '' } },
@@ -35,6 +42,8 @@ const SECTIONS = {
   services: { label: 'Service', get: '/settings/services', list: r => r.items, put: items => ({ items }), fields: [F.icon('icon'), F.text('title', 'Title', { maxLength: 60 }), F.area('description', 'Description', { maxLength: 400 })], blank: { icon: 'Star', title: '', description: '' } },
   faq: { label: 'Question', get: '/settings/faq', list: r => r.items, put: items => ({ items }), fields: [F.text('q', 'Question', { maxLength: 200 }), F.area('a', 'Answer', { maxLength: 2000, rows: 6 })], blank: { q: '', a: '' } },
   gallery: { label: 'Photo', get: '/settings/gallery', list: r => r.items, put: items => ({ items }), fields: [F.image('src', 'Image'), F.text('title', 'Title', { maxLength: 60 }), F.text('caption', 'Caption', { maxLength: 200 }), F.text('alt', 'Alt text (for screen readers)', { maxLength: 200, hint: 'Defaults to the caption' })], blank: { src: '', title: '', caption: '', alt: '' } },
+  why: { label: 'Reason', get: '/settings/why', list: r => r.items, put: items => ({ items }), fields: [F.icon('icon'), F.text('title', 'Title', { maxLength: 60 }), F.area('description', 'Description', { maxLength: 300 })], blank: { icon: 'Star', title: '', description: '' } },
+  sustainability: { label: 'Policy', get: '/settings/sustainability', list: r => r.items, put: items => ({ items }), fields: [F.text('label', 'Short name (tab)', { maxLength: 40 }), F.icon('icon'), F.color('color', 'Badge colour'), F.text('title', 'Full title', { maxLength: 120 }), F.text('tagline', 'Tagline', { maxLength: 160 }), F.area('intro', 'Introduction', { maxLength: 1000, rows: 4 }), F.list('sections', 'Sections', { fields: [F.text('heading', 'Heading', { maxLength: 80 }), F.area('body', 'Text', { maxLength: 2000, rows: 4 })], max: 8, blank: { heading: '', body: '' }, hint: 'Each section is one card on the page' })], blank: { label: '', icon: 'Leaf', color: 'accent', title: '', tagline: '', intro: '', sections: [{ heading: '', body: '' }] } },
   review: { label: 'Review', table: true, fields: [F.area('quote', 'Quote', { maxLength: 400 }), F.text('name', 'Name', { maxLength: 60 }), F.text('role', 'Role / company', { maxLength: 120 }), F.rating('rating')], blank: { quote: '', name: '', role: '', rating: 5 } },
 }
 
@@ -128,6 +137,32 @@ function FieldFor({ f, value, onChange }) {
   if (f.type === 'number') return <Field label={f.label} hint={f.hint}><Input type="number" min="0" step="1" value={value ?? ''} onChange={e => onChange(e.target.value)} /></Field>
   if (f.type === 'image') return <Field label={f.label} hint="JPEG, PNG or WebP; uploads go to the media library">{value && <img src={value} alt="" className="w-full max-h-48 object-cover rounded-xl border border-border mb-2" />}<ImageUpload value={value || ''} onChange={onChange} /></Field>
   if (f.type === 'rating') return <Field label={f.label}><Select value={String(value ?? 5)} onChange={e => onChange(Number(e.target.value))}>{[5, 4, 3, 2, 1].map(n => <option key={n} value={n}>{'★'.repeat(n)}</option>)}</Select></Field>
+  if (f.type === 'color') return (
+    <Field label={f.label}><div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label={f.label}>{POLICY_COLORS.map(c => <button key={c} type="button" role="radio" aria-checked={value === c} aria-label={c} title={c} onClick={() => onChange(c)} className={`w-7 h-7 rounded-full ${SWATCH[c]} ${value === c ? 'ring-2 ring-offset-2 ring-foreground/60 scale-110' : 'opacity-70 hover:opacity-100'} transition-transform`} />)}</div></Field>
+  )
+  if (f.type === 'list') {
+    const rows = Array.isArray(value) ? value : []
+    const set = (i, patch) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+    const move = (i, d) => { const n = [...rows]; const j = i + d; if (j < 0 || j >= n.length) return; [n[i], n[j]] = [n[j], n[i]]; onChange(n) }
+    return (
+      <Field label={f.label} hint={f.hint}>
+        <ul className="space-y-3">
+          {rows.map((r, i) => (
+            <li key={i} className="rounded-xl border border-border p-3">
+              <div className="flex items-center justify-end gap-1 mb-1">
+                <span className="mr-auto text-xs text-muted-foreground">{i + 1} of {rows.length}</span>
+                <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-30" aria-label="Move up">↑</button>
+                <button type="button" onClick={() => move(i, 1)} disabled={i === rows.length - 1} className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-30" aria-label="Move down">↓</button>
+                <button type="button" onClick={() => onChange(rows.filter((_, j) => j !== i))} className="h-8 w-8 rounded-lg text-destructive hover:bg-muted flex items-center justify-center" aria-label="Remove"><Trash2 className="w-4 h-4" /></button>
+              </div>
+              <div className="space-y-3">{f.fields.map(sub => <FieldFor key={sub.k} f={sub} value={r[sub.k]} onChange={v => set(i, { [sub.k]: v })} />)}</div>
+            </li>
+          ))}
+        </ul>
+        <Button type="button" variant="outline" className="mt-2 h-9" disabled={rows.length >= f.max} onClick={() => onChange([...rows, { ...f.blank }])}>Add {f.label.replace(/s$/, '').toLowerCase()}</Button>
+      </Field>
+    )
+  }
   if (f.type === 'code') return (
     <Field label={f.label} hint="ISO country code, e.g. GB, NL, GH"><div className="flex items-center gap-3"><span className="w-12 h-9 rounded-md overflow-hidden border border-border/50 bg-muted shrink-0">{value?.length === 2 && <img src={flagSrc(value)} onError={onFlagError(value)} alt="" className="w-full h-full object-cover" />}</span><Input value={value ?? ''} maxLength={2} className="uppercase w-28" onChange={e => onChange(e.target.value.toLowerCase().replace(/[^a-z]/g, ''))} /></div></Field>
   )

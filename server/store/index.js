@@ -50,6 +50,7 @@ export const {
   getHomepageMarkets, setHomepageMarkets, DEFAULT_MARKETS, DEFAULT_REVIEWS,
   getCompanyProfile, setCompanyProfile, DEFAULT_ABOUT,
   getGallery, setGallery, getFaq, setFaq, getServices, setServices, DEFAULT_GALLERY, DEFAULT_FAQ, DEFAULT_SERVICES,
+  getSustainability, setSustainability, DEFAULT_SUSTAINABILITY, POLICY_COLORS, getWhy, setWhy, DEFAULT_WHY, getHero, setHero, DEFAULT_HERO,
   listReviews, listApprovedReviews, getReview, createReview, updateReview, deleteReview, REVIEW_STATUSES, REVIEWS_MIGRATION_HINT,
   listTemplates, getTemplate, upsertTemplate, updateTemplate, createDocumentFromBuffer,
   listPurchases, getPurchase, createPurchase, updatePurchase, deletePurchase,

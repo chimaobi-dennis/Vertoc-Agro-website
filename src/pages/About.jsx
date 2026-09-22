@@ -15,8 +15,10 @@ export default function About() {
       <div className="text-center mb-12">
       <span className="text-sm font-semibold uppercase tracking-wider text-accent">About Vertoc</span>
       <h1 className="text-2xl md:text-3xl font-bold mt-2 text-foreground">About Us</h1>
-      <p className="text-muted-foreground mt-3 max-w-2xl mx-auto">Vertoc Agro Products Limited is a leading Nigerian agribusiness committed to the cultivation of crops, sourcing, processing, storage, logistics, and export of premium agricultural commodities across Nigeria and beyond.</p>
-      <p className="mt-4 text-primary font-semibold tracking-wide">Growing the Future, One Harvest at a Time.</p>
+      <Editable section="about_intro" label="intro" className="max-w-2xl mx-auto">
+      <p className="text-muted-foreground mt-3">{a.summary}</p>
+      {a.slogan && <p className="mt-4 text-primary font-semibold tracking-wide">{a.slogan}</p>}
+      </Editable>
       {a.registrations?.length > 0 && (
       <div className="mt-6 flex flex-col sm:flex-row flex-wrap items-center justify-center gap-4 text-sm text-muted-foreground">
       {a.registrations.map((r, i) => { const Icon = statIcon(r.icon); return (
