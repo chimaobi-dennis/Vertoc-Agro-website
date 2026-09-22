@@ -406,25 +406,36 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
 
 ### Shipments (Phase 5)
 
-Needs `server/migrations/010_shipments.sql`. An invoice can leave on several
-trucks: on the invoice page staff **Create shipment** for a share of it
-(percent). The shares of the non-cancelled shipments never exceed 100 — the
-next shipment is capped at what is left, and the button is disabled at 0%.
-A shipment has an origin and a destination (a Nigerian state capital, a
-seaport, or any place with coordinates — `server/ng-states.js`), a truck,
-notes, and a trail of **checkpoints**: on the shipment page staff pick a
-state or click the map (OpenStreetMap via Leaflet, no API key) to drop the
-next pin; the first pin moves the shipment to *in transit*, **Mark
-delivered** pins it at the destination, cancelling frees its share. The
-client sees every shipment on the invoice link (`/q/<token>`): the route on
-a map, the current location, when it was last updated, the journey so far,
-the truck and the notes.
+Needs `server/migrations/010_shipments.sql` and `011_shipment_details.sql`.
+An invoice can leave on several trucks, vessels or flights: on the invoice
+page staff **Create shipment** and say which share of *each line* goes on
+it (percent per line; the shares of the non-cancelled shipments never
+exceed 100 per line — the form caps every line at what is left, fully
+shipped lines are locked, and the button disables once nothing is left).
+A shipment travels by road, sea or air with the matching vehicle number
+(truck plate, vessel/container, flight/air waybill), has an expected date
+of arrival, an origin and a destination (a Nigerian state capital, a
+seaport, or any place with coordinates — `server/ng-states.js`), notes, and
+a trail of **checkpoints**: on the shipment page staff pick a state or
+click the map (OpenStreetMap via Leaflet, no API key) to drop the next pin;
+the first pin moves it to *in transit*, **Mark delivered** pins it at the
+destination, cancelling frees its lines. The client sees every shipment on
+the invoice link (`/q/<token>`): what it carries, the route on a map, the
+current location and when it was last updated, the journey so far, the
+vehicle number, the expected arrival and the notes.
 
-- Panel: `GET/POST /quotes/:id/shipments` (`{ items, shipped, remaining }`),
-  `GET/PATCH/DELETE /shipments/:sid`, `POST /shipments/:sid/checkpoints`,
+- Panel: `GET/POST /quotes/:id/shipments` → `{ items, lines, shipped,
+  remaining, can_create }` (`lines[i].remaining` is what line *i* can still
+  take; `remaining` is the value-weighted share of the invoice),
+  `GET/PATCH/DELETE /shipments/:sid` (`lines_for_edit` excludes the
+  shipment's own share), `POST /shipments/:sid/checkpoints`,
   `DELETE /shipments/:sid/checkpoints/:cid` — all under the `quotes`
   permission; `GET /quotes/:id` carries `shipments`. Public: the invoice
   payload gains `shipments` (nothing internal).
+- Body: `items: [{ index, percent }]` (index into the invoice's items;
+  `percent` alone means the same share of every line), `mode`
+  road|sea|air, `vehicle`, `eta` (YYYY-MM-DD), `origin`/`destination`
+  `{ name, state, lat, lng }`, `notes`.
 - Statuses: `planned` → `in_transit` (first pin) → `delivered`; `cancelled`.
 
 ### Testing

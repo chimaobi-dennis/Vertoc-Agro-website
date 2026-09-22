@@ -272,24 +272,33 @@ try {
   await step('GET /quotes/:id/pdf is a PDF', async () => { const r = await fetch(`${API}/api/admin/quotes/${quote.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } }); const b = Buffer.from(await r.arrayBuffer()); if (r.status !== 200 || b.subarray(0, 4).toString() !== '%PDF') throw new Error('status ' + r.status); return `${b.length} bytes` })
   await step('public link works while draft (status untouched)', async () => { const r = await fetch(`${API}/api/q/${quote.token}`); const d = await r.json(); if (r.status !== 200 || d.status !== 'draft' || d.token !== undefined) throw new Error('got ' + r.status + ' ' + d.status); return 'draft ✓' })
 
-  // ------------------------------------------------ shipments (needs migration 010)
-  const shipProbe = await api(`/quotes/${quote.id}/shipments`).catch(e => e)
+  // ------------------------------------------------ shipments (needs migrations 010 + 011)
+  // Reading works from migration 010 on; writing needs 011 too — either hint skips the block.
+  const shipProbe = await api(`/quotes/${quote.id}/shipments`).then(() => api(`/quotes/${quote.id}/shipments`, { method: 'POST', body: { items: [{ index: 0, percent: 25 }, { index: 1, percent: 100 }], mode: 'road', vehicle: 'NT456UH', eta: '2026-10-05', origin: { state: 'Oyo' }, destination: { name: 'Apapa Port, Lagos', lat: 6.4474, lng: 3.3627 }, notes: 'n' } })).catch(e => e)
   if (shipProbe instanceof Error) {
-    await step('shipments', async () => { if (!/migration 010/.test(shipProbe.message)) throw shipProbe; return 'skipped — ' + shipProbe.message })
+    await step('shipments', async () => { if (!/migration 01[01]/.test(shipProbe.message)) throw shipProbe; return 'skipped — ' + shipProbe.message })
   } else {
-    const s1 = await step('POST /quotes/:id/shipments 25% (Oyo → Apapa)', async () => {
-      const s = await api(`/quotes/${quote.id}/shipments`, { method: 'POST', body: { percent: 25, origin: { state: 'Oyo' }, destination: { name: 'Apapa Port, Lagos', lat: 6.4474, lng: 3.3627 }, vehicle: 'e2e truck', notes: 'n' } })
-      if (s.number !== 1 || s.status !== 'planned' || s.origin.lat == null || s.origin.name !== 'Ibadan, Oyo') throw new Error(JSON.stringify(s).slice(0, 200))
-      return `#${s.id} · ${s.percent}% · ${s.origin.name} → ${s.destination.name}`
+    // The quote has two lines: Cocoa beans 20 MT @ 2400 (48000) and Bagging 1 @ 500.
+    const s1 = await step('POST /quotes/:id/shipments — 25% of cocoa + all bagging, by road', async () => {
+      const s = shipProbe
+      if (s.number !== 1 || s.status !== 'planned' || s.origin.name !== 'Ibadan, Oyo' || s.items?.length !== 2 || Math.abs(s.percent - 25.77) > 0.02 || s.mode !== 'road' || s.eta !== '2026-10-05') throw new Error(JSON.stringify(s).slice(0, 260))
+      return `#${s.id} · ${s.percent}% of the invoice value · ETA ${s.eta}`
     })
-    await step('a place without coordinates is refused', () => refused(() => api(`/quotes/${quote.id}/shipments`, { method: 'POST', body: { percent: 1, origin: { name: 'Nowhere' }, destination: { state: 'Lagos' } } }), /coordinates/, 'no coords'))
-    await step('over-allocation refused (80% when 75% is left)', () => refused(() => api(`/quotes/${quote.id}/shipments`, { method: 'POST', body: { percent: 80, origin: { state: 'Oyo' }, destination: { state: 'Lagos' } } }), /75%/, 'over'))
-    const s2 = await step('POST 75% fills the invoice → 0% left', async () => {
-      const s = await api(`/quotes/${quote.id}/shipments`, { method: 'POST', body: { percent: 75, origin: { state: 'Kano' }, destination: { state: 'Lagos' } } })
-      const l = await api(`/quotes/${quote.id}/shipments`); if (s.number !== 2 || l.items.length !== 2 || l.remaining !== 0 || l.shipped !== 100) throw new Error(`remaining ${l.remaining} shipped ${l.shipped}`)
-      return `#${s.id} · remaining ${l.remaining}%`
+    await step('lines: cocoa 75% left, bagging fully shipped', async () => { const l = await api(`/quotes/${quote.id}/shipments`); if (l.lines?.[0]?.remaining !== 75 || l.lines?.[1]?.remaining !== 0 || !l.can_create) throw new Error(JSON.stringify(l.lines)); return `cocoa ${l.lines[0].remaining}% · bagging ${l.lines[1].remaining}% · value left ${l.remaining}%` })
+    const ship = body => api(`/quotes/${quote.id}/shipments`, { method: 'POST', body: { origin: { state: 'Oyo' }, destination: { state: 'Lagos' }, ...body } })
+    await step('over-allocation refused (80% of cocoa when 75% is left)', () => refused(() => ship({ items: [{ index: 0, percent: 80 }] }), /75%/, 'over'))
+    await step('a fully shipped line refused', () => refused(() => ship({ items: [{ index: 1, percent: 1 }] }), /0% of "Bagging"/, 'full line'))
+    await step('a line off the invoice refused', () => refused(() => ship({ items: [{ index: 7, percent: 1 }] }), /not on this invoice/, 'bad line'))
+    await step('all zero refused', () => refused(() => ship({ items: [{ index: 0, percent: 0 }] }), /above 0%/, 'zero'))
+    await step('bad mode refused', () => refused(() => ship({ items: [{ index: 0, percent: 1 }], mode: 'rail' }), /mode must be/, 'mode'))
+    await step('bad arrival date refused', () => refused(() => ship({ items: [{ index: 0, percent: 1 }], eta: 'soon' }), /date/, 'eta'))
+    await step('a place without coordinates refused', () => refused(() => ship({ items: [{ index: 0, percent: 1 }], origin: { name: 'Nowhere' } }), /coordinates/, 'no coords'))
+    const s2 = await step('POST the last 75% of cocoa by sea → nothing left', async () => {
+      const s = await ship({ items: [{ index: 0, percent: 75 }], mode: 'sea', vehicle: 'MSC Ines / MSCU1234567', origin: { state: 'Kano' } })
+      const l = await api(`/quotes/${quote.id}/shipments`); if (s.number !== 2 || s.mode !== 'sea' || l.can_create || l.remaining !== 0 || l.lines[0].remaining !== 0) throw new Error(`can_create ${l.can_create} remaining ${l.remaining}`)
+      return `#${s.id} · ${s.percent}% · invoice fully allocated`
     })
-    await step('nothing left → create refused', () => refused(() => api(`/quotes/${quote.id}/shipments`, { method: 'POST', body: { percent: 1, origin: { state: 'Oyo' }, destination: { state: 'Lagos' } } }), /nothing left/, 'zero'))
+    await step('nothing left → create refused', () => refused(() => ship({ items: [{ index: 0, percent: 1 }] }), /nothing left/, 'zero left'))
     await step('POST /shipments/:id/checkpoints (state) → in_transit', async () => {
       const s = await api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { state: 'Ogun', note: 'Passed Abeokuta' } })
       if (s.status !== 'in_transit' || s.checkpoints.length !== 1 || s.checkpoints[0].name !== 'Abeokuta, Ogun' || s.checkpoints[0].lat == null) throw new Error(JSON.stringify(s.checkpoints))
@@ -297,16 +306,19 @@ try {
     })
     await step('a map click with its own name', async () => { const s = await api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { name: 'Ogere weighbridge', lat: 6.93, lng: 3.6 } }); if (s.checkpoints.length !== 2 || s.checkpoints[1].state !== '') throw new Error(JSON.stringify(s.checkpoints[1])); return s.checkpoints[1].name })
     await step('a checkpoint without a place is refused', () => refused(() => api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { note: 'x' } }), /state|map/, 'no place'))
-    await step('GET /quotes/:id carries the shipments', async () => { const q = await api(`/quotes/${quote.id}`); if (q.shipments?.items?.length !== 2 || q.shipments.remaining !== 0) throw new Error(JSON.stringify(q.shipments).slice(0, 120)); return `${q.shipments.items.length} shipments` })
-    await step('public invoice shows the shipments and route', async () => {
+    await step('GET /quotes/:id carries the shipments and lines', async () => { const q = await api(`/quotes/${quote.id}`); if (q.shipments?.items?.length !== 2 || q.shipments.can_create !== false || q.shipments.lines?.length !== 2) throw new Error(JSON.stringify(q.shipments).slice(0, 140)); return `${q.shipments.items.length} shipments · ${q.shipments.lines.length} lines` })
+    await step('public invoice shows the shipments, route, mode and ETA', async () => {
       const d = await fetch(`${API}/api/q/${quote.token}`).then(r => r.json()); const s = d.shipments?.find(x => x.id === s1.id)
-      if (!s || s.checkpoints.length !== 2 || s.created_by !== undefined || s.quote_id !== undefined || s.origin.lat == null) throw new Error(JSON.stringify(s || d.shipments).slice(0, 160))
-      return `${d.shipments.length} shipments · ${s.checkpoints.length} pins · nothing internal`
+      if (!s || s.checkpoints.length !== 2 || s.created_by !== undefined || s.quote_id !== undefined || s.origin.lat == null || s.items.length !== 2 || s.mode !== 'road' || s.eta !== '2026-10-05') throw new Error(JSON.stringify(s || d.shipments).slice(0, 200))
+      return `${d.shipments.length} shipments · ${s.checkpoints.length} pins · ${s.mode} · ETA ${s.eta} · nothing internal`
     })
     await step('DELETE a checkpoint', async () => { const s = await api(`/shipments/${s1.id}`); const c = s.checkpoints[1]; const r = await api(`/shipments/${s1.id}/checkpoints/${c.id}`, { method: 'DELETE' }); if (r.checkpoints.length !== 1) throw new Error('still ' + r.checkpoints.length); return 'removed ✓' })
     await step('PATCH status=delivered pins it at the destination', async () => { const s = await api(`/shipments/${s1.id}`, { method: 'PATCH', body: { status: 'delivered' } }); if (s.status !== 'delivered' || !s.delivered_at || s.checkpoints.length !== 2 || s.checkpoints[1].note !== 'Delivered') throw new Error(JSON.stringify(s.checkpoints)); return 'delivered ✓' })
     await step('delivered shipment takes no more pins', () => refused(() => api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { state: 'Lagos' } }), /delivered/, 'closed'))
-    await step('cancelling frees its share', async () => { await api(`/shipments/${s2.id}`, { method: 'PATCH', body: { status: 'cancelled' } }); const l = await api(`/quotes/${quote.id}/shipments`); if (l.remaining !== 75) throw new Error('remaining ' + l.remaining); return '75% free again' })
+    await step('cancelling frees its lines', async () => { await api(`/shipments/${s2.id}`, { method: 'PATCH', body: { status: 'cancelled' } }); const l = await api(`/quotes/${quote.id}/shipments`); if (l.lines[0].remaining !== 75 || !l.can_create) throw new Error('remaining ' + JSON.stringify(l.lines)); return 'cocoa 75% free again' })
+    await step('PATCH items + mode/eta on a shipment', async () => { const s = await api(`/shipments/${s2.id}`, { method: 'PATCH', body: { items: [{ index: 0, percent: 50 }], mode: 'air', vehicle: 'ET900', eta: '2026-10-01' } }); if (s.items[0].percent !== 50 || s.mode !== 'air' || s.eta !== '2026-10-01' || Math.abs(s.percent - 49.48) > 0.02) throw new Error(JSON.stringify({ items: s.items, mode: s.mode, eta: s.eta, percent: s.percent })); return `air · ${s.percent}% of the value` })
+    await step('reopening takes its lines again', async () => { const s = await api(`/shipments/${s2.id}`, { method: 'PATCH', body: { status: 'in_transit' } }); const l = await api(`/quotes/${quote.id}/shipments`); if (s.status !== 'in_transit' || l.lines[0].remaining !== 25) throw new Error('remaining ' + l.lines[0].remaining); return `cocoa ${l.lines[0].remaining}% left` })
+    await step('growing beyond what is left refused', () => refused(() => api(`/shipments/${s2.id}`, { method: 'PATCH', body: { items: [{ index: 0, percent: 90 }] } }), /75%/, 'grow'))
     await step('bad shipment status rejected', () => refused(() => api(`/shipments/${s2.id}`, { method: 'PATCH', body: { status: 'lost' } }), /must be one of/, 'bad status'))
     await step('DELETE /shipments/:id', async () => (await api(`/shipments/${s2.id}`, { method: 'DELETE' })).deleted)
   }

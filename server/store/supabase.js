@@ -826,16 +826,24 @@ export function publicQuote(q, settings, fields = []) {
 }
 
 /* ---------------------------------------------------------- shipments --- */
-// An invoice can leave on several trucks. Each shipment takes a share of the
-// invoice (percent); the shares of the non-cancelled shipments never exceed
-// 100. Checkpoints are the pins staff drop state by state; the last one is
-// the current location. Needs migration 010.
+// An invoice can leave on several trucks, vessels or flights. A shipment
+// takes a share of each invoice line (items: [{index, percent}]); per line,
+// the shares of the non-cancelled shipments never exceed 100. `percent` is
+// the value-weighted share of the whole invoice, kept for lists. Checkpoints
+// are the pins staff drop state by state; the last one is the current
+// location. Needs migrations 010 + 011.
 export const SHIPMENT_STATUSES = ['planned', 'in_transit', 'delivered', 'cancelled']
+export const SHIPMENT_MODES = ['road', 'sea', 'air']
 export const SHIPMENTS_MIGRATION_HINT = 'Shipments need the database migration 010: run server/migrations/010_shipments.sql in the Supabase SQL editor first.'
-const missingShipments = e => e?.code === '42P01' || /relation "public\.?shipment|shipment[_a-z]* does not exist|schema cache/i.test(String(e?.message || ''))
-const shipErr = (e, ctx) => (missingShipments(e) ? Object.assign(new Error(SHIPMENTS_MIGRATION_HINT), { expose: true, status: 409 }) : new Error(`${ctx}: ${e.message}`))
+export const SHIPMENT_DETAILS_HINT = 'Shipments need the database migration 011: run server/migrations/011_shipment_details.sql in the Supabase SQL editor first.'
+const errText = e => String(e?.message || '')
+const missingShipments = e => e?.code === '42P01' || e?.code === 'PGRST205' || /relation "public\.?shipment|table 'public\.shipment|shipment[_a-z]* does not exist/i.test(errText(e))
+const missingColumns = e => e?.code === '42703' || e?.code === 'PGRST204' || /column .*(items|mode|eta)/i.test(errText(e))
+const shipErr = (e, ctx) => (missingShipments(e) ? Object.assign(new Error(SHIPMENTS_MIGRATION_HINT), { expose: true, status: 409 })
+  : missingColumns(e) ? Object.assign(new Error(SHIPMENT_DETAILS_HINT), { expose: true, status: 409 }) : new Error(`${ctx}: ${e.message}`))
 const pct = v => Math.round((Number(v) || 0) * 100) / 100
 const coord = (v, max) => { const n = Number(v); return v == null || v === '' || !Number.isFinite(n) || Math.abs(n) > max ? null : Math.round(n * 1e5) / 1e5 }
+const cleanDate = v => { if (v == null || v === '') return null; const s = String(v).slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) throw new Error('expected date of arrival must be a date (YYYY-MM-DD)'); return s }
 // {name, state, lat, lng}; a known state fills in the capital's coordinates.
 function cleanPoint(p, label, { required = true } = {}) {
   const name = tt(p?.name, 120), st = stateByName(p?.state)
@@ -845,69 +853,119 @@ function cleanPoint(p, label, { required = true } = {}) {
   if (lat == null || lng == null) throw new Error(`${label}: "${name}" needs coordinates — pick a state or a port, or enter latitude and longitude`)
   return { name: name || `${st.capital}, ${st.state}`, state: st ? st.state : tt(p?.state, 40), lat, lng }
 }
+const lineAmount = it => (Number(it?.quantity) || 0) * (Number(it?.unit_price) || 0)
+/** The share of invoice line i a shipment carries; shipments from before per-line shares carry `percent` of every line. */
+const lineShareOf = (s, i) => { const own = Array.isArray(s.items) && s.items.length ? s.items : null; if (!own) return Number(s.percent) || 0; const x = own.find(l => Number(l.index) === i); return x ? Number(x.percent) || 0 : 0 }
+/** Per invoice line: what the (non-cancelled) shipments already take and what is left. */
+const lineShares = (quote, shipments) => (quote.items || []).map((it, i) => {
+  const shipped = Math.min(100, pct(shipments.filter(s => s.status !== 'cancelled').reduce((sum, s) => sum + lineShareOf(s, i), 0)))
+  return { index: i, description: it.description || `Line ${i + 1}`, quantity: Number(it.quantity) || 0, unit: it.unit || '', shipped, remaining: pct(100 - shipped) }
+})
+/** Value-weighted share of the whole invoice (plain average when nothing is priced). */
+function valueShare(quote, items) {
+  const lines = quote.items || [], subtotal = lines.reduce((s, it) => s + lineAmount(it), 0)
+  const share = subtotal > 0 ? items.reduce((s, x) => s + lineAmount(lines[x.index]) * x.percent / 100, 0) / subtotal * 100
+    : items.reduce((s, x) => s + x.percent, 0) / Math.max(1, lines.length)
+  return Math.max(0.01, pct(share))
+}
+// items as [{index, percent}] (or {index: percent}); `percent` alone means the same share of every line.
+function cleanShipmentItems(input, quote, lines) {
+  let raw = Array.isArray(input?.items) ? input.items : (input?.items && typeof input.items === 'object' ? Object.entries(input.items).map(([index, percent]) => ({ index, percent })) : null)
+  if (!raw && input?.percent != null) raw = lines.map(l => ({ index: l.index, percent: input.percent }))
+  if (!raw) throw new Error('say which share of each line goes on this shipment')
+  const out = []
+  for (const r of raw) {
+    const i = Number(r?.index); const line = lines[i]
+    if (!Number.isInteger(i) || !line) throw new Error(`line ${Number.isInteger(i) ? i + 1 : '?'} is not on this invoice`)
+    const p = pct(r?.percent); if (p < 0 || p > 100) throw new Error(`the share of "${line.description}" must be between 0 and 100%`)
+    if (p === 0) continue
+    if (p > line.remaining + 0.001) throw new Error(`only ${line.remaining}% of "${line.description}" is left to ship`)
+    if (out.some(x => x.index === i)) throw new Error(`"${line.description}" is listed twice`)
+    out.push({ index: i, description: line.description, quantity: line.quantity, unit: line.unit, percent: p })
+  }
+  if (!out.length) throw new Error('give at least one line a share above 0%')
+  return out.sort((a, b) => a.index - b.index)
+}
+const cleanMode = m => { if (m == null || m === '') return 'road'; if (!SHIPMENT_MODES.includes(m)) throw new Error(`mode must be one of ${SHIPMENT_MODES.join(', ')}`); return m }
 const withCheckpoints = async rows => {
   if (!rows.length) return rows
   const { data, error } = await supabase.from('shipment_checkpoints').select('*').in('shipment_id', rows.map(r => r.id)).order('created_at', { ascending: true }).order('id', { ascending: true })
   if (error) throw shipErr(error, 'listCheckpoints')
   const by = new Map(rows.map(r => [r.id, []])); for (const c of data || []) by.get(c.shipment_id)?.push(c)
-  return rows.map(r => ({ ...r, percent: Number(r.percent), checkpoints: by.get(r.id) || [] }))
+  return rows.map(r => ({ ...r, percent: Number(r.percent), items: Array.isArray(r.items) ? r.items : [], mode: r.mode || 'road', eta: r.eta || null, checkpoints: by.get(r.id) || [] }))
 }
-const allocated = rows => pct(rows.filter(r => r.status !== 'cancelled').reduce((s, r) => s + Number(r.percent), 0))
-export async function listShipments(quote_id) {
-  const { data, error } = await supabase.from('shipments').select('*').eq('quote_id', Number(quote_id)).order('number', { ascending: true })
+async function shipmentsOf(quote) {
+  const { data, error } = await supabase.from('shipments').select('*').eq('quote_id', quote.id).order('number', { ascending: true })
   if (error) throw shipErr(error, 'listShipments')
-  const items = await withCheckpoints(data || [])
-  const shipped = allocated(items)
-  return { items, shipped, remaining: pct(Math.max(0, 100 - shipped)) }
+  return withCheckpoints(data || [])
+}
+const summarise = (quote, items) => {
+  const lines = lineShares(quote, items)
+  const subtotal = (quote.items || []).reduce((s, it) => s + lineAmount(it), 0)
+  const remaining = subtotal > 0 ? pct(lines.reduce((s, l) => s + lineAmount(quote.items[l.index]) * l.remaining / 100, 0) / subtotal * 100) : pct(lines.reduce((s, l) => s + l.remaining, 0) / Math.max(1, lines.length))
+  return { items, lines, remaining, shipped: pct(100 - remaining), can_create: lines.some(l => l.remaining > 0) && quote.status !== 'declined' }
+}
+export async function listShipments(quote_id) {
+  const q = await getQuote(quote_id)
+  if (!q) throw new Error(`no invoice with id ${quote_id}`)
+  return summarise(q, await shipmentsOf(q))
 }
 export async function getShipment(id) {
   const { data, error } = await supabase.from('shipments').select('*').eq('id', Number(id)).limit(1)
   if (error) throw shipErr(error, 'getShipment')
   const row = (await withCheckpoints(data || []))[0]
   if (!row) return null
-  const [quote, all] = await Promise.all([getQuote(row.quote_id), listShipments(row.quote_id)])
-  return { ...row, quote: quote && { id: quote.id, number: quote.number, title: quote.title, items: quote.items, currency: quote.currency, status: quote.status }, remaining_for_edit: all.remaining }
+  const quote = await getQuote(row.quote_id)
+  const others = quote ? (await shipmentsOf(quote)).filter(x => x.id !== row.id) : []
+  return {
+    ...row,
+    quote: quote && { id: quote.id, number: quote.number, title: quote.title, items: quote.items, currency: quote.currency, status: quote.status },
+    lines_for_edit: quote ? lineShares(quote, others) : [],   // what this shipment may take, its own share excluded
+  }
 }
 export async function createShipment(quote_id, input = {}, actorId = null) {
   const q = await getQuote(quote_id)
   if (!q) throw new Error(`no invoice with id ${quote_id}`)
   if (q.status === 'declined') throw new Error('this invoice was declined by the client — nothing to ship')
-  const percent = pct(input.percent)
-  if (!(percent > 0)) throw new Error('the share must be more than 0%')
   const all = await listShipments(q.id)
-  if (all.remaining <= 0) throw new Error('this invoice is fully allocated — nothing left to ship')
-  if (percent > all.remaining + 0.001) throw new Error(`only ${all.remaining}% of this invoice is left to ship`)
+  if (!all.can_create) throw new Error('this invoice is fully allocated — nothing left to ship')
+  const items = cleanShipmentItems(input, q, all.lines)
   const row = {
-    quote_id: q.id, number: all.items.length + 1, percent, status: 'planned',
+    quote_id: q.id, number: all.items.length + 1, percent: valueShare(q, items), items, status: 'planned',
+    mode: cleanMode(input.mode), vehicle: tt(input.vehicle, 160), eta: cleanDate(input.eta),
     origin: cleanPoint(input.origin, 'From'), destination: cleanPoint(input.destination, 'To'),
-    vehicle: tt(input.vehicle, 160), notes: tt(input.notes, 1000), created_by: actorId,
+    notes: tt(input.notes, 1000), created_by: actorId,
   }
   const { data, error } = await supabase.from('shipments').insert(row).select().single()
   if (error) throw shipErr(error, 'createShipment')
-  // Two staff creating at once could overshoot: re-check and undo if so.
-  const after = await listShipments(q.id)
-  if (after.shipped > 100.001) { await supabase.from('shipments').delete().eq('id', data.id); throw new Error(`only ${pct(100 - (after.shipped - percent))}% of this invoice is left to ship`) }
-  return { ...data, percent: Number(data.percent), checkpoints: [] }
+  // Two staff creating at once could overshoot a line: re-check and undo if so.
+  const after = lineShares(q, await shipmentsOf(q))
+  const over = after.find(l => l.shipped > 100.001 || (l.remaining < 0))
+  if (over || after.some((l, i) => l.shipped > 100 && items.some(x => x.index === i))) { await supabase.from('shipments').delete().eq('id', data.id); throw new Error('another shipment was created at the same time — check what is left and try again') }
+  return (await withCheckpoints([data]))[0]
 }
 export async function updateShipment(id, patch = {}, actorId = null) {
   const cur = await getShipment(id)
   if (!cur) throw new Error(`no shipment with id ${id}`)
+  const quote = await getQuote(cur.quote_id)
   const row = { updated_at: new Date().toISOString() }
   if (patch.origin !== undefined) row.origin = cleanPoint(patch.origin, 'From')
   if (patch.destination !== undefined) row.destination = cleanPoint(patch.destination, 'To')
   if (patch.vehicle !== undefined) row.vehicle = tt(patch.vehicle, 160)
   if (patch.notes !== undefined) row.notes = tt(patch.notes, 1000)
-  if (patch.percent !== undefined) {
-    const percent = pct(patch.percent); if (!(percent > 0)) throw new Error('the share must be more than 0%')
-    const others = allocated((await listShipments(cur.quote_id)).items.filter(x => x.id !== cur.id))
-    if (cur.status !== 'cancelled' && percent > pct(100 - others) + 0.001) throw new Error(`only ${pct(100 - others)}% of this invoice is left to ship`)
-    row.percent = percent
+  if (patch.mode !== undefined) row.mode = cleanMode(patch.mode)
+  if (patch.eta !== undefined) row.eta = cleanDate(patch.eta)
+  const willBeActive = (patch.status ?? cur.status) !== 'cancelled'
+  if (patch.items !== undefined || patch.percent !== undefined) {
+    // A cancelled shipment may hold any share; it is checked again when reopened.
+    const room = willBeActive ? cur.lines_for_edit : cur.lines_for_edit.map(l => ({ ...l, remaining: 100 }))
+    row.items = cleanShipmentItems(patch, quote, room); row.percent = valueShare(quote, row.items)
   }
   if (patch.status !== undefined) {
     if (!SHIPMENT_STATUSES.includes(patch.status)) throw new Error(`status must be one of ${SHIPMENT_STATUSES.join(', ')}`)
-    if (patch.status === 'in_transit' && cur.status === 'cancelled') {
-      const others = allocated((await listShipments(cur.quote_id)).items.filter(x => x.id !== cur.id))
-      if (Number(row.percent ?? cur.percent) > pct(100 - others) + 0.001) throw new Error(`only ${pct(100 - others)}% of this invoice is left to ship — reduce the share first`)
+    if (patch.status !== 'cancelled' && cur.status === 'cancelled') {
+      const items = row.items || (cur.items.length ? cur.items : cur.lines_for_edit.map(l => ({ index: l.index, description: l.description, percent: cur.percent })))
+      for (const x of items) { const l = cur.lines_for_edit[x.index]; if (l && Number(x.percent) > l.remaining + 0.001) throw new Error(`only ${l.remaining}% of "${l.description}" is left to ship — reduce this shipment's share first`) }
     }
     row.status = patch.status
     row.delivered_at = patch.status === 'delivered' ? (cur.delivered_at || new Date().toISOString()) : null
@@ -953,7 +1011,8 @@ export async function deleteCheckpoint(shipment_id, checkpoint_id) {
 }
 /** What the client sees on the invoice link. */
 export const publicShipment = s => ({
-  id: s.id, number: s.number, percent: Number(s.percent), status: s.status, origin: s.origin, destination: s.destination, vehicle: s.vehicle, notes: s.notes,
+  id: s.id, number: s.number, percent: Number(s.percent), items: s.items || [], status: s.status, mode: s.mode || 'road', vehicle: s.vehicle, eta: s.eta || null,
+  origin: s.origin, destination: s.destination, notes: s.notes,
   created_at: s.created_at, updated_at: s.updated_at, delivered_at: s.delivered_at,
   checkpoints: (s.checkpoints || []).map(c => ({ id: c.id, name: c.name, state: c.state, lat: c.lat, lng: c.lng, note: c.note, created_at: c.created_at })),
 })

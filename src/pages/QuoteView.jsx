@@ -1,11 +1,11 @@
 /* Public invoice page: /q/<token>. The token is the only credential. */
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { CheckCircle2, Clock, Download, FileText, XCircle } from 'lucide-react'
+import { CheckCircle2, Clock, Download, FileText, Plane, Ship, Truck, XCircle } from 'lucide-react'
 import { fetchJson } from '../lib/api'
 import { useSite } from '../lib/site'
 import { Bone } from '../components/Skeleton'
-import { SHIPMENT_LABELS, ago, fmtPct, hasPoint, shareOf } from '../lib/shipments'
+import { MODE_LABELS, SHIPMENT_LABELS, VEHICLE_LABELS, ago, fmtEta, hasPoint, shareLines } from '../lib/shipments'
 const RouteMap = lazy(() => import('../components/RouteMap'))
 
 const BASE = import.meta.env.VITE_API_BASE || ''
@@ -157,13 +157,13 @@ function Shipments({ shipments, items }) {
         <h2 id="shipments-h" className="font-serif text-2xl md:text-3xl font-bold text-foreground">{shipments.length === 1 ? 'Your shipment' : 'Your shipments'}</h2>
       </div>
       <div className="space-y-6">
-        {shipments.map(s => { const cps = s.checkpoints || []; const last = cps[cps.length - 1]; const share = shareOf(items, s.percent); return (
+        {shipments.map(s => { const cps = s.checkpoints || []; const last = cps[cps.length - 1]; const carries = shareLines(s, items); const Mode = MODE_ICON[s.mode] || Truck; return (
           <article key={s.id} className="bg-card border border-border rounded-2xl overflow-hidden shadow-card">
             <div className="p-5 md:p-6 flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h3 className="font-semibold text-lg">Shipment {s.number} <span className="text-muted-foreground font-normal text-base">· {fmtPct(s.percent)}% of this invoice</span></h3>
-                <p className="text-sm text-muted-foreground mt-1"><span className="font-medium text-foreground">{s.origin?.name || 'Origin'}</span> → <span className="font-medium text-foreground">{s.destination?.name || 'Destination'}</span></p>
-                {share.length > 0 && <p className="text-xs text-muted-foreground mt-1">≈ {share.join(' · ')}</p>}
+              <div className="min-w-0">
+                <h3 className="font-semibold text-lg flex items-center gap-2"><Mode className="w-5 h-5 text-primary shrink-0" />Shipment {s.number} <span className="text-muted-foreground font-normal text-base">· {MODE_LABELS[s.mode] || 'By road'}{s.vehicle && ` · ${s.vehicle}`}</span></h3>
+                <p className="text-sm text-muted-foreground mt-1"><span className="font-medium text-foreground">{s.origin?.name || 'Origin'}</span> → <span className="font-medium text-foreground">{s.destination?.name || 'Destination'}</span>{s.eta && s.status !== 'delivered' && s.status !== 'cancelled' && <span> · expected {fmtEta(s.eta)}</span>}</p>
+                {carries.length > 0 && <ul className="mt-2 flex flex-wrap gap-1.5 text-xs">{carries.map(c => <li key={c.index} className="rounded-full bg-secondary border border-border px-2.5 py-1">{c.text}</li>)}</ul>}
               </div>
               <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${TONE[s.status] || TONE.planned}`}>{SHIPMENT_LABELS[s.status]}</span>
             </div>
@@ -180,7 +180,11 @@ function Shipments({ shipments, items }) {
                 {s.status === 'delivered' ? <p className="font-semibold mt-1">{s.destination?.name}</p> : s.status === 'cancelled' ? <p className="font-semibold mt-1">This shipment was cancelled</p> : last ? <p className="font-semibold mt-1">{last.name}</p> : <p className="font-semibold mt-1">Preparing to leave {s.origin?.name || 'the origin'}</p>}
                 <p className="text-xs text-muted-foreground mt-1">Last updated {ago(s.status === 'delivered' ? s.delivered_at : (last?.created_at || s.updated_at || s.created_at))}</p>
                 {last?.note && s.status !== 'delivered' && <p className="text-sm mt-2">{last.note}</p>}
-                {(s.vehicle || s.notes) && <dl className="mt-3 pt-3 border-t border-border text-sm space-y-1">{s.vehicle && <div><dt className="text-xs text-muted-foreground">Truck</dt><dd>{s.vehicle}</dd></div>}{s.notes && <div><dt className="text-xs text-muted-foreground">Notes</dt><dd className="whitespace-pre-wrap">{s.notes}</dd></div>}</dl>}
+                <dl className="mt-3 pt-3 border-t border-border text-sm space-y-1">
+                  {s.vehicle && <div><dt className="text-xs text-muted-foreground">{VEHICLE_LABELS[s.mode] || 'Vehicle'}</dt><dd>{s.vehicle}</dd></div>}
+                  {s.eta && <div><dt className="text-xs text-muted-foreground">Expected arrival</dt><dd>{fmtEta(s.eta)}</dd></div>}
+                  {s.notes && <div><dt className="text-xs text-muted-foreground">Notes</dt><dd className="whitespace-pre-wrap">{s.notes}</dd></div>}
+                </dl>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Journey</p>
@@ -198,6 +202,7 @@ function Shipments({ shipments, items }) {
     </section>
   )
 }
+const MODE_ICON = { road: Truck, sea: Ship, air: Plane }
 const TONE = { planned: 'bg-muted text-muted-foreground', in_transit: 'bg-primary/10 text-primary', delivered: 'bg-accent/15 text-accent', cancelled: 'bg-destructive/10 text-destructive' }
 const fmtWhen = iso => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '')
 

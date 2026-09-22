@@ -8,7 +8,7 @@ import DynamicField from './DynamicField'
 import Composer from './Composer'
 import { QUOTE_STATUSES, fmtDateTime, fmtMoney, fmtShort, messageTone, openInNewTab, quoteTone } from './format'
 import ShipmentCreate from './ShipmentCreate'
-import { SHIPMENT_LABELS, fmtPct, shipmentTone } from '../lib/shipments'
+import { MODE_LABELS, SHIPMENT_LABELS, fmtEta, fmtPct, shipmentTone } from '../lib/shipments'
 import { DraftNotice, useDraft } from './useDraft'
 
 const money = v => Math.round((Number(v) || 0) * 100) / 100
@@ -97,7 +97,7 @@ export default function QuoteForm() {
   const loading = !fields || !clients || (editing && !quote)
   const cur = form.currency || 'USD'
   const numberYear = (editing && quote?.number?.match(/-(\d{4})-/)?.[1]) || new Date().getFullYear()
-  const ship = quote?.shipments || { items: [], shipped: 0, remaining: 100 }
+  const ship = quote?.shipments || { items: [], lines: [], shipped: 0, remaining: 100, can_create: false }
 
   return (
     <>
@@ -179,9 +179,9 @@ export default function QuoteForm() {
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                   <div>
                     <h2 className="font-semibold">Shipments</h2>
-                    <p className="text-xs text-muted-foreground mt-0.5">{ship.hint ? ship.hint : ship.remaining > 0 ? `${fmtPct(ship.remaining)}% of this invoice is still to be shipped.` : 'Everything on this invoice is allocated to shipments.'}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{ship.hint ? ship.hint : ship.can_create ? `${fmtPct(ship.remaining)}% of this invoice's value is still to be shipped${ship.lines ? ` — ${ship.lines.filter(l => l.remaining > 0).length} of ${ship.lines.length} lines open` : ''}.` : 'Everything on this invoice is allocated to shipments.'}</p>
                   </div>
-                  <Button type="button" variant="outline" className="h-9" disabled={Boolean(ship.hint) || ship.remaining <= 0 || quote.status === 'declined'} title={ship.remaining <= 0 ? 'Nothing left to ship' : undefined} onClick={() => setShipOpen(true)}><Truck className="w-4 h-4" />Create shipment</Button>
+                  <Button type="button" variant="outline" className="h-9" disabled={Boolean(ship.hint) || !ship.can_create} title={!ship.can_create ? 'Nothing left to ship' : undefined} onClick={() => setShipOpen(true)}><Truck className="w-4 h-4" />Create shipment</Button>
                 </div>
                 {ship.items.length ? (
                   <ul className="divide-y divide-border rounded-xl border border-border">
@@ -190,14 +190,15 @@ export default function QuoteForm() {
                         <Link to={`/staff360/quotes/${id}/shipments/${s.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm hover:bg-muted/50">
                           <span className="font-semibold">Shipment {s.number}</span>
                           <span className="text-muted-foreground tabular-nums">{fmtPct(s.percent)}%</span>
+                          <span className="text-muted-foreground">{MODE_LABELS[s.mode] || 'By road'}{s.vehicle && ` · ${s.vehicle}`}</span>
                           <span className="text-muted-foreground truncate flex-1 min-w-[10rem]">{s.origin?.name} → {s.destination?.name}</span>
-                          <span className="text-xs text-muted-foreground">{s.status === 'delivered' ? `Delivered ${fmtShort(s.delivered_at)}` : last ? `${last.name} · ${fmtShort(last.created_at)}` : 'Not on the road yet'}</span>
+                          <span className="text-xs text-muted-foreground">{s.status === 'delivered' ? `Delivered ${fmtShort(s.delivered_at)}` : last ? `${last.name} · ${fmtShort(last.created_at)}` : s.eta ? `Expected ${fmtEta(s.eta)}` : 'Not on the road yet'}</span>
                           <Badge tone={shipmentTone(s.status)}>{SHIPMENT_LABELS[s.status]}</Badge>
                         </Link>
                       </li>
                     ) })}
                   </ul>
-                ) : <p className="text-sm text-muted-foreground">No shipments yet. Create one for the share of the goods leaving on the first truck; the client follows it on the invoice link.</p>}
+                ) : <p className="text-sm text-muted-foreground">No shipments yet. Create one for the share of each line leaving on the first truck, vessel or flight; the client follows it on the invoice link.</p>}
               </Card>
             )}
 
@@ -263,7 +264,7 @@ export default function QuoteForm() {
           onSent={() => { toast('Invoice sent'); load() }} />
       )}
       {editing && quote && (
-        <ShipmentCreate open={shipOpen} onClose={() => setShipOpen(false)} quoteId={quote.id} items={items} remaining={ship.remaining}
+        <ShipmentCreate open={shipOpen} onClose={() => setShipOpen(false)} quoteId={quote.id} lines={ship.lines || []}
           onCreated={s => { setShipOpen(false); toast('Shipment created'); nav(`/staff360/quotes/${id}/shipments/${s.id}`) }} />
       )}
       {toastEl}

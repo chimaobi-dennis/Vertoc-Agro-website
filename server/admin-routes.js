@@ -552,7 +552,7 @@ router.get('/quotes/:id', inbox, h(async (req, res) => {
   const q = await content.getQuote(req.params.id)
   if (!q) throw bad('quote not found', 404)
   const [messages, documents, shipments] = await Promise.all([content.listMessages({ quote_id: q.id }), content.listDocuments({ quote_id: q.id }),
-    content.listShipments(q.id).catch(e => ({ items: [], shipped: 0, remaining: 100, hint: e.expose ? e.message : 'Shipments are unavailable right now.' }))])
+    content.listShipments(q.id).catch(e => ({ items: [], lines: [], shipped: 0, remaining: 100, can_create: false, hint: e.expose ? e.message : 'Shipments are unavailable right now.' }))])
   res.json({ ...q, messages, documents, shipments, link: quoteLink(q) })
 }))
 router.post('/quotes', inbox, h(async (req, res) => {
@@ -604,7 +604,7 @@ router.post('/quotes/:id/shipments', inbox, h(async (req, res) => {
   const q = await content.getQuote(req.params.id)
   if (!q) throw bad('quote not found', 404)
   const after = await exposing(content.createShipment)(q.id, req.body || {}, req.user.id)
-  await audit({ actor: req.user, action: 'create', entity: 'shipment', entityId: after.id, after: { quote: q.number, number: after.number, percent: after.percent, origin: after.origin?.name, destination: after.destination?.name } })
+  await audit({ actor: req.user, action: 'create', entity: 'shipment', entityId: after.id, after: { quote: q.number, number: after.number, percent: after.percent, items: after.items, mode: after.mode, origin: after.origin?.name, destination: after.destination?.name } })
   res.status(201).json(after)
 }))
 router.get('/shipments/:sid', inbox, h(async (req, res) => {
