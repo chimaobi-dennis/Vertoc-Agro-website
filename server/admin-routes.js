@@ -551,8 +551,9 @@ router.get('/quotes', inbox, h(async (req, res) => {
 router.get('/quotes/:id', inbox, h(async (req, res) => {
   const q = await content.getQuote(req.params.id)
   if (!q) throw bad('quote not found', 404)
-  const [messages, documents] = await Promise.all([content.listMessages({ quote_id: q.id }), content.listDocuments({ quote_id: q.id })])
-  res.json({ ...q, messages, documents, link: quoteLink(q) })
+  const [messages, documents, shipments] = await Promise.all([content.listMessages({ quote_id: q.id }), content.listDocuments({ quote_id: q.id }),
+    content.listShipments(q.id).catch(e => ({ items: [], shipped: 0, remaining: 100, hint: e.expose ? e.message : 'Shipments are unavailable right now.' }))])
+  res.json({ ...q, messages, documents, shipments, link: quoteLink(q) })
 }))
 router.post('/quotes', inbox, h(async (req, res) => {
   const after = await exposing(content.createQuote)(req.body || {}, req.user.id)
@@ -591,6 +592,50 @@ router.post('/quotes/:id/convert', crm, h(async (req, res) => {
   const after = await exposing(content.convertQuoteToPurchase)(req.params.id, req.user.id)
   await audit({ actor: req.user, action: 'create', entity: 'purchase', entityId: after.id, after })
   res.status(201).json(after)
+}))
+
+/* shipments: an invoice can leave on several trucks, each a share of it */
+router.get('/quotes/:id/shipments', inbox, h(async (req, res) => {
+  const q = await content.getQuote(req.params.id)
+  if (!q) throw bad('quote not found', 404)
+  res.json(await content.listShipments(q.id))
+}))
+router.post('/quotes/:id/shipments', inbox, h(async (req, res) => {
+  const q = await content.getQuote(req.params.id)
+  if (!q) throw bad('quote not found', 404)
+  const after = await exposing(content.createShipment)(q.id, req.body || {}, req.user.id)
+  await audit({ actor: req.user, action: 'create', entity: 'shipment', entityId: after.id, after: { quote: q.number, number: after.number, percent: after.percent, origin: after.origin?.name, destination: after.destination?.name } })
+  res.status(201).json(after)
+}))
+router.get('/shipments/:sid', inbox, h(async (req, res) => {
+  const s = await content.getShipment(req.params.sid)
+  if (!s) throw bad('shipment not found', 404)
+  res.json(s)
+}))
+router.patch('/shipments/:sid', inbox, h(async (req, res) => {
+  const before = await content.getShipment(req.params.sid)
+  if (!before) throw bad('shipment not found', 404)
+  const after = await exposing(content.updateShipment)(before.id, req.body || {}, req.user.id)
+  await audit({ actor: req.user, action: 'update', entity: 'shipment', entityId: after.id, before: { status: before.status, percent: before.percent }, after: { status: after.status, percent: after.percent } })
+  res.json(after)
+}))
+router.delete('/shipments/:sid', inbox, h(async (req, res) => {
+  const before = await content.getShipment(req.params.sid)
+  if (!before) throw bad('shipment not found', 404)
+  const r = await content.deleteShipment(before.id)
+  await audit({ actor: req.user, action: 'delete', entity: 'shipment', entityId: before.id, before: { number: before.number, percent: before.percent } })
+  res.json(r)
+}))
+router.post('/shipments/:sid/checkpoints', inbox, h(async (req, res) => {
+  const after = await exposing(content.addCheckpoint)(req.params.sid, req.body || {}, req.user.id)
+  const c = after.checkpoints[after.checkpoints.length - 1]
+  await audit({ actor: req.user, action: 'update', entity: 'shipment', entityId: after.id, after: { location: c?.name, status: after.status } })
+  res.status(201).json(after)
+}))
+router.delete('/shipments/:sid/checkpoints/:cid', inbox, h(async (req, res) => {
+  const after = await exposing(content.deleteCheckpoint)(req.params.sid, req.params.cid)
+  await audit({ actor: req.user, action: 'update', entity: 'shipment', entityId: after.id, after: { removed_checkpoint: Number(req.params.cid) } })
+  res.json(after)
 }))
 
 /* messages (one-to-one email) */

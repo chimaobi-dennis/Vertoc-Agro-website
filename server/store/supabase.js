@@ -1,3 +1,4 @@
+import { stateByName } from '../ng-states.js'
 /*
  * Supabase (Postgres) driver.
  *
@@ -823,6 +824,139 @@ export function publicQuote(q, settings, fields = []) {
     company: settings.company, payment_text: settings.quotes.payment_text,
   }
 }
+
+/* ---------------------------------------------------------- shipments --- */
+// An invoice can leave on several trucks. Each shipment takes a share of the
+// invoice (percent); the shares of the non-cancelled shipments never exceed
+// 100. Checkpoints are the pins staff drop state by state; the last one is
+// the current location. Needs migration 010.
+export const SHIPMENT_STATUSES = ['planned', 'in_transit', 'delivered', 'cancelled']
+export const SHIPMENTS_MIGRATION_HINT = 'Shipments need the database migration 010: run server/migrations/010_shipments.sql in the Supabase SQL editor first.'
+const missingShipments = e => e?.code === '42P01' || /relation "public\.?shipment|shipment[_a-z]* does not exist|schema cache/i.test(String(e?.message || ''))
+const shipErr = (e, ctx) => (missingShipments(e) ? Object.assign(new Error(SHIPMENTS_MIGRATION_HINT), { expose: true, status: 409 }) : new Error(`${ctx}: ${e.message}`))
+const pct = v => Math.round((Number(v) || 0) * 100) / 100
+const coord = (v, max) => { const n = Number(v); return v == null || v === '' || !Number.isFinite(n) || Math.abs(n) > max ? null : Math.round(n * 1e5) / 1e5 }
+// {name, state, lat, lng}; a known state fills in the capital's coordinates.
+function cleanPoint(p, label, { required = true } = {}) {
+  const name = tt(p?.name, 120), st = stateByName(p?.state)
+  let lat = coord(p?.lat, 90), lng = coord(p?.lng, 180)
+  if ((lat == null || lng == null) && st) { lat = st.lat; lng = st.lng }
+  if (!name && !st) { if (required) throw new Error(`${label}: pick a state or a port, or give a place name`); return { name: '', state: '', lat: null, lng: null } }
+  if (lat == null || lng == null) throw new Error(`${label}: "${name}" needs coordinates — pick a state or a port, or enter latitude and longitude`)
+  return { name: name || `${st.capital}, ${st.state}`, state: st ? st.state : tt(p?.state, 40), lat, lng }
+}
+const withCheckpoints = async rows => {
+  if (!rows.length) return rows
+  const { data, error } = await supabase.from('shipment_checkpoints').select('*').in('shipment_id', rows.map(r => r.id)).order('created_at', { ascending: true }).order('id', { ascending: true })
+  if (error) throw shipErr(error, 'listCheckpoints')
+  const by = new Map(rows.map(r => [r.id, []])); for (const c of data || []) by.get(c.shipment_id)?.push(c)
+  return rows.map(r => ({ ...r, percent: Number(r.percent), checkpoints: by.get(r.id) || [] }))
+}
+const allocated = rows => pct(rows.filter(r => r.status !== 'cancelled').reduce((s, r) => s + Number(r.percent), 0))
+export async function listShipments(quote_id) {
+  const { data, error } = await supabase.from('shipments').select('*').eq('quote_id', Number(quote_id)).order('number', { ascending: true })
+  if (error) throw shipErr(error, 'listShipments')
+  const items = await withCheckpoints(data || [])
+  const shipped = allocated(items)
+  return { items, shipped, remaining: pct(Math.max(0, 100 - shipped)) }
+}
+export async function getShipment(id) {
+  const { data, error } = await supabase.from('shipments').select('*').eq('id', Number(id)).limit(1)
+  if (error) throw shipErr(error, 'getShipment')
+  const row = (await withCheckpoints(data || []))[0]
+  if (!row) return null
+  const [quote, all] = await Promise.all([getQuote(row.quote_id), listShipments(row.quote_id)])
+  return { ...row, quote: quote && { id: quote.id, number: quote.number, title: quote.title, items: quote.items, currency: quote.currency, status: quote.status }, remaining_for_edit: all.remaining }
+}
+export async function createShipment(quote_id, input = {}, actorId = null) {
+  const q = await getQuote(quote_id)
+  if (!q) throw new Error(`no invoice with id ${quote_id}`)
+  if (q.status === 'declined') throw new Error('this invoice was declined by the client — nothing to ship')
+  const percent = pct(input.percent)
+  if (!(percent > 0)) throw new Error('the share must be more than 0%')
+  const all = await listShipments(q.id)
+  if (all.remaining <= 0) throw new Error('this invoice is fully allocated — nothing left to ship')
+  if (percent > all.remaining + 0.001) throw new Error(`only ${all.remaining}% of this invoice is left to ship`)
+  const row = {
+    quote_id: q.id, number: all.items.length + 1, percent, status: 'planned',
+    origin: cleanPoint(input.origin, 'From'), destination: cleanPoint(input.destination, 'To'),
+    vehicle: tt(input.vehicle, 160), notes: tt(input.notes, 1000), created_by: actorId,
+  }
+  const { data, error } = await supabase.from('shipments').insert(row).select().single()
+  if (error) throw shipErr(error, 'createShipment')
+  // Two staff creating at once could overshoot: re-check and undo if so.
+  const after = await listShipments(q.id)
+  if (after.shipped > 100.001) { await supabase.from('shipments').delete().eq('id', data.id); throw new Error(`only ${pct(100 - (after.shipped - percent))}% of this invoice is left to ship`) }
+  return { ...data, percent: Number(data.percent), checkpoints: [] }
+}
+export async function updateShipment(id, patch = {}, actorId = null) {
+  const cur = await getShipment(id)
+  if (!cur) throw new Error(`no shipment with id ${id}`)
+  const row = { updated_at: new Date().toISOString() }
+  if (patch.origin !== undefined) row.origin = cleanPoint(patch.origin, 'From')
+  if (patch.destination !== undefined) row.destination = cleanPoint(patch.destination, 'To')
+  if (patch.vehicle !== undefined) row.vehicle = tt(patch.vehicle, 160)
+  if (patch.notes !== undefined) row.notes = tt(patch.notes, 1000)
+  if (patch.percent !== undefined) {
+    const percent = pct(patch.percent); if (!(percent > 0)) throw new Error('the share must be more than 0%')
+    const others = allocated((await listShipments(cur.quote_id)).items.filter(x => x.id !== cur.id))
+    if (cur.status !== 'cancelled' && percent > pct(100 - others) + 0.001) throw new Error(`only ${pct(100 - others)}% of this invoice is left to ship`)
+    row.percent = percent
+  }
+  if (patch.status !== undefined) {
+    if (!SHIPMENT_STATUSES.includes(patch.status)) throw new Error(`status must be one of ${SHIPMENT_STATUSES.join(', ')}`)
+    if (patch.status === 'in_transit' && cur.status === 'cancelled') {
+      const others = allocated((await listShipments(cur.quote_id)).items.filter(x => x.id !== cur.id))
+      if (Number(row.percent ?? cur.percent) > pct(100 - others) + 0.001) throw new Error(`only ${pct(100 - others)}% of this invoice is left to ship — reduce the share first`)
+    }
+    row.status = patch.status
+    row.delivered_at = patch.status === 'delivered' ? (cur.delivered_at || new Date().toISOString()) : null
+  }
+  const { data, error } = await supabase.from('shipments').update(row).eq('id', cur.id).select().single()
+  if (error) throw shipErr(error, 'updateShipment')
+  // Delivered: pin it at the destination unless the last pin already is.
+  if (row.status === 'delivered' && data.destination?.lat != null) {
+    const last = cur.checkpoints[cur.checkpoints.length - 1]
+    if (!last || last.lat !== data.destination.lat || last.lng !== data.destination.lng) {
+      const { error: ce } = await supabase.from('shipment_checkpoints').insert({ shipment_id: cur.id, name: data.destination.name, state: data.destination.state || '', lat: data.destination.lat, lng: data.destination.lng, note: 'Delivered', created_by: actorId })
+      if (ce) throw shipErr(ce, 'deliverShipment')
+    }
+  }
+  return getShipment(cur.id)
+}
+export async function deleteShipment(id) {
+  const cur = await getShipment(id)
+  if (!cur) throw new Error(`no shipment with id ${id}`)
+  const { error } = await supabase.from('shipments').delete().eq('id', cur.id)
+  if (error) throw shipErr(error, 'deleteShipment')
+  return { deleted: true, id: cur.id, quote_id: cur.quote_id }
+}
+export async function addCheckpoint(shipment_id, input = {}, actorId = null) {
+  const cur = await getShipment(shipment_id)
+  if (!cur) throw new Error(`no shipment with id ${shipment_id}`)
+  if (cur.status === 'delivered' || cur.status === 'cancelled') throw new Error(`this shipment is ${cur.status} — reopen it to add locations`)
+  const p = cleanPoint({ ...input, name: input.name || '' }, 'Location')
+  if (!p.name) throw new Error('Location: pick a state or click the map')
+  const { error } = await supabase.from('shipment_checkpoints').insert({ shipment_id: cur.id, name: p.name, state: p.state, lat: p.lat, lng: p.lng, note: tt(input.note, 500), created_by: actorId })
+  if (error) throw shipErr(error, 'addCheckpoint')
+  const { error: ue } = await supabase.from('shipments').update({ status: cur.status === 'planned' ? 'in_transit' : cur.status, updated_at: new Date().toISOString() }).eq('id', cur.id)
+  if (ue) throw shipErr(ue, 'addCheckpoint')
+  return getShipment(cur.id)
+}
+export async function deleteCheckpoint(shipment_id, checkpoint_id) {
+  const cur = await getShipment(shipment_id)
+  if (!cur) throw new Error(`no shipment with id ${shipment_id}`)
+  const { error } = await supabase.from('shipment_checkpoints').delete().eq('id', Number(checkpoint_id)).eq('shipment_id', cur.id)
+  if (error) throw shipErr(error, 'deleteCheckpoint')
+  await supabase.from('shipments').update({ updated_at: new Date().toISOString() }).eq('id', cur.id)
+  return getShipment(cur.id)
+}
+/** What the client sees on the invoice link. */
+export const publicShipment = s => ({
+  id: s.id, number: s.number, percent: Number(s.percent), status: s.status, origin: s.origin, destination: s.destination, vehicle: s.vehicle, notes: s.notes,
+  created_at: s.created_at, updated_at: s.updated_at, delivered_at: s.delivered_at,
+  checkpoints: (s.checkpoints || []).map(c => ({ id: c.id, name: c.name, state: c.state, lat: c.lat, lng: c.lng, note: c.note, created_at: c.created_at })),
+})
 
 /* ----------------------------------------------------------- messages --- */
 

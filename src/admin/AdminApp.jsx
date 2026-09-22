@@ -9,6 +9,7 @@ import ProductsAdmin from './ProductsAdmin'
 import ProductForm from './ProductForm'
 import PostsAdmin from './PostsAdmin'
 import ReviewsAdmin from './ReviewsAdmin'
+import ShipmentDetail from './ShipmentDetail'
 import PostForm from './PostForm'
 import UsersAdmin from './UsersAdmin'
 import UserDetail from './UserDetail'
@@ -89,6 +90,7 @@ export default function AdminApp() {
           <Route path="quotes/new" element={P('quotes', <QuoteForm />)} />
           <Route path="quotes/fields" element={P('quotes', <QuoteFieldsAdmin />)} />
           <Route path="quotes/:id" element={P('quotes', <QuoteForm />)} />
+          <Route path="quotes/:id/shipments/:sid" element={P('quotes', <ShipmentDetail />)} />
           <Route path="messages" element={P('email', <MessagesAdmin />)} />
           <Route path="messages/:id" element={P('email', <MessageDetail />)} />
           <Route path="templates" element={P('settings', <TemplatesAdmin />)} />

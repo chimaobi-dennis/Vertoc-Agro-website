@@ -118,8 +118,8 @@ async function liveQuote(token) {
   return content.getQuoteByToken(token)
 }
 const quoteView = async q => {
-  const [settings, fields] = await Promise.all([content.getSettings(), content.listQuoteFields()])
-  return { view: content.publicQuote(q, settings, fields), settings, fields }
+  const [settings, fields, shipments] = await Promise.all([content.getSettings(), content.listQuoteFields(), content.listShipments(q.id).then(r => r.items.map(content.publicShipment)).catch(() => [])])
+  return { view: { ...content.publicQuote(q, settings, fields), shipments }, settings, fields }
 }
 
 app.get('/api/q/:token', (req, res) => send(res, async () => {

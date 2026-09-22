@@ -1,10 +1,12 @@
 /* Public invoice page: /q/<token>. The token is the only credential. */
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { CheckCircle2, Clock, Download, FileText, XCircle } from 'lucide-react'
 import { fetchJson } from '../lib/api'
 import { useSite } from '../lib/site'
 import { Bone } from '../components/Skeleton'
+import { SHIPMENT_LABELS, ago, fmtPct, hasPoint, shareOf } from '../lib/shipments'
+const RouteMap = lazy(() => import('../components/RouteMap'))
 
 const BASE = import.meta.env.VITE_API_BASE || ''
 const fmtMoney = (v, cur) => { const n = Number(v) || 0; try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format(n) } catch { return `${cur} ${n.toFixed(2)}` } }
@@ -136,6 +138,7 @@ export default function QuoteView() {
                   </div>
                 )}
               </div>
+              {q.shipments?.length > 0 && <Shipments shipments={q.shipments} items={q.items} />}
               <p className="text-center text-xs text-muted-foreground mt-6 flex items-center justify-center gap-1.5"><FileText className="w-3.5 h-3.5" />Questions? Reply to the email this invoice arrived with, or write to <a className="text-accent font-semibold" href={`mailto:${site.email}`}>{site.email}</a>.</p>
             </>
           )}
@@ -144,6 +147,59 @@ export default function QuoteView() {
     </main>
   )
 }
+
+/* The shipments of this invoice, each with its route map and the latest pin. */
+function Shipments({ shipments, items }) {
+  return (
+    <section className="mt-10 animate-fade-up" aria-labelledby="shipments-h">
+      <div className="text-center mb-6">
+        <span className="inline-block text-sm font-semibold uppercase tracking-widest text-accent mb-2">Delivery</span>
+        <h2 id="shipments-h" className="font-serif text-2xl md:text-3xl font-bold text-foreground">{shipments.length === 1 ? 'Your shipment' : 'Your shipments'}</h2>
+      </div>
+      <div className="space-y-6">
+        {shipments.map(s => { const cps = s.checkpoints || []; const last = cps[cps.length - 1]; const share = shareOf(items, s.percent); return (
+          <article key={s.id} className="bg-card border border-border rounded-2xl overflow-hidden shadow-card">
+            <div className="p-5 md:p-6 flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h3 className="font-semibold text-lg">Shipment {s.number} <span className="text-muted-foreground font-normal text-base">· {fmtPct(s.percent)}% of this invoice</span></h3>
+                <p className="text-sm text-muted-foreground mt-1"><span className="font-medium text-foreground">{s.origin?.name || 'Origin'}</span> → <span className="font-medium text-foreground">{s.destination?.name || 'Destination'}</span></p>
+                {share.length > 0 && <p className="text-xs text-muted-foreground mt-1">≈ {share.join(' · ')}</p>}
+              </div>
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${TONE[s.status] || TONE.planned}`}>{SHIPMENT_LABELS[s.status]}</span>
+            </div>
+            {hasPoint(s.origin) && hasPoint(s.destination) && (
+              <div className="px-5 md:px-6">
+                <Suspense fallback={<Bone className="h-64 w-full rounded-2xl" />}>
+                  <RouteMap className="h-64 md:h-80" origin={s.origin} destination={s.destination} checkpoints={cps} delivered={s.status === 'delivered'} />
+                </Suspense>
+              </div>
+            )}
+            <div className="p-5 md:p-6 grid md:grid-cols-[1fr_1fr] gap-6">
+              <div className="rounded-xl bg-secondary/60 border border-border p-4">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">{s.status === 'delivered' ? 'Delivered' : s.status === 'cancelled' ? 'Cancelled' : 'Current location'}</p>
+                {s.status === 'delivered' ? <p className="font-semibold mt-1">{s.destination?.name}</p> : s.status === 'cancelled' ? <p className="font-semibold mt-1">This shipment was cancelled</p> : last ? <p className="font-semibold mt-1">{last.name}</p> : <p className="font-semibold mt-1">Preparing to leave {s.origin?.name || 'the origin'}</p>}
+                <p className="text-xs text-muted-foreground mt-1">Last updated {ago(s.status === 'delivered' ? s.delivered_at : (last?.created_at || s.updated_at || s.created_at))}</p>
+                {last?.note && s.status !== 'delivered' && <p className="text-sm mt-2">{last.note}</p>}
+                {(s.vehicle || s.notes) && <dl className="mt-3 pt-3 border-t border-border text-sm space-y-1">{s.vehicle && <div><dt className="text-xs text-muted-foreground">Truck</dt><dd>{s.vehicle}</dd></div>}{s.notes && <div><dt className="text-xs text-muted-foreground">Notes</dt><dd className="whitespace-pre-wrap">{s.notes}</dd></div>}</dl>}
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Journey</p>
+                <ol className="space-y-2 text-sm">
+                  {[...cps].reverse().map((c, i) => (
+                    <li key={c.id} className="flex gap-3"><span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${i === 0 ? 'bg-accent' : 'bg-muted-foreground/40'}`} /><div><p className="font-medium">{c.name}</p><p className="text-xs text-muted-foreground">{fmtWhen(c.created_at)}{c.note && ` — ${c.note}`}</p></div></li>
+                  ))}
+                  <li className="flex gap-3"><span className="mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 bg-primary" /><div><p className="font-medium">{s.origin?.name || 'Origin'}</p><p className="text-xs text-muted-foreground">Departure point</p></div></li>
+                </ol>
+              </div>
+            </div>
+          </article>
+        ) })}
+      </div>
+    </section>
+  )
+}
+const TONE = { planned: 'bg-muted text-muted-foreground', in_transit: 'bg-primary/10 text-primary', delivered: 'bg-accent/15 text-accent', cancelled: 'bg-destructive/10 text-destructive' }
+const fmtWhen = iso => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '')
 
 function Banner({ icon: Icon, tone, title, text }) {
   const cls = tone === 'accent' ? 'border-accent/30 bg-accent/10' : 'border-border bg-muted/60'

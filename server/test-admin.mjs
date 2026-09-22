@@ -272,6 +272,45 @@ try {
   await step('GET /quotes/:id/pdf is a PDF', async () => { const r = await fetch(`${API}/api/admin/quotes/${quote.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } }); const b = Buffer.from(await r.arrayBuffer()); if (r.status !== 200 || b.subarray(0, 4).toString() !== '%PDF') throw new Error('status ' + r.status); return `${b.length} bytes` })
   await step('public link works while draft (status untouched)', async () => { const r = await fetch(`${API}/api/q/${quote.token}`); const d = await r.json(); if (r.status !== 200 || d.status !== 'draft' || d.token !== undefined) throw new Error('got ' + r.status + ' ' + d.status); return 'draft ✓' })
 
+  // ------------------------------------------------ shipments (needs migration 010)
+  const shipProbe = await api(`/quotes/${quote.id}/shipments`).catch(e => e)
+  if (shipProbe instanceof Error) {
+    await step('shipments', async () => { if (!/migration 010/.test(shipProbe.message)) throw shipProbe; return 'skipped — ' + shipProbe.message })
+  } else {
+    const s1 = await step('POST /quotes/:id/shipments 25% (Oyo → Apapa)', async () => {
+      const s = await api(`/quotes/${quote.id}/shipments`, { method: 'POST', body: { percent: 25, origin: { state: 'Oyo' }, destination: { name: 'Apapa Port, Lagos', lat: 6.4474, lng: 3.3627 }, vehicle: 'e2e truck', notes: 'n' } })
+      if (s.number !== 1 || s.status !== 'planned' || s.origin.lat == null || s.origin.name !== 'Ibadan, Oyo') throw new Error(JSON.stringify(s).slice(0, 200))
+      return `#${s.id} · ${s.percent}% · ${s.origin.name} → ${s.destination.name}`
+    })
+    await step('a place without coordinates is refused', () => refused(() => api(`/quotes/${quote.id}/shipments`, { method: 'POST', body: { percent: 1, origin: { name: 'Nowhere' }, destination: { state: 'Lagos' } } }), /coordinates/, 'no coords'))
+    await step('over-allocation refused (80% when 75% is left)', () => refused(() => api(`/quotes/${quote.id}/shipments`, { method: 'POST', body: { percent: 80, origin: { state: 'Oyo' }, destination: { state: 'Lagos' } } }), /75%/, 'over'))
+    const s2 = await step('POST 75% fills the invoice → 0% left', async () => {
+      const s = await api(`/quotes/${quote.id}/shipments`, { method: 'POST', body: { percent: 75, origin: { state: 'Kano' }, destination: { state: 'Lagos' } } })
+      const l = await api(`/quotes/${quote.id}/shipments`); if (s.number !== 2 || l.items.length !== 2 || l.remaining !== 0 || l.shipped !== 100) throw new Error(`remaining ${l.remaining} shipped ${l.shipped}`)
+      return `#${s.id} · remaining ${l.remaining}%`
+    })
+    await step('nothing left → create refused', () => refused(() => api(`/quotes/${quote.id}/shipments`, { method: 'POST', body: { percent: 1, origin: { state: 'Oyo' }, destination: { state: 'Lagos' } } }), /nothing left/, 'zero'))
+    await step('POST /shipments/:id/checkpoints (state) → in_transit', async () => {
+      const s = await api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { state: 'Ogun', note: 'Passed Abeokuta' } })
+      if (s.status !== 'in_transit' || s.checkpoints.length !== 1 || s.checkpoints[0].name !== 'Abeokuta, Ogun' || s.checkpoints[0].lat == null) throw new Error(JSON.stringify(s.checkpoints))
+      return `${s.checkpoints[0].name} · ${s.status}`
+    })
+    await step('a map click with its own name', async () => { const s = await api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { name: 'Ogere weighbridge', lat: 6.93, lng: 3.6 } }); if (s.checkpoints.length !== 2 || s.checkpoints[1].state !== '') throw new Error(JSON.stringify(s.checkpoints[1])); return s.checkpoints[1].name })
+    await step('a checkpoint without a place is refused', () => refused(() => api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { note: 'x' } }), /state|map/, 'no place'))
+    await step('GET /quotes/:id carries the shipments', async () => { const q = await api(`/quotes/${quote.id}`); if (q.shipments?.items?.length !== 2 || q.shipments.remaining !== 0) throw new Error(JSON.stringify(q.shipments).slice(0, 120)); return `${q.shipments.items.length} shipments` })
+    await step('public invoice shows the shipments and route', async () => {
+      const d = await fetch(`${API}/api/q/${quote.token}`).then(r => r.json()); const s = d.shipments?.find(x => x.id === s1.id)
+      if (!s || s.checkpoints.length !== 2 || s.created_by !== undefined || s.quote_id !== undefined || s.origin.lat == null) throw new Error(JSON.stringify(s || d.shipments).slice(0, 160))
+      return `${d.shipments.length} shipments · ${s.checkpoints.length} pins · nothing internal`
+    })
+    await step('DELETE a checkpoint', async () => { const s = await api(`/shipments/${s1.id}`); const c = s.checkpoints[1]; const r = await api(`/shipments/${s1.id}/checkpoints/${c.id}`, { method: 'DELETE' }); if (r.checkpoints.length !== 1) throw new Error('still ' + r.checkpoints.length); return 'removed ✓' })
+    await step('PATCH status=delivered pins it at the destination', async () => { const s = await api(`/shipments/${s1.id}`, { method: 'PATCH', body: { status: 'delivered' } }); if (s.status !== 'delivered' || !s.delivered_at || s.checkpoints.length !== 2 || s.checkpoints[1].note !== 'Delivered') throw new Error(JSON.stringify(s.checkpoints)); return 'delivered ✓' })
+    await step('delivered shipment takes no more pins', () => refused(() => api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { state: 'Lagos' } }), /delivered/, 'closed'))
+    await step('cancelling frees its share', async () => { await api(`/shipments/${s2.id}`, { method: 'PATCH', body: { status: 'cancelled' } }); const l = await api(`/quotes/${quote.id}/shipments`); if (l.remaining !== 75) throw new Error('remaining ' + l.remaining); return '75% free again' })
+    await step('bad shipment status rejected', () => refused(() => api(`/shipments/${s2.id}`, { method: 'PATCH', body: { status: 'lost' } }), /must be one of/, 'bad status'))
+    await step('DELETE /shipments/:id', async () => (await api(`/shipments/${s2.id}`, { method: 'DELETE' })).deleted)
+  }
+
   if (S.email.dry_run) {
     await step('POST /quotes/:id/send (dry run: PDF attached, logged, → sent)', async () => {
       const r = await api(`/quotes/${quote.id}/send`, { method: 'POST', body: { subject: 'e2e-quote send' } })

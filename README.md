@@ -404,6 +404,29 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
   groups. Endpoints: `GET/PUT /messages/labels`, `PUT /messages/thread/label`,
   and `label=` (or `label=__awaiting`) on `GET /messages/threads`.
 
+### Shipments (Phase 5)
+
+Needs `server/migrations/010_shipments.sql`. An invoice can leave on several
+trucks: on the invoice page staff **Create shipment** for a share of it
+(percent). The shares of the non-cancelled shipments never exceed 100 — the
+next shipment is capped at what is left, and the button is disabled at 0%.
+A shipment has an origin and a destination (a Nigerian state capital, a
+seaport, or any place with coordinates — `server/ng-states.js`), a truck,
+notes, and a trail of **checkpoints**: on the shipment page staff pick a
+state or click the map (OpenStreetMap via Leaflet, no API key) to drop the
+next pin; the first pin moves the shipment to *in transit*, **Mark
+delivered** pins it at the destination, cancelling frees its share. The
+client sees every shipment on the invoice link (`/q/<token>`): the route on
+a map, the current location, when it was last updated, the journey so far,
+the truck and the notes.
+
+- Panel: `GET/POST /quotes/:id/shipments` (`{ items, shipped, remaining }`),
+  `GET/PATCH/DELETE /shipments/:sid`, `POST /shipments/:sid/checkpoints`,
+  `DELETE /shipments/:sid/checkpoints/:cid` — all under the `quotes`
+  permission; `GET /quotes/:id` carries `shipments`. Public: the invoice
+  payload gains `shipments` (nothing internal).
+- Statuses: `planned` → `in_transit` (first pin) → `delivered`; `cancelled`.
+
 ### Testing
 
 With the backend running and steps 1–2 done:
