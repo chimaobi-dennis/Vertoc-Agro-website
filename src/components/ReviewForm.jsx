@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CheckCircle2, Star, X } from 'lucide-react'
 import Turnstile from './Turnstile'
 
@@ -14,6 +14,11 @@ export default function ReviewForm({ open, onClose }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const [done, setDone] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    const k = e => e.key === 'Escape' && onClose?.()
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k)
+  }, [open, onClose])
   if (!open) return null
   const set = k => e => setF(x => ({ ...x, [k]: e.target.value }))
   const submit = async e => {

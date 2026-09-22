@@ -170,8 +170,10 @@ try {
     catch (e) { if (/migration 009/.test(e.message)) return 'SKIPPED — run server/migrations/009_reviews.sql'; throw e }
     if (r.status !== 'approved' || r.rating !== 4 || !r.approved_at || /^“/.test(r.quote)) throw new Error(JSON.stringify(r).slice(0, 160))
     let pub = await fetch(`${API}/api/site`).then(x => x.json()); if (!pub.reviews.some(x => x.name === 'e2e Reviewer')) throw new Error('approved review not public')
+    const all = await fetch(`${API}/api/reviews`).then(x => x.json()); if (!all.some(x => x.name === 'e2e Reviewer') || all.some(x => x.email !== undefined)) throw new Error('/api/reviews missing it or leaking emails')
     const hid = await api(`/reviews/${r.id}`, { method: 'PATCH', body: { status: 'hidden' } }); if (hid.status !== 'hidden') throw new Error(hid.status)
     pub = await fetch(`${API}/api/site`).then(x => x.json()); if (pub.reviews.some(x => x.name === 'e2e Reviewer')) throw new Error('hidden review still public')
+    if ((await fetch(`${API}/api/reviews`).then(x => x.json())).some(x => x.name === 'e2e Reviewer')) throw new Error('hidden review still on /api/reviews')
     const list = await api('/reviews?status=hidden'); if (!list.some(x => x.id === r.id)) throw new Error('hidden filter missed it')
     const st = await api('/stats'); if (typeof st.reviewsPending !== 'number') throw new Error('stats lack reviewsPending')
     await api(`/reviews/${r.id}`, { method: 'DELETE' })

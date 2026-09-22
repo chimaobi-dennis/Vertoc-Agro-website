@@ -946,8 +946,8 @@ export async function listReviews({ status = 'all', limit = 200 } = {}) {
   if (error) throw reviewErr(error, 'listReviews')
   return data ?? []
 }
-export async function listApprovedReviews() {
-  const { data, error } = await supabase.from('reviews').select('id,quote,name,role,rating').eq('status', 'approved').order('position').order('created_at', { ascending: false }).limit(12)
+export async function listApprovedReviews({ limit = 6 } = {}) {
+  const { data, error } = await supabase.from('reviews').select('id,quote,name,role,rating').eq('status', 'approved').order('position').order('created_at', { ascending: false }).limit(Math.min(Math.max(Number(limit) || 6, 1), 200))
   if (error) { if (missingReviews(error)) return structuredClone(DEFAULT_REVIEWS); throw new Error(`listApprovedReviews: ${error.message}`) }
   return data ?? []
 }

@@ -221,6 +221,8 @@ app.post('/api/enquiries', async (req, res) => {
 })
 
 /* ------------------------------------------------------ public reviews --- */
+// Every approved review, for the Testimonials page (the homepage takes the first six via /api/site).
+app.get('/api/reviews', (_req, res) => send(res, () => content.listApprovedReviews({ limit: 200 })))
 // "Share your experience" on the homepage. Same defences as the enquiry form;
 // the review waits for approval in the panel and the team is told.
 app.post('/api/reviews', async (req, res) => {

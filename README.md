@@ -343,8 +343,10 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
   throttle, Turnstile) into `reviews` as *pending*; the team gets the
   "New review awaiting approval" email (switch under Settings → Email). Staff
   approve, hide, edit, delete, or add reviews that arrived on WhatsApp. Only
-  approved reviews are served on `GET /api/site` as `reviews`; until the
-  migration runs the homepage shows the original three.
+  approved reviews are public: the first six on `GET /api/site` as `reviews`
+  (homepage), all of them on `GET /api/reviews` (the Testimonials page, which
+  has the same submission form); until the migration runs the homepage shows
+  the original three.
 - **Homepage stats.** The number tiles under the hero are edited under
   Settings → Site (icon from a fixed set, number, suffix, label; reorder,
   add up to eight). Stored in the `settings` table under `homepage_stats`
