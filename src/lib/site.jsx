@@ -24,6 +24,32 @@ export const SITE_DEFAULTS = {
     { icon: 'Package', value: 30, suffix: '+', label: 'Commodities' },
     { icon: 'Users', value: 500, suffix: '+', label: 'Partner Farmers' },
   ],
+  // About page + homepage mission/vision; edited under Settings → Company.
+  about: {
+    mission: "To provide quality agricultural products while creating sustainable value for farmers, businesses, and global markets. We bridge the gap between farm and table with efficiency and excellence.",
+    vision: "To become one of Africa's most trusted agro commodity companies, recognized for reliability, quality, and innovation in agricultural trade and export across international markets.",
+    mission_short: 'Provide quality products while creating sustainable value for farmers and global markets.',
+    vision_short: "Become Africa's most trusted agro commodity company recognized for reliability.",
+    registrations: [
+      { icon: 'Award', label: 'CAC Registered', value: 'RC No: 8464264' },
+      { icon: 'Shield', label: 'NEPC Licensed', value: 'No: 0044255' },
+    ],
+    values: [
+      { icon: 'Award', title: 'Excellence', description: 'We strive for the highest standards in every aspect of our operations.' },
+      { icon: 'Shield', title: 'Integrity', description: 'Honest and transparent dealings with all our stakeholders.' },
+      { icon: 'Users', title: 'Partnership', description: 'Building lasting relationships with farmers, buyers, and communities.' },
+      { icon: 'HeartHandshake', title: 'Sustainability', description: 'Environmentally responsible practices for future generations.' },
+    ],
+    industries: [
+      { icon: 'UtensilsCrossed', name: 'Food Manufacturers', description: 'Supplying raw materials for food processing and packaged goods production.' },
+      { icon: 'Plane', name: 'Exporters', description: 'Partnering with export houses to fulfill international commodity contracts.' },
+      { icon: 'ShoppingBag', name: 'FMCG Companies', description: 'Reliable bulk supply for fast-moving consumer goods manufacturers.' },
+      { icon: 'Beef', name: 'Animal Feed Producers', description: 'Maize, soybeans, and cassava for livestock and poultry feed mills.' },
+      { icon: 'Store', name: 'Wholesalers', description: 'Large-volume commodity supply for regional and national distributors.' },
+      { icon: 'Building2', name: 'Retail Chains', description: 'Consistent quality and supply for supermarket and retail procurement.' },
+      { icon: 'Factory', name: 'Industrial Buyers', description: 'Raw materials for biofuel, starch, oil extraction, and pharmaceutical industries.' },
+    ],
+  },
   // Export-market flag tiles and client reviews; edited under Settings → Site.
   markets: {
     items: [{ name: 'United Kingdom', code: 'gb' }, { name: 'Netherlands', code: 'nl' }, { name: 'Germany', code: 'de' }, { name: 'Turkey', code: 'tr' }, { name: 'UAE', code: 'ae' }, { name: 'India', code: 'in' }, { name: 'China', code: 'cn' }, { name: 'USA', code: 'us' }],

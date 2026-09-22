@@ -868,7 +868,7 @@ export async function findClientByEmail(email) {
 // The four number tiles on the homepage ("8+ Years of Experience"). Stored in
 // the settings table under 'homepage_stats' (outside the settings groups) and
 // served with the public site data. Defaults equal the old hard-coded tiles.
-export const STAT_ICON_NAMES = ['Award', 'BadgeCheck', 'Boxes', 'CalendarCheck', 'Factory', 'Globe', 'Handshake', 'Leaf', 'MapPin', 'Package', 'ShieldCheck', 'Ship', 'Sprout', 'Star', 'Target', 'TrendingUp', 'Truck', 'Users', 'Warehouse', 'Wheat']
+export const STAT_ICON_NAMES = ['Anchor', 'Award', 'BadgeCheck', 'Beef', 'Boxes', 'Building2', 'CalendarCheck', 'Coins', 'Container', 'Eye', 'Factory', 'Globe', 'Handshake', 'HeartHandshake', 'Landmark', 'Leaf', 'Lightbulb', 'MapPin', 'Package', 'Plane', 'Recycle', 'Scale', 'Shield', 'ShieldCheck', 'Ship', 'ShoppingBag', 'Sprout', 'Star', 'Store', 'Target', 'Tractor', 'TrendingUp', 'Truck', 'Users', 'UtensilsCrossed', 'Warehouse', 'Wheat']
 export const DEFAULT_STATS = [
   { icon: 'CalendarCheck', value: 8, suffix: '+', label: 'Years of Experience' },
   { icon: 'Globe', value: 12, suffix: '+', label: 'Export Countries' },
@@ -892,6 +892,55 @@ export async function setHomepageStats(list) {
   if (!items.length) throw new Error('keep at least one stat')
   unwrap(await supabase.from('settings').upsert({ key: 'homepage_stats', value: { items } }, { onConflict: 'key' }), 'setHomepageStats')
   return items
+}
+
+/* ------------------------------------------------------ company profile --- */
+// The About page (mission, vision, registrations, core values, industries)
+// and the homepage's mission/vision cards. Settings row 'about'.
+export const DEFAULT_ABOUT = {
+  mission: "To provide quality agricultural products while creating sustainable value for farmers, businesses, and global markets. We bridge the gap between farm and table with efficiency and excellence.",
+  vision: "To become one of Africa's most trusted agro commodity companies, recognized for reliability, quality, and innovation in agricultural trade and export across international markets.",
+  mission_short: 'Provide quality products while creating sustainable value for farmers and global markets.',
+  vision_short: "Become Africa's most trusted agro commodity company recognized for reliability.",
+  registrations: [
+    { icon: 'Award', label: 'CAC Registered', value: 'RC No: 8464264' },
+    { icon: 'Shield', label: 'NEPC Licensed', value: 'No: 0044255' },
+  ],
+  values: [
+    { icon: 'Award', title: 'Excellence', description: 'We strive for the highest standards in every aspect of our operations.' },
+    { icon: 'Shield', title: 'Integrity', description: 'Honest and transparent dealings with all our stakeholders.' },
+    { icon: 'Users', title: 'Partnership', description: 'Building lasting relationships with farmers, buyers, and communities.' },
+    { icon: 'HeartHandshake', title: 'Sustainability', description: 'Environmentally responsible practices for future generations.' },
+  ],
+  industries: [
+    { icon: 'UtensilsCrossed', name: 'Food Manufacturers', description: 'Supplying raw materials for food processing and packaged goods production.' },
+    { icon: 'Plane', name: 'Exporters', description: 'Partnering with export houses to fulfill international commodity contracts.' },
+    { icon: 'ShoppingBag', name: 'FMCG Companies', description: 'Reliable bulk supply for fast-moving consumer goods manufacturers.' },
+    { icon: 'Beef', name: 'Animal Feed Producers', description: 'Maize, soybeans, and cassava for livestock and poultry feed mills.' },
+    { icon: 'Store', name: 'Wholesalers', description: 'Large-volume commodity supply for regional and national distributors.' },
+    { icon: 'Building2', name: 'Retail Chains', description: 'Consistent quality and supply for supermarket and retail procurement.' },
+    { icon: 'Factory', name: 'Industrial Buyers', description: 'Raw materials for biofuel, starch, oil extraction, and pharmaceutical industries.' },
+  ],
+}
+const iconOr = (v, fallback) => (STAT_ICON_NAMES.includes(v) ? v : fallback)
+export async function getCompanyProfile() {
+  const rows = unwrap(await supabase.from('settings').select('value').eq('key', 'about').limit(1), 'getCompanyProfile')
+  const v = rows?.[0]?.value
+  return v && typeof v === 'object' && v.mission ? { ...structuredClone(DEFAULT_ABOUT), ...v } : structuredClone(DEFAULT_ABOUT)
+}
+export async function setCompanyProfile(input = {}) {
+  const t = (s, max) => String(s ?? '').replace(/[ \t]+/g, ' ').trim().slice(0, max)
+  const mission = t(input.mission, 600), vision = t(input.vision, 600)
+  if (!mission || !vision) throw new Error('mission and vision are required')
+  const registrations = (Array.isArray(input.registrations) ? input.registrations : []).slice(0, 8)
+    .map(r => ({ icon: iconOr(r?.icon, 'Award'), label: t(r?.label, 60), value: t(r?.value, 80) })).filter(r => r.label)
+  const values = (Array.isArray(input.values) ? input.values : []).slice(0, 8)
+    .map(x => ({ icon: iconOr(x?.icon, 'Award'), title: t(x?.title, 40), description: t(x?.description, 200) })).filter(x => x.title)
+  const industries = (Array.isArray(input.industries) ? input.industries : []).slice(0, 12)
+    .map(x => ({ icon: iconOr(x?.icon, 'Factory'), name: t(x?.name, 60), description: t(x?.description, 200) })).filter(x => x.name)
+  const value = { mission, vision, mission_short: t(input.mission_short, 200), vision_short: t(input.vision_short, 200), registrations, values, industries }
+  unwrap(await supabase.from('settings').upsert({ key: 'about', value }, { onConflict: 'key' }), 'setCompanyProfile')
+  return value
 }
 
 /* ---------------------------------------------- homepage markets + reviews --- */

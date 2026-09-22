@@ -470,6 +470,12 @@ router.put('/settings/stats', settingsAdmin, h(async (req, res) => {
   await audit({ actor: req.user, action: 'update', entity: 'homepage_stats', entityId: null, after: { stats } })
   res.json({ stats, icons: content.STAT_ICON_NAMES })
 }))
+router.get('/settings/about', settingsAdmin, h(async (_req, res) => res.json({ profile: await content.getCompanyProfile(), icons: content.STAT_ICON_NAMES })))
+router.put('/settings/about', settingsAdmin, h(async (req, res) => {
+  const profile = await exposing(content.setCompanyProfile)(req.body || {})
+  await audit({ actor: req.user, action: 'update', entity: 'company_profile', entityId: null, after: { registrations: profile.registrations.length, values: profile.values.length, industries: profile.industries.length } })
+  res.json({ profile, icons: content.STAT_ICON_NAMES })
+}))
 router.get('/settings/markets', settingsAdmin, h(async (_req, res) => res.json(await content.getHomepageMarkets())))
 router.put('/settings/markets', settingsAdmin, h(async (req, res) => {
   const value = await exposing(content.setHomepageMarkets)(req.body || {})

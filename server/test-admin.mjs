@@ -158,6 +158,14 @@ try {
     return `${r.stats.map(s => s.value + s.suffix + ' ' + s.label).join(' · ')} · public ✓ · unknown icon → Award ✓`
   })
   settingsBefore.homepage_markets = (await svc.from('settings').select('value').eq('key', 'homepage_markets').maybeSingle()).data?.value ?? null
+  settingsBefore.about = (await svc.from('settings').select('value').eq('key', 'about').maybeSingle()).data?.value ?? null
+  await step('PUT /settings/about → public /api/site.about', async () => {
+    const cur = (await api('/settings/about')).profile
+    const r = await api('/settings/about', { method: 'PUT', body: { ...cur, vision: 'e2e vision text', registrations: [...cur.registrations, { icon: 'nope', label: 'e2e Cert', value: 'No: 1' }], industries: cur.industries.slice(0, 2), values: [{ icon: 'Scale', title: 'e2e Fairness', description: 'x' }] } })
+    const p = r.profile; if (p.vision !== 'e2e vision text' || p.registrations.at(-1).icon !== 'Award' || p.industries.length !== 2 || p.values[0].icon !== 'Scale') throw new Error(JSON.stringify(p).slice(0, 160))
+    const pub = await fetch(`${API}/api/site`).then(x => x.json()); if (pub.about?.vision !== 'e2e vision text' || pub.about?.registrations?.length !== cur.registrations.length + 1) throw new Error('public site lacks the profile')
+    return `vision · ${p.registrations.length} registrations (unknown icon → Award) · ${p.industries.length} industries · ${p.values.length} value · public ✓`
+  })
   await step('PUT /settings/markets → public /api/site carries the flags', async () => {
     const m = await api('/settings/markets', { method: 'PUT', body: { markets: [{ name: 'e2e Ghana', code: 'GH' }, { name: 'bad code', code: 'xyz' }], caption_left: 'e2e FOB Lagos', caption_right: '' } })
     if (m.items.length !== 1 || m.items[0].code !== 'gh' || m.caption_left !== 'e2e FOB Lagos' || m.caption_right !== '') throw new Error(JSON.stringify(m))

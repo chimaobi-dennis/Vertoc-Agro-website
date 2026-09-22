@@ -103,8 +103,8 @@ app.get('/api/posts/:slug', (req, res) =>
 // Site identity and contact details, edited under Settings → Site.
 app.get('/api/site', (_req, res) =>
   send(res, async () => {
-    const [settings, stats, markets, reviews] = await Promise.all([content.getSettings(), content.getHomepageStats(), content.getHomepageMarkets(), content.listApprovedReviews()])
-    return { ...settings.site, stats, markets, reviews }
+    const [settings, stats, markets, reviews, about] = await Promise.all([content.getSettings(), content.getHomepageStats(), content.getHomepageMarkets(), content.listApprovedReviews(), content.getCompanyProfile()])
+    return { ...settings.site, stats, markets, reviews, about }
   }))
 
 /* ------------------------------------------------ public quote links --- */

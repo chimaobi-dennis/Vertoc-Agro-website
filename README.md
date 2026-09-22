@@ -334,6 +334,12 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
   `POST /messages/thread/read`, and `POST /messages` with `reply_to_id`.
   Team notifications and staff invitations are `internal` mail
   (`messages.headers.internal`) and never appear in conversations.
+- **Company profile.** Settings → Company edits the About page and the homepage's
+  mission/vision cards: mission, vision (plus optional short homepage summaries),
+  registrations (CAC, NEPC… any number), core values and industries served,
+  each with an icon from the shared set. Settings row `about`, served on
+  `GET /api/site` as `about`. The homepage's "Years of Excellence" badge follows
+  the stat tile whose label mentions years.
 - **Homepage markets.** Also under Settings → Site: the export-market flag
   tiles (country name + two-letter code; bundled flags for the original
   eight, flagcdn.com for the rest) with the two captions under the grid.

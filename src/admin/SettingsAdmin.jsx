@@ -92,6 +92,7 @@ export default function SettingsAdmin() {
 
           {tab === 'site' && <HomepageStatsCard />}
           {tab === 'site' && <HomepageMarketsCard />}
+          {tab === 'company' && <CompanyProfileCard />}
           {tab === 'company' && (
             <Group group="company" settings={settings} onSaved={onSaved} title="Company block on invoices" description="Printed in the header of every invoice PDF and shown on the client's online view.">
               {({ bind }) => (
@@ -172,6 +173,98 @@ function HomepageStatsCard() {
             <Button type="button" variant="accent" onClick={save} disabled={busy || !rows.length}>{busy ? 'Saving…' : 'Save stats'}</Button>
           </div>
         </>
+      )}
+      {toastEl}
+    </Card>
+  )
+}
+
+/** The About page and the homepage mission/vision cards: mission, vision, registrations, core values, industries. */
+function CompanyProfileCard() {
+  const [p, setP] = useState(null)
+  const [icons, setIcons] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [toast, toastEl] = useToast()
+  useEffect(() => { adminFetch('/settings/about').then(r => { setP(r.profile); setIcons(r.icons) }).catch(e => toast(e.message, 'error')) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const list = (key, i, patch) => setP(x => ({ ...x, [key]: x[key].map((it, j) => (j === i ? { ...it, ...patch } : it)) }))
+  const move = (key, i, d) => setP(x => { const n = [...x[key]]; const j = i + d; if (j < 0 || j >= n.length) return x; [n[i], n[j]] = [n[j], n[i]]; return { ...x, [key]: n } })
+  const drop = (key, i) => setP(x => ({ ...x, [key]: x[key].filter((_, j) => j !== i) }))
+  const add = (key, item) => setP(x => ({ ...x, [key]: [...x[key], item] }))
+  const save = async () => {
+    setBusy(true)
+    try { const r = await adminFetch('/settings/about', { method: 'PUT', body: p }); setP(r.profile); toast('Company profile saved — the About page and homepage are updated') }
+    catch (x) { toast(x.message, 'error') } finally { setBusy(false) }
+  }
+  const IconPick = ({ value, onChange }) => { const Icon = statIcon(value); return (
+    <div className="flex items-center gap-2"><span className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0"><Icon className="w-4 h-4" /></span><Select className="h-10 text-xs" value={value} onChange={e => onChange(e.target.value)}>{icons.map(n => <option key={n} value={n}>{n.replace(/([a-z])([A-Z])/g, '$1 $2')}</option>)}</Select></div>
+  ) }
+  const Arrows = ({ k, i, len }) => (
+    <div className="flex items-center gap-1 pb-0.5">
+      <button type="button" onClick={() => move(k, i, -1)} disabled={i === 0} className="h-9 w-8 rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-30" aria-label="Move up">↑</button>
+      <button type="button" onClick={() => move(k, i, 1)} disabled={i === len - 1} className="h-9 w-8 rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-30" aria-label="Move down">↓</button>
+      <button type="button" onClick={() => drop(k, i)} className="h-9 w-9 rounded-lg text-destructive hover:bg-muted flex items-center justify-center" aria-label="Remove"><Trash2 className="w-4 h-4" /></button>
+    </div>
+  )
+  return (
+    <Card className="p-6 animate-fade-up mb-6">
+      <div className="mb-5"><h2 className="font-semibold">Company profile (About page)</h2><p className="text-sm text-muted-foreground mt-0.5">Mission, vision, registrations, core values and the industries you serve. The homepage's two small cards use the short summaries when given.</p></div>
+      {!p ? <Bone className="h-10 w-full" /> : (
+        <div className="space-y-7">
+          <div className="grid md:grid-cols-2 gap-5">
+            <Field label="Our mission"><Textarea rows={4} value={p.mission} maxLength={600} onChange={e => setP({ ...p, mission: e.target.value })} /></Field>
+            <Field label="Our vision"><Textarea rows={4} value={p.vision} maxLength={600} onChange={e => setP({ ...p, vision: e.target.value })} /></Field>
+            <Field label="Mission — short version for the homepage card" hint="Optional; the full mission is used when empty"><Input value={p.mission_short || ''} maxLength={200} onChange={e => setP({ ...p, mission_short: e.target.value })} /></Field>
+            <Field label="Vision — short version for the homepage card" hint="Optional"><Input value={p.vision_short || ''} maxLength={200} onChange={e => setP({ ...p, vision_short: e.target.value })} /></Field>
+          </div>
+
+          <section>
+            <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-semibold">Registrations & certifications</h3><Button type="button" variant="outline" className="h-8 px-3 text-xs" disabled={p.registrations.length >= 8} onClick={() => add('registrations', { icon: 'BadgeCheck', label: '', value: '' })}><Plus className="w-3.5 h-3.5" />Add</Button></div>
+            <p className="text-xs text-muted-foreground mb-3">Shown as pills at the top of the About page, e.g. "CAC Registered — RC No: 8464264".</p>
+            <ul className="space-y-2">
+              {p.registrations.map((r, i) => (
+                <li key={i} className="grid gap-3 md:grid-cols-[220px_1fr_1fr_auto] items-end rounded-xl border border-border p-3">
+                  <Field label="Icon"><IconPick value={r.icon} onChange={v => list('registrations', i, { icon: v })} /></Field>
+                  <Field label="Label"><Input value={r.label} maxLength={60} onChange={e => list('registrations', i, { label: e.target.value })} placeholder="NEPC Licensed" /></Field>
+                  <Field label="Number / detail"><Input value={r.value || ''} maxLength={80} onChange={e => list('registrations', i, { value: e.target.value })} placeholder="No: 0044255" /></Field>
+                  <Arrows k="registrations" i={i} len={p.registrations.length} />
+                </li>
+              ))}
+              {!p.registrations.length && <li className="text-sm text-muted-foreground">None — the pills are hidden.</li>}
+            </ul>
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-semibold">Core values</h3><Button type="button" variant="outline" className="h-8 px-3 text-xs" disabled={p.values.length >= 8} onClick={() => add('values', { icon: 'Star', title: '', description: '' })}><Plus className="w-3.5 h-3.5" />Add</Button></div>
+            <ul className="space-y-2">
+              {p.values.map((v, i) => (
+                <li key={i} className="grid gap-3 md:grid-cols-[220px_1fr_2fr_auto] items-end rounded-xl border border-border p-3">
+                  <Field label="Icon"><IconPick value={v.icon} onChange={x => list('values', i, { icon: x })} /></Field>
+                  <Field label="Title"><Input value={v.title} maxLength={40} onChange={e => list('values', i, { title: e.target.value })} placeholder="Excellence" /></Field>
+                  <Field label="Description"><Input value={v.description || ''} maxLength={200} onChange={e => list('values', i, { description: e.target.value })} placeholder="What it means in practice" /></Field>
+                  <Arrows k="values" i={i} len={p.values.length} />
+                </li>
+              ))}
+              {!p.values.length && <li className="text-sm text-muted-foreground">None — the section is hidden.</li>}
+            </ul>
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-semibold">Industries we serve</h3><Button type="button" variant="outline" className="h-8 px-3 text-xs" disabled={p.industries.length >= 12} onClick={() => add('industries', { icon: 'Factory', name: '', description: '' })}><Plus className="w-3.5 h-3.5" />Add</Button></div>
+            <ul className="space-y-2">
+              {p.industries.map((x, i) => (
+                <li key={i} className="grid gap-3 md:grid-cols-[220px_1fr_2fr_auto] items-end rounded-xl border border-border p-3">
+                  <Field label="Icon"><IconPick value={x.icon} onChange={v => list('industries', i, { icon: v })} /></Field>
+                  <Field label="Industry"><Input value={x.name} maxLength={60} onChange={e => list('industries', i, { name: e.target.value })} placeholder="Food Manufacturers" /></Field>
+                  <Field label="Description"><Input value={x.description || ''} maxLength={200} onChange={e => list('industries', i, { description: e.target.value })} placeholder="What you supply them" /></Field>
+                  <Arrows k="industries" i={i} len={p.industries.length} />
+                </li>
+              ))}
+              {!p.industries.length && <li className="text-sm text-muted-foreground">None — the section is hidden.</li>}
+            </ul>
+          </section>
+
+          <div className="flex justify-end"><Button type="button" variant="accent" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save company profile'}</Button></div>
+        </div>
       )}
       {toastEl}
     </Card>

@@ -59,6 +59,8 @@ function FeaturedCommodities() {
 export default function Home() {
   const site = useSite()
   const [reviewOpen, setReviewOpen] = useState(false)
+  // The badge on the About picture follows the "years" stat tile (Settings → Site → Homepage stats).
+  const years = (site.stats || []).find(s => /year/i.test(s.label)) || site.stats?.[0]
   return (
     <main className="flex-grow">
       <script type="application/ld+json">{'{'}"@context":"https://schema.org","@graph":[{'{'}"@type":"Organization","@id":"https://vertocagro.com/#organization","name":"Vertoc Agro Products Limited","url":"https://vertocagro.com","logo":{'{'}"@type":"ImageObject","url":"/assets/img/logo.png"{'}'},"description":"Growing the Future, One Harvest at a Time. Cultivation, sourcing, processing, storage, logistics, and export of premium agricultural commodities across Nigeria and beyond.","address":{'{'}"@type":"PostalAddress","addressCountry":"NG","addressLocality":"Nigeria"{'}'},"contactPoint":{'{'}"@type":"ContactPoint","email":"sales@vertocagro.com","contactType":"sales","availableLanguage":"English"{'}'},"sameAs":[],"foundingDate":"2020","legalName":"Vertoc Agro Products Limited"{'}'},{'{'}"@type":"WebSite","@id":"https://vertocagro.com/#website","url":"https://vertocagro.com","name":"Vertoc Agro Products Limited","description":"Premium agricultural commodities export from Nigeria","publisher":{'{'}"@id":"https://vertocagro.com/#organization"{'}'},"potentialAction":{'{'}"@type":"SearchAction","target":{'{'}"@type":"EntryPoint","urlTemplate":"https://vertocagro.com/products?q={'{'}search_term_string{'}'}"{'}'},"query-input":"required name=search_term_string"{'}'}{'}'}]{'}'}</script>
@@ -132,10 +134,12 @@ export default function Home() {
       <div className="aspect-[4/3] rounded-2xl overflow-hidden">
       <img src="/assets/img/stock-1625246333195-78d9c38ad449-800.jpg" alt="African farmland" className="w-full h-full object-cover" loading="lazy" />
       </div>
+      {years && (
       <div className="absolute -bottom-6 -right-6 bg-accent text-white rounded-2xl p-5 hidden md:block shadow-hover">
-      <p className="text-3xl font-bold">8+</p>
+      <p className="text-3xl font-bold">{years.value}{years.suffix ?? '+'}</p>
       <p className="text-sm">Years of Excellence</p>
       </div>
+      )}
       </div>
       <div>
       <span className="inline-block text-sm font-semibold uppercase tracking-widest text-accent mb-3">About Vertoc</span>
@@ -145,12 +149,12 @@ export default function Home() {
       <div className="bg-card border border-border p-5 rounded-2xl">
       <Target className="w-5 h-5 text-primary mb-2" />
       <h4 className="text-sm font-bold text-foreground">Our Mission</h4>
-      <p className="text-xs text-muted-foreground mt-1">Provide quality products while creating sustainable value for farmers and global markets.</p>
+      <p className="text-xs text-muted-foreground mt-1">{site.about?.mission_short || site.about?.mission}</p>
       </div>
       <div className="bg-card border border-border p-5 rounded-2xl">
       <Eye className="w-5 h-5 text-accent mb-2" />
       <h4 className="text-sm font-bold text-foreground">Our Vision</h4>
-      <p className="text-xs text-muted-foreground mt-1">Become Africa's most trusted agro commodity company recognized for reliability.</p>
+      <p className="text-xs text-muted-foreground mt-1">{site.about?.vision_short || site.about?.vision}</p>
       </div>
       </div>
       <Link className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border bg-background h-9 py-2 font-semibold rounded-full px-6 border-primary text-primary hover:bg-primary hover:text-primary-foreground" to="/about">Learn More About Us <ArrowRight className="w-4 h-4 ml-2" />
