@@ -22,7 +22,7 @@ export default function RouteMap({ origin, destination, checkpoints = [], picked
   // The view to apply once the container has a size (a lazy chunk, a modal or a
   // collapsed column can mount the map at 0×0; fitting then would leave it at zoom 0).
   const pendingFit = useRef(null)
-  const applyFit = () => { const m = map.current; const size = m?.getSize(); if (m && pendingFit.current && size.x > 0 && size.y > 0) { const f = pendingFit.current; pendingFit.current = null; f(m) } }
+  const applyFit = () => { const m = map.current; const size = m?.getSize(); if (m && pendingFit.current && size.x > 0 && size.y > 0) { const f = pendingFit.current; pendingFit.current = null; f(m); el.current && (el.current.__fitted = true) } }
 
   useEffect(() => {
     const m = L.map(el.current, { scrollWheelZoom: wheelZoom === 'always', dragging: true, touchZoom: true, doubleClickZoom: true, zoomControl: true, wheelPxPerZoomLevel: 90 })
@@ -34,10 +34,16 @@ export default function RouteMap({ origin, destination, checkpoints = [], picked
     m.setView(NIGERIA, 6)
     layer.current = L.layerGroup().addTo(m); map.current = m
     el.current.__map = m   // for checks from the console / tests
-    // Modals and column layouts size the container after mount.
-    const ro = new ResizeObserver(() => { m.invalidateSize(); applyFit() })
+    // Modals and column layouts size the container after mount. ResizeObserver
+    // does not fire in a background tab, so a short poll and the window
+    // events cover that too (a real layout is still available on demand).
+    const sync = () => { if (!map.current) return; m.invalidateSize(); applyFit() }
+    const ro = new ResizeObserver(sync)
     ro.observe(el.current)
-    return () => { ro.disconnect(); m.remove(); map.current = null }
+    let tries = 0
+    const poll = setInterval(() => { sync(); if (!pendingFit.current || ++tries > 40) clearInterval(poll) }, 250)
+    window.addEventListener('resize', sync); document.addEventListener('visibilitychange', sync)
+    return () => { ro.disconnect(); clearInterval(poll); window.removeEventListener('resize', sync); document.removeEventListener('visibilitychange', sync); m.remove(); map.current = null }
   }, [wheelZoom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -67,6 +73,7 @@ export default function RouteMap({ origin, destination, checkpoints = [], picked
     if (hasPoint(picked)) dot(picked, { label: 'New location', fill: '#dc2626', radius: 8, permanent: true })
     pendingFit.current = mm => { if (pts.length > 1) mm.fitBounds(L.latLngBounds(pts).pad(0.3), { maxZoom: 10 }); else if (pts.length === 1) mm.setView(pts[0], 8) }
     m.invalidateSize(); applyFit()
+    if (pendingFit.current) { let tries = 0; const t = setInterval(() => { if (!map.current || !pendingFit.current || ++tries > 40) return clearInterval(t); m.invalidateSize(); applyFit() }, 250) }
   }, [origin, destination, checkpoints, picked, delivered]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div ref={el} className={`relative z-0 w-full rounded-2xl overflow-hidden border border-border bg-muted ${className}`} role="img" aria-label="Shipment route map" />
