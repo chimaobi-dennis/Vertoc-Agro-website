@@ -406,8 +406,8 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
 
 ### Shipments (Phase 5)
 
-Needs `server/migrations/010_shipments.sql` and `012_checkpoint_times.sql`
-(which includes `011_shipment_details.sql`).
+Needs `server/migrations/010_shipments.sql`, `012_checkpoint_times.sql`
+(which includes `011_shipment_details.sql`) and `013_departure_time.sql`.
 An invoice can leave on several trucks, vessels or flights: on the invoice
 page staff **Create shipment** and say which share of *each line* goes on
 it (percent per line; the shares of the non-cancelled shipments never
@@ -422,7 +422,9 @@ click the map (OpenStreetMap via Leaflet, no API key — scroll to zoom,
 drag to pan; on the client page the wheel zooms once the map is clicked)
 to drop the next pin, saying when the shipment was there (defaults to
 now; never in the future). Every pin in the journey can be edited in
-place — place, state, time, note, or moved by clicking the map — and the
+place — place, state, time, note, or moved by clicking the map — and so
+can the departure point (place and the time it left, `departed_at`,
+migration 013); the
 journey is ordered by that time, so the latest pin is the current
 location (migration 012);
 the first pin moves it to *in transit*, **Mark delivered** pins it at the

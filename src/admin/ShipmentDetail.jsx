@@ -23,6 +23,22 @@ const fromLocal = v => (v ? new Date(v).toISOString() : null)
 const nowLocal = () => toLocal(new Date().toISOString())
 const blankCp = () => ({ state: '', name: '', lat: null, lng: null, note: '', at: '' })
 const stateFields = name => { const st = NG_STATES.find(x => x.state === name); return st ? { state: st.state, name: `${st.capital}, ${st.state}`, lat: st.lat, lng: st.lng } : { state: '' } }
+/** Inline editor for one pin — or, with `origin`, the departure point (no note; the time is when it left). */
+function PinForm({ edit, setEdit, onSubmit, onCancel, busy, origin = false }) {
+  return (
+    <form onSubmit={onSubmit} className="grid sm:grid-cols-2 gap-3">
+      <p className="sm:col-span-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{origin ? 'Departure point' : 'Edit pin'}</p>
+      <Field label="State"><StateSelect value={edit.state} none="No state" onChange={v => setEdit(x => ({ ...x, ...stateFields(v) }))} /></Field>
+      <Field label="Place" hint={edit.lat != null ? `Pin at ${edit.lat}, ${edit.lng} — click the map to move it` : 'Pick a state or click the map'}><Input required value={edit.name} onChange={e => setEdit(x => ({ ...x, name: e.target.value }))} /></Field>
+      <Field label={origin ? 'When it left' : 'When the shipment was here'} hint={origin ? 'Optional' : undefined}><Input type="datetime-local" required={!origin} max={nowLocal()} value={edit.at} onChange={e => setEdit(x => ({ ...x, at: e.target.value }))} /></Field>
+      {!origin && <Field label="Note" hint="The client sees it"><Input value={edit.note} onChange={e => setEdit(x => ({ ...x, note: e.target.value }))} /></Field>}
+      <div className="sm:col-span-2 flex flex-wrap gap-2">
+        <Button type="submit" variant="accent" className="h-9" disabled={busy || edit.lat == null}><Check className="w-4 h-4" />{origin ? 'Save departure point' : 'Save pin'}</Button>
+        <Button type="button" variant="outline" className="h-9" onClick={onCancel}><X className="w-4 h-4" />Cancel</Button>
+      </div>
+    </form>
+  )
+}
 const StateSelect = ({ value, onChange, none = 'Choose a state…' }) => <Select value={value} onChange={e => onChange(e.target.value)}><option value="">{none}</option>{NG_STATES.map(x => <option key={x.state} value={x.state}>{x.state} — {x.capital}</option>)}</Select>
 
 export default function ShipmentDetail() {
@@ -50,7 +66,16 @@ export default function ShipmentDetail() {
   const call = async (fn, ok) => { setBusy(true); setErr(null); try { await fn(); if (ok) toast(ok); await load() } catch (x) { setErr(x.message) } finally { setBusy(false) } }
   const addCp = e => { e.preventDefault(); call(async () => { await adminFetch(`/shipments/${sid}/checkpoints`, { method: 'POST', body: { ...cp, at: fromLocal(cp.at) } }); setCp(blankCp()) }, 'Location added') }
   const startEdit = c => { setEdit({ id: c.id, name: c.name, state: c.state || '', lat: c.lat, lng: c.lng, note: c.note || '', at: toLocal(c.at || c.created_at) }) }
-  const saveEdit = e => { e.preventDefault(); const p = edit; call(async () => { await adminFetch(`/shipments/${sid}/checkpoints/${p.id}`, { method: 'PATCH', body: { name: p.name, state: p.state, lat: p.lat, lng: p.lng, note: p.note, at: fromLocal(p.at) } }); setEdit(null) }, 'Pin updated') }
+  // The departure point is edited the same way (id 'origin'); its time is the departure time.
+  const startEditOrigin = () => { setEdit({ id: 'origin', name: s.origin?.name || '', state: s.origin?.state || '', lat: s.origin?.lat ?? null, lng: s.origin?.lng ?? null, note: '', at: s.departed_at ? toLocal(s.departed_at) : '' }) }
+  const saveEdit = e => {
+    e.preventDefault(); const p = edit
+    call(async () => {
+      if (p.id === 'origin') await adminFetch(`/shipments/${sid}`, { method: 'PATCH', body: { origin: { name: p.name, state: p.state, lat: p.lat, lng: p.lng }, departed_at: fromLocal(p.at) } })
+      else await adminFetch(`/shipments/${sid}/checkpoints/${p.id}`, { method: 'PATCH', body: { name: p.name, state: p.state, lat: p.lat, lng: p.lng, note: p.note, at: fromLocal(p.at) } })
+      setEdit(null)
+    }, p.id === 'origin' ? 'Departure point updated' : 'Pin updated')
+  }
   const removeCp = c => { if (!window.confirm(`Remove the pin at ${c.name}?`)) return; call(() => adminFetch(`/shipments/${sid}/checkpoints/${c.id}`, { method: 'DELETE' })) }
   const saveForm = e => { e.preventDefault(); call(() => adminFetch(`/shipments/${sid}`, { method: 'PATCH', body: { ...form, items: (s.lines_for_edit || []).map(l => ({ index: l.index, percent: Number(form.items[l.index]) || 0 })) } }), 'Saved') }
   const setStatus = status => { const q = { delivered: 'Mark this shipment as delivered? It will be pinned at the destination.', cancelled: 'Cancel this shipment? Its share of the invoice becomes available again.', in_transit: 'Reopen this shipment as in transit?' }[status]; if (q && !window.confirm(q)) return; call(() => adminFetch(`/shipments/${sid}`, { method: 'PATCH', body: { status } }), 'Status updated') }
@@ -62,6 +87,7 @@ export default function ShipmentDetail() {
   const carries = s ? shareLines(s, s.quote?.items) : []
   // The map shows the pin being edited where the form currently puts it.
   const preview = useMemo(() => (edit ? cps.map(c => (c.id === edit.id ? { ...c, name: edit.name, lat: edit.lat, lng: edit.lng } : c)) : cps), [cps, edit])
+  const originPreview = edit?.id === 'origin' ? { ...(s?.origin || {}), name: edit.name, lat: edit.lat, lng: edit.lng } : s?.origin
   return (
     <>
       <Link to={`/staff360/quotes/${id}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />{s?.quote?.number || 'Invoice'}</Link>
@@ -74,12 +100,12 @@ export default function ShipmentDetail() {
             <Card className="p-4 md:p-5 animate-fade-up">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4 text-sm">
                 <p><span className="font-semibold">{s.origin?.name || 'Origin'}</span> <span className="text-muted-foreground">→</span> <span className="font-semibold">{s.destination?.name || 'Destination'}</span></p>
-                <p className="text-xs text-muted-foreground">{s.status === 'delivered' ? `Delivered ${fmtDateTime(s.delivered_at)}` : last ? `Now at ${last.name} · ${ago(last.at)}` : 'Not on the road yet'}</p>
+                <p className="text-xs text-muted-foreground">{s.status === 'delivered' ? `Delivered ${fmtDateTime(s.delivered_at)}` : last ? `Now at ${last.name} · ${ago(last.at)}` : s.departed_at ? `Left ${s.origin?.name || 'the origin'} ${ago(s.departed_at)}` : 'Not on the road yet'}</p>
               </div>
               <Suspense fallback={<Bone className="h-[420px] w-full rounded-2xl" />}>
-                <RouteMap className="h-[420px]" origin={s.origin} destination={s.destination} checkpoints={preview} picked={closed || edit ? null : cp} delivered={s.status === 'delivered'} onPick={closed && !edit ? undefined : onPick} />
+                <RouteMap className="h-[420px]" origin={originPreview} destination={s.destination} checkpoints={preview} picked={closed || edit ? null : cp} delivered={s.status === 'delivered'} onPick={closed && !edit ? undefined : onPick} />
               </Suspense>
-              <p className="text-xs text-muted-foreground mt-2">{edit ? `Editing the pin at ${edit.name || '…'} — click the map to move it.` : `Scroll to zoom, drag to move the map${closed ? '.' : ', click anywhere to place the next pin — or pick a state on the right.'}`}</p>
+              <p className="text-xs text-muted-foreground mt-2">{edit ? `Editing ${edit.id === 'origin' ? 'the departure point' : `the pin at ${edit.name || '…'}`} — click the map to move it.` : `Scroll to zoom, drag to move the map${closed ? '.' : ', click anywhere to place the next pin — or pick a state on the right.'}`}</p>
               {carries.length > 0 && <ul className="mt-3 flex flex-wrap gap-2 text-xs">{carries.map(c => <li key={c.index} className="rounded-full bg-muted px-2.5 py-1">{c.text}</li>)}</ul>}
             </Card>
 
@@ -87,18 +113,7 @@ export default function ShipmentDetail() {
               <div className="px-5 py-3.5 border-b border-border flex items-center justify-between"><h2 className="text-sm font-semibold">Journey</h2><span className="text-xs text-muted-foreground">{cps.length} {cps.length === 1 ? 'pin' : 'pins'} · latest first</span></div>
               <ol className="divide-y divide-border">
                 {[...cps].reverse().map((c, i) => (edit?.id === c.id ? (
-                  <li key={c.id} className="px-5 py-4 bg-muted/30">
-                    <form onSubmit={saveEdit} className="grid sm:grid-cols-2 gap-3">
-                      <Field label="State"><StateSelect value={edit.state} none="No state" onChange={v => setEdit(x => ({ ...x, ...stateFields(v) }))} /></Field>
-                      <Field label="Place" hint={`Pin at ${edit.lat}, ${edit.lng} — click the map to move it`}><Input required value={edit.name} onChange={e => setEdit(x => ({ ...x, name: e.target.value }))} /></Field>
-                      <Field label="When the shipment was here"><Input type="datetime-local" required max={nowLocal()} value={edit.at} onChange={e => setEdit(x => ({ ...x, at: e.target.value }))} /></Field>
-                      <Field label="Note" hint="The client sees it"><Input value={edit.note} onChange={e => setEdit(x => ({ ...x, note: e.target.value }))} /></Field>
-                      <div className="sm:col-span-2 flex flex-wrap gap-2">
-                        <Button type="submit" variant="accent" className="h-9" disabled={busy || edit.lat == null}><Check className="w-4 h-4" />Save pin</Button>
-                        <Button type="button" variant="outline" className="h-9" onClick={() => setEdit(null)}><X className="w-4 h-4" />Cancel</Button>
-                      </div>
-                    </form>
-                  </li>
+                  <li key={c.id} className="px-5 py-4 bg-muted/30"><PinForm edit={edit} setEdit={setEdit} onSubmit={saveEdit} onCancel={() => setEdit(null)} busy={busy} /></li>
                 ) : (
                   <li key={c.id} className="px-5 py-3 flex gap-3 text-sm">
                     <MapPin className={`w-4 h-4 mt-0.5 shrink-0 ${i === 0 && s.status !== 'delivered' ? 'text-amber-500' : 'text-muted-foreground'}`} />
@@ -110,7 +125,15 @@ export default function ShipmentDetail() {
                     {!closed && <button type="button" onClick={() => removeCp(c)} disabled={busy} className="h-8 w-8 rounded-lg text-destructive hover:bg-muted flex items-center justify-center shrink-0" aria-label={`Remove pin at ${c.name}`}><Trash2 className="w-3.5 h-3.5" /></button>}
                   </li>
                 )))}
-                <li className="px-5 py-3 flex gap-3 text-sm"><MapPin className="w-4 h-4 mt-0.5 shrink-0 text-accent" /><div><p className="font-medium">{s.origin?.name || 'Origin'}</p><p className="text-xs text-muted-foreground">Departure point · created {fmtDateTime(s.created_at)}</p></div></li>
+                {edit?.id === 'origin' ? (
+                  <li className="px-5 py-4 bg-muted/30"><PinForm edit={edit} setEdit={setEdit} onSubmit={saveEdit} onCancel={() => setEdit(null)} busy={busy} origin /></li>
+                ) : (
+                  <li className="px-5 py-3 flex gap-3 text-sm">
+                    <MapPin className="w-4 h-4 mt-0.5 shrink-0 text-accent" />
+                    <div className="flex-1 min-w-0"><p className="font-medium">{s.origin?.name || 'Origin'}</p><p className="text-xs text-muted-foreground">Departure point · {s.departed_at ? `left ${fmtDateTime(s.departed_at)}` : `created ${fmtDateTime(s.created_at)} — departure time not set`}</p></div>
+                    <button type="button" onClick={startEditOrigin} disabled={busy} className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center shrink-0" aria-label="Edit the departure point"><Pencil className="w-3.5 h-3.5" /></button>
+                  </li>
+                )}
               </ol>
             </Card>
 

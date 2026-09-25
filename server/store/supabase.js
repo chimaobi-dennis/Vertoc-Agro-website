@@ -836,11 +836,12 @@ export const SHIPMENT_STATUSES = ['planned', 'in_transit', 'delivered', 'cancell
 export const SHIPMENT_MODES = ['road', 'sea', 'air']
 export const SHIPMENTS_MIGRATION_HINT = 'Shipments need the database migration 010: run server/migrations/010_shipments.sql in the Supabase SQL editor first.'
 export const SHIPMENT_DETAILS_HINT = 'Shipments need the database migration 012: run server/migrations/012_checkpoint_times.sql in the Supabase SQL editor first (it includes 011).'
+export const SHIPMENT_DEPARTURE_HINT = 'Setting a departure time needs the database migration 013: run server/migrations/013_departure_time.sql in the Supabase SQL editor first.'
 const errText = e => String(e?.message || '')
 const missingShipments = e => e?.code === '42P01' || e?.code === 'PGRST205' || /relation "public\.?shipment|table 'public\.shipment|shipment[_a-z]* does not exist/i.test(errText(e))
-const missingColumns = e => e?.code === '42703' || e?.code === 'PGRST204' || /column .*(items|mode|eta|\bat\b)/i.test(errText(e))
+const missingColumns = e => e?.code === '42703' || e?.code === 'PGRST204' || /column .*(items|mode|eta|departed_at|\bat\b)/i.test(errText(e))
 const shipErr = (e, ctx) => (missingShipments(e) ? Object.assign(new Error(SHIPMENTS_MIGRATION_HINT), { expose: true, status: 409 })
-  : missingColumns(e) ? Object.assign(new Error(SHIPMENT_DETAILS_HINT), { expose: true, status: 409 }) : new Error(`${ctx}: ${e.message}`))
+  : missingColumns(e) ? Object.assign(new Error(/departed_at/.test(errText(e)) ? SHIPMENT_DEPARTURE_HINT : SHIPMENT_DETAILS_HINT), { expose: true, status: 409 }) : new Error(`${ctx}: ${e.message}`))
 const pct = v => Math.round((Number(v) || 0) * 100) / 100
 const coord = (v, max) => { const n = Number(v); return v == null || v === '' || !Number.isFinite(n) || Math.abs(n) > max ? null : Math.round(n * 1e5) / 1e5 }
 // When something happened: ISO or a datetime-local value; never more than a few minutes ahead of now.
@@ -899,7 +900,7 @@ const withCheckpoints = async rows => {
   const { data, error } = await supabase.from('shipment_checkpoints').select('*').in('shipment_id', rows.map(r => r.id)).order('at', { ascending: true }).order('created_at', { ascending: true }).order('id', { ascending: true })
   if (error) throw shipErr(error, 'listCheckpoints')
   const by = new Map(rows.map(r => [r.id, []])); for (const c of data || []) by.get(c.shipment_id)?.push({ ...c, at: c.at || c.created_at })
-  return rows.map(r => ({ ...r, percent: Number(r.percent), items: Array.isArray(r.items) ? r.items : [], mode: r.mode || 'road', eta: r.eta || null, checkpoints: by.get(r.id) || [] }))
+  return rows.map(r => ({ ...r, percent: Number(r.percent), items: Array.isArray(r.items) ? r.items : [], mode: r.mode || 'road', eta: r.eta || null, departed_at: r.departed_at || null, checkpoints: by.get(r.id) || [] }))
 }
 async function shipmentsOf(quote) {
   const { data, error } = await supabase.from('shipments').select('*').eq('quote_id', quote.id).order('number', { ascending: true })
@@ -962,6 +963,7 @@ export async function updateShipment(id, patch = {}, actorId = null) {
   if (patch.notes !== undefined) row.notes = tt(patch.notes, 1000)
   if (patch.mode !== undefined) row.mode = cleanMode(patch.mode)
   if (patch.eta !== undefined) row.eta = cleanDate(patch.eta)
+  if (patch.departed_at !== undefined) row.departed_at = cleanWhen(patch.departed_at, 'Departure time')   // empty clears it
   const willBeActive = (patch.status ?? cur.status) !== 'cancelled'
   if (patch.items !== undefined || patch.percent !== undefined) {
     // A cancelled shipment may hold any share; it is checked again when reopened.
@@ -1050,7 +1052,7 @@ export async function deleteCheckpoint(shipment_id, checkpoint_id) {
 }
 /** What the client sees on the invoice link. */
 export const publicShipment = s => ({
-  id: s.id, number: s.number, percent: Number(s.percent), items: s.items || [], status: s.status, mode: s.mode || 'road', vehicle: s.vehicle, eta: s.eta || null,
+  id: s.id, number: s.number, percent: Number(s.percent), items: s.items || [], status: s.status, mode: s.mode || 'road', vehicle: s.vehicle, eta: s.eta || null, departed_at: s.departed_at || null,
   origin: s.origin, destination: s.destination, notes: s.notes,
   created_at: s.created_at, updated_at: s.updated_at, delivered_at: s.delivered_at,
   checkpoints: (s.checkpoints || []).map(c => ({ id: c.id, name: c.name, state: c.state, lat: c.lat, lng: c.lng, note: c.note, at: c.at || c.created_at, created_at: c.created_at })),
