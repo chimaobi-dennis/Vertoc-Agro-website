@@ -179,7 +179,7 @@ function Shipments({ shipments, items }) {
               <div className="rounded-xl bg-secondary/60 border border-border p-4">
                 <p className="text-xs uppercase tracking-wider text-muted-foreground">{s.status === 'delivered' ? 'Delivered' : s.status === 'cancelled' ? 'Cancelled' : 'Current location'}</p>
                 {s.status === 'delivered' ? <p className="font-semibold mt-1">{s.destination?.name}</p> : s.status === 'cancelled' ? <p className="font-semibold mt-1">This shipment was cancelled</p> : last ? <p className="font-semibold mt-1">{last.name}</p> : <p className="font-semibold mt-1">Preparing to leave {s.origin?.name || 'the origin'}</p>}
-                <p className="text-xs text-muted-foreground mt-1">Last updated {ago(s.status === 'delivered' ? s.delivered_at : (last?.created_at || s.updated_at || s.created_at))}</p>
+                <p className="text-xs text-muted-foreground mt-1">Last updated {ago(s.status === 'delivered' ? s.delivered_at : (last?.at || last?.created_at || s.updated_at || s.created_at))}</p>
                 {last?.note && s.status !== 'delivered' && <p className="text-sm mt-2">{last.note}</p>}
                 <dl className="mt-3 pt-3 border-t border-border text-sm space-y-1">
                   {s.vehicle && <div><dt className="text-xs text-muted-foreground">{VEHICLE_LABELS[s.mode] || 'Vehicle'}</dt><dd>{s.vehicle}</dd></div>}
@@ -191,7 +191,7 @@ function Shipments({ shipments, items }) {
                 <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Journey</p>
                 <ol className="space-y-2 text-sm">
                   {[...cps].reverse().map((c, i) => (
-                    <li key={c.id} className="flex gap-3"><span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${i === 0 ? 'bg-accent' : 'bg-muted-foreground/40'}`} /><div><p className="font-medium">{c.name}</p><p className="text-xs text-muted-foreground">{fmtWhen(c.created_at)}{c.note && ` — ${c.note}`}</p></div></li>
+                    <li key={c.id} className="flex gap-3"><span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${i === 0 ? 'bg-accent' : 'bg-muted-foreground/40'}`} /><div><p className="font-medium">{c.name}</p><p className="text-xs text-muted-foreground">{fmtWhen(c.at || c.created_at)}{c.note && ` — ${c.note}`}</p></div></li>
                   ))}
                   <li className="flex gap-3"><span className="mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 bg-primary" /><div><p className="font-medium">{s.origin?.name || 'Origin'}</p><p className="text-xs text-muted-foreground">Departure point</p></div></li>
                 </ol>

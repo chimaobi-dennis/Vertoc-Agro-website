@@ -406,7 +406,8 @@ Needs `server/migrations/005_templates_inbound.sql` (and `006_invoice_wording.sq
 
 ### Shipments (Phase 5)
 
-Needs `server/migrations/010_shipments.sql` and `011_shipment_details.sql`.
+Needs `server/migrations/010_shipments.sql` and `012_checkpoint_times.sql`
+(which includes `011_shipment_details.sql`).
 An invoice can leave on several trucks, vessels or flights: on the invoice
 page staff **Create shipment** and say which share of *each line* goes on
 it (percent per line; the shares of the non-cancelled shipments never
@@ -419,7 +420,11 @@ seaport, or any place with coordinates — `server/ng-states.js`), notes, and
 a trail of **checkpoints**: on the shipment page staff pick a state or
 click the map (OpenStreetMap via Leaflet, no API key — scroll to zoom,
 drag to pan; on the client page the wheel zooms once the map is clicked)
-to drop the next pin;
+to drop the next pin, saying when the shipment was there (defaults to
+now; never in the future). Every pin in the journey can be edited in
+place — place, state, time, note, or moved by clicking the map — and the
+journey is ordered by that time, so the latest pin is the current
+location (migration 012);
 the first pin moves it to *in transit*, **Mark delivered** pins it at the
 destination, cancelling frees its lines. The client sees every shipment on
 the invoice link (`/q/<token>`): what it carries, the route on a map, the
@@ -430,8 +435,8 @@ vehicle number, the expected arrival and the notes.
   remaining, can_create }` (`lines[i].remaining` is what line *i* can still
   take; `remaining` is the value-weighted share of the invoice),
   `GET/PATCH/DELETE /shipments/:sid` (`lines_for_edit` excludes the
-  shipment's own share), `POST /shipments/:sid/checkpoints`,
-  `DELETE /shipments/:sid/checkpoints/:cid` — all under the `quotes`
+  shipment's own share), `POST /shipments/:sid/checkpoints` (`{ name, state, lat, lng, note, at }`),
+  `PATCH/DELETE /shipments/:sid/checkpoints/:cid` — all under the `quotes`
   permission; `GET /quotes/:id` carries `shipments`. Public: the invoice
   payload gains `shipments` (nothing internal).
 - Body: `items: [{ index, percent }]` (index into the invoice's items;

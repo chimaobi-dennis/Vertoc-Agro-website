@@ -276,7 +276,7 @@ try {
   // Reading works from migration 010 on; writing needs 011 too — either hint skips the block.
   const shipProbe = await api(`/quotes/${quote.id}/shipments`).then(() => api(`/quotes/${quote.id}/shipments`, { method: 'POST', body: { items: [{ index: 0, percent: 25 }, { index: 1, percent: 100 }], mode: 'road', vehicle: 'NT456UH', eta: '2026-10-05', origin: { state: 'Oyo' }, destination: { name: 'Apapa Port, Lagos', lat: 6.4474, lng: 3.3627 }, notes: 'n' } })).catch(e => e)
   if (shipProbe instanceof Error) {
-    await step('shipments', async () => { if (!/migration 01[01]/.test(shipProbe.message)) throw shipProbe; return 'skipped — ' + shipProbe.message })
+    await step('shipments', async () => { if (!/migration 01[0-2]/.test(shipProbe.message)) throw shipProbe; return 'skipped — ' + shipProbe.message })
   } else {
     // The quote has two lines: Cocoa beans 20 MT @ 2400 (48000) and Bagging 1 @ 500.
     const s1 = await step('POST /quotes/:id/shipments — 25% of cocoa + all bagging, by road', async () => {
@@ -299,21 +299,39 @@ try {
       return `#${s.id} · ${s.percent}% · invoice fully allocated`
     })
     await step('nothing left → create refused', () => refused(() => ship({ items: [{ index: 0, percent: 1 }] }), /nothing left/, 'zero left'))
-    await step('POST /shipments/:id/checkpoints (state) → in_transit', async () => {
-      const s = await api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { state: 'Ogun', note: 'Passed Abeokuta' } })
-      if (s.status !== 'in_transit' || s.checkpoints.length !== 1 || s.checkpoints[0].name !== 'Abeokuta, Ogun' || s.checkpoints[0].lat == null) throw new Error(JSON.stringify(s.checkpoints))
-      return `${s.checkpoints[0].name} · ${s.status}`
+    const hoursAgo = h => new Date(Date.now() - h * 3600e3).toISOString()
+    await step('POST /shipments/:id/checkpoints (state, 3 h ago) → in_transit', async () => {
+      const s = await api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { state: 'Ogun', note: 'Passed Abeokuta', at: hoursAgo(3) } })
+      const c = s.checkpoints[0]; if (s.status !== 'in_transit' || s.checkpoints.length !== 1 || c.name !== 'Abeokuta, Ogun' || c.lat == null || c.at.slice(0, 16) !== hoursAgo(3).slice(0, 16)) throw new Error(JSON.stringify(s.checkpoints))
+      return `${c.name} · ${s.status} · at ${c.at}`
     })
-    await step('a map click with its own name', async () => { const s = await api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { name: 'Ogere weighbridge', lat: 6.93, lng: 3.6 } }); if (s.checkpoints.length !== 2 || s.checkpoints[1].state !== '') throw new Error(JSON.stringify(s.checkpoints[1])); return s.checkpoints[1].name })
+    await step('a map click with its own name (2 h ago)', async () => { const s = await api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { name: 'Ogere weighbridge', lat: 6.93, lng: 3.6, at: hoursAgo(2) } }); if (s.checkpoints.length !== 2 || s.checkpoints[1].state !== '' || s.checkpoints[1].name !== 'Ogere weighbridge') throw new Error(JSON.stringify(s.checkpoints[1])); return s.checkpoints[1].name })
     await step('a checkpoint without a place is refused', () => refused(() => api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { note: 'x' } }), /state|map/, 'no place'))
+    let osogboId = null
+    await step('a pin dated yesterday sorts before the others; the latest stays current', async () => {
+      const s = await api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { state: 'Osun', at: hoursAgo(24), note: 'Loaded' } })
+      const c = s.checkpoints[0]; osogboId = c.id
+      if (s.checkpoints.length !== 3 || c.name !== 'Osogbo, Osun' || s.checkpoints[2].name !== 'Ogere weighbridge') throw new Error(JSON.stringify(s.checkpoints.map(x => [x.name, x.at])))
+      return `${c.name} first · current still ${s.checkpoints[2].name}`
+    })
+    await step('a time in the future is refused', () => refused(() => api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { state: 'Lagos', at: new Date(Date.now() + 86400e3).toISOString() } }), /future/, 'future'))
+    await step('a bad time is refused', () => refused(() => api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { state: 'Lagos', at: 'yesterday-ish' } }), /date and time/, 'bad time'))
+    await step('PATCH a checkpoint (name, note, time 1 h ago) → it becomes current', async () => {
+      const s = await api(`/shipments/${s1.id}/checkpoints/${osogboId}`, { method: 'PATCH', body: { name: 'Osogbo depot', note: 'Left the depot', at: hoursAgo(1) } })
+      const c = s.checkpoints[2]; if (s.checkpoints.length !== 3 || c.id !== osogboId || c.name !== 'Osogbo depot' || c.note !== 'Left the depot' || c.state !== 'Osun' || Math.abs(c.lat - 7.7827) > 0.01) throw new Error(JSON.stringify(s.checkpoints.map(x => [x.id, x.name, x.at])))
+      return `${c.name} is now the latest pin`
+    })
+    await step('PATCH a checkpoint to another state moves it to the capital', async () => { const s = await api(`/shipments/${s1.id}/checkpoints/${osogboId}`, { method: 'PATCH', body: { state: 'Ekiti', name: 'Ado-Ekiti, Ekiti' } }); const c = s.checkpoints.find(x => x.id === osogboId); if (c.state !== 'Ekiti' || Math.abs(c.lat - 7.6211) > 0.01 || s.checkpoints[2].id !== osogboId) throw new Error(JSON.stringify(c)); return `${c.name} (${c.lat}, ${c.lng})` })
+    await step('PATCH a checkpoint with a bad time refused', () => refused(() => api(`/shipments/${s1.id}/checkpoints/${osogboId}`, { method: 'PATCH', body: { at: 'later' } }), /date and time/, 'bad patch time'))
     await step('GET /quotes/:id carries the shipments and lines', async () => { const q = await api(`/quotes/${quote.id}`); if (q.shipments?.items?.length !== 2 || q.shipments.can_create !== false || q.shipments.lines?.length !== 2) throw new Error(JSON.stringify(q.shipments).slice(0, 140)); return `${q.shipments.items.length} shipments · ${q.shipments.lines.length} lines` })
     await step('public invoice shows the shipments, route, mode and ETA', async () => {
       const d = await fetch(`${API}/api/q/${quote.token}`).then(r => r.json()); const s = d.shipments?.find(x => x.id === s1.id)
-      if (!s || s.checkpoints.length !== 2 || s.created_by !== undefined || s.quote_id !== undefined || s.origin.lat == null || s.items.length !== 2 || s.mode !== 'road' || s.eta !== '2026-10-05') throw new Error(JSON.stringify(s || d.shipments).slice(0, 200))
+      if (!s || s.checkpoints.length !== 3 || s.checkpoints[2].name !== 'Ado-Ekiti, Ekiti' || !s.checkpoints[2].at || s.created_by !== undefined || s.quote_id !== undefined || s.origin.lat == null || s.items.length !== 2 || s.mode !== 'road' || s.eta !== '2026-10-05') throw new Error(JSON.stringify(s || d.shipments).slice(0, 200))
       return `${d.shipments.length} shipments · ${s.checkpoints.length} pins · ${s.mode} · ETA ${s.eta} · nothing internal`
     })
-    await step('DELETE a checkpoint', async () => { const s = await api(`/shipments/${s1.id}`); const c = s.checkpoints[1]; const r = await api(`/shipments/${s1.id}/checkpoints/${c.id}`, { method: 'DELETE' }); if (r.checkpoints.length !== 1) throw new Error('still ' + r.checkpoints.length); return 'removed ✓' })
-    await step('PATCH status=delivered pins it at the destination', async () => { const s = await api(`/shipments/${s1.id}`, { method: 'PATCH', body: { status: 'delivered' } }); if (s.status !== 'delivered' || !s.delivered_at || s.checkpoints.length !== 2 || s.checkpoints[1].note !== 'Delivered') throw new Error(JSON.stringify(s.checkpoints)); return 'delivered ✓' })
+    await step('DELETE a checkpoint', async () => { const s = await api(`/shipments/${s1.id}`); const c = s.checkpoints.find(x => x.name === 'Ogere weighbridge'); const r = await api(`/shipments/${s1.id}/checkpoints/${c.id}`, { method: 'DELETE' }); if (r.checkpoints.length !== 2) throw new Error('still ' + r.checkpoints.length); return 'removed ✓' })
+    await step('PATCH status=delivered pins it at the destination', async () => { const s = await api(`/shipments/${s1.id}`, { method: 'PATCH', body: { status: 'delivered' } }); const d = s.checkpoints[2]; if (s.status !== 'delivered' || !s.delivered_at || s.checkpoints.length !== 3 || d.note !== 'Delivered' || d.at !== s.delivered_at) throw new Error(JSON.stringify(s.checkpoints)); return 'delivered ✓ · pin time = delivery time' })
+    await step('editing the delivery pin\'s time moves the delivery time', async () => { const s0 = await api(`/shipments/${s1.id}`); const d = s0.checkpoints[2]; const at = hoursAgo(0.5); const s = await api(`/shipments/${s1.id}/checkpoints/${d.id}`, { method: 'PATCH', body: { at } }); if (s.delivered_at.slice(0, 16) !== at.slice(0, 16)) throw new Error(`delivered_at ${s.delivered_at} vs ${at}`); return 'delivered_at follows the pin ✓' })
     await step('delivered shipment takes no more pins', () => refused(() => api(`/shipments/${s1.id}/checkpoints`, { method: 'POST', body: { state: 'Lagos' } }), /delivered/, 'closed'))
     await step('cancelling frees its lines', async () => { await api(`/shipments/${s2.id}`, { method: 'PATCH', body: { status: 'cancelled' } }); const l = await api(`/quotes/${quote.id}/shipments`); if (l.lines[0].remaining !== 75 || !l.can_create) throw new Error('remaining ' + JSON.stringify(l.lines)); return 'cocoa 75% free again' })
     await step('PATCH items + mode/eta on a shipment', async () => { const s = await api(`/shipments/${s2.id}`, { method: 'PATCH', body: { items: [{ index: 0, percent: 50 }], mode: 'air', vehicle: 'ET900', eta: '2026-10-01' } }); if (s.items[0].percent !== 50 || s.mode !== 'air' || s.eta !== '2026-10-01' || Math.abs(s.percent - 49.48) > 0.02) throw new Error(JSON.stringify({ items: s.items, mode: s.mode, eta: s.eta, percent: s.percent })); return `air · ${s.percent}% of the value` })

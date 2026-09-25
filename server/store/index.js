@@ -42,7 +42,7 @@ export const {
   getSettings, updateSettings, readSecrets, writeSecret,
   createDocument, completeDocument, getDocument, listDocuments, documentUrl, downloadDocument, deleteDocument,
   listQuotes, getQuote, getQuoteByToken, createQuote, updateQuote, deleteQuote, markQuoteSent, markQuoteViewed, respondToQuote, publicQuote, convertQuoteToPurchase,
-  listShipments, getShipment, createShipment, updateShipment, deleteShipment, addCheckpoint, deleteCheckpoint, publicShipment, SHIPMENT_STATUSES, SHIPMENT_MODES, SHIPMENTS_MIGRATION_HINT, SHIPMENT_DETAILS_HINT,
+  listShipments, getShipment, createShipment, updateShipment, deleteShipment, addCheckpoint, updateCheckpoint, deleteCheckpoint, publicShipment, SHIPMENT_STATUSES, SHIPMENT_MODES, SHIPMENTS_MIGRATION_HINT, SHIPMENT_DETAILS_HINT,
   createMessage, updateMessage, getMessage, listMessages, markMessageRead, getMessageByProviderId, latestOutboundTo, countUnreadInbound, findClientByEmail, getQuoteByNumber,
   listThreads, getThread, markThreadRead, splitQuoted, parseThreadKey, threadKeyOf, cleanSubject,
   getLabelCatalogue, setLabelCatalogue, setThreadLabel, LABEL_COLORS, DEFAULT_LABELS,

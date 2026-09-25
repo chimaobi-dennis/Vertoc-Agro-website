@@ -632,6 +632,12 @@ router.post('/shipments/:sid/checkpoints', inbox, h(async (req, res) => {
   await audit({ actor: req.user, action: 'update', entity: 'shipment', entityId: after.id, after: { location: c?.name, status: after.status } })
   res.status(201).json(after)
 }))
+router.patch('/shipments/:sid/checkpoints/:cid', inbox, h(async (req, res) => {
+  const after = await exposing(content.updateCheckpoint)(req.params.sid, req.params.cid, req.body || {})
+  const c = after.checkpoints.find(x => x.id === Number(req.params.cid))
+  await audit({ actor: req.user, action: 'update', entity: 'shipment', entityId: after.id, after: { checkpoint: c?.id, location: c?.name, at: c?.at } })
+  res.json(after)
+}))
 router.delete('/shipments/:sid/checkpoints/:cid', inbox, h(async (req, res) => {
   const after = await exposing(content.deleteCheckpoint)(req.params.sid, req.params.cid)
   await audit({ actor: req.user, action: 'update', entity: 'shipment', entityId: after.id, after: { removed_checkpoint: Number(req.params.cid) } })

@@ -835,14 +835,21 @@ export function publicQuote(q, settings, fields = []) {
 export const SHIPMENT_STATUSES = ['planned', 'in_transit', 'delivered', 'cancelled']
 export const SHIPMENT_MODES = ['road', 'sea', 'air']
 export const SHIPMENTS_MIGRATION_HINT = 'Shipments need the database migration 010: run server/migrations/010_shipments.sql in the Supabase SQL editor first.'
-export const SHIPMENT_DETAILS_HINT = 'Shipments need the database migration 011: run server/migrations/011_shipment_details.sql in the Supabase SQL editor first.'
+export const SHIPMENT_DETAILS_HINT = 'Shipments need the database migration 012: run server/migrations/012_checkpoint_times.sql in the Supabase SQL editor first (it includes 011).'
 const errText = e => String(e?.message || '')
 const missingShipments = e => e?.code === '42P01' || e?.code === 'PGRST205' || /relation "public\.?shipment|table 'public\.shipment|shipment[_a-z]* does not exist/i.test(errText(e))
-const missingColumns = e => e?.code === '42703' || e?.code === 'PGRST204' || /column .*(items|mode|eta)/i.test(errText(e))
+const missingColumns = e => e?.code === '42703' || e?.code === 'PGRST204' || /column .*(items|mode|eta|\bat\b)/i.test(errText(e))
 const shipErr = (e, ctx) => (missingShipments(e) ? Object.assign(new Error(SHIPMENTS_MIGRATION_HINT), { expose: true, status: 409 })
   : missingColumns(e) ? Object.assign(new Error(SHIPMENT_DETAILS_HINT), { expose: true, status: 409 }) : new Error(`${ctx}: ${e.message}`))
 const pct = v => Math.round((Number(v) || 0) * 100) / 100
 const coord = (v, max) => { const n = Number(v); return v == null || v === '' || !Number.isFinite(n) || Math.abs(n) > max ? null : Math.round(n * 1e5) / 1e5 }
+// When something happened: ISO or a datetime-local value; never more than a few minutes ahead of now.
+const cleanWhen = (v, label = 'time') => {
+  if (v == null || v === '') return null
+  const d = new Date(v); if (Number.isNaN(d.getTime())) throw new Error(`${label} must be a date and time`)
+  if (d.getTime() > Date.now() + 5 * 60 * 1000) throw new Error(`${label} cannot be in the future`)
+  return d.toISOString()
+}
 const cleanDate = v => { if (v == null || v === '') return null; const s = String(v).slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) throw new Error('expected date of arrival must be a date (YYYY-MM-DD)'); return s }
 // {name, state, lat, lng}; a known state fills in the capital's coordinates.
 function cleanPoint(p, label, { required = true } = {}) {
@@ -889,9 +896,9 @@ function cleanShipmentItems(input, quote, lines) {
 const cleanMode = m => { if (m == null || m === '') return 'road'; if (!SHIPMENT_MODES.includes(m)) throw new Error(`mode must be one of ${SHIPMENT_MODES.join(', ')}`); return m }
 const withCheckpoints = async rows => {
   if (!rows.length) return rows
-  const { data, error } = await supabase.from('shipment_checkpoints').select('*').in('shipment_id', rows.map(r => r.id)).order('created_at', { ascending: true }).order('id', { ascending: true })
+  const { data, error } = await supabase.from('shipment_checkpoints').select('*').in('shipment_id', rows.map(r => r.id)).order('at', { ascending: true }).order('created_at', { ascending: true }).order('id', { ascending: true })
   if (error) throw shipErr(error, 'listCheckpoints')
-  const by = new Map(rows.map(r => [r.id, []])); for (const c of data || []) by.get(c.shipment_id)?.push(c)
+  const by = new Map(rows.map(r => [r.id, []])); for (const c of data || []) by.get(c.shipment_id)?.push({ ...c, at: c.at || c.created_at })
   return rows.map(r => ({ ...r, percent: Number(r.percent), items: Array.isArray(r.items) ? r.items : [], mode: r.mode || 'road', eta: r.eta || null, checkpoints: by.get(r.id) || [] }))
 }
 async function shipmentsOf(quote) {
@@ -968,7 +975,11 @@ export async function updateShipment(id, patch = {}, actorId = null) {
       for (const x of items) { const l = cur.lines_for_edit[x.index]; if (l && Number(x.percent) > l.remaining + 0.001) throw new Error(`only ${l.remaining}% of "${l.description}" is left to ship — reduce this shipment's share first`) }
     }
     row.status = patch.status
-    row.delivered_at = patch.status === 'delivered' ? (cur.delivered_at || new Date().toISOString()) : null
+    if (patch.status === 'delivered') {
+      // The delivery pin is the last one: never earlier than the latest checkpoint.
+      const lastAt = cur.checkpoints.length ? Date.parse(cur.checkpoints[cur.checkpoints.length - 1].at) || 0 : 0
+      row.delivered_at = cleanWhen(patch.delivered_at, 'Delivered at') || cur.delivered_at || new Date(Math.max(Date.now(), lastAt + 1000)).toISOString()
+    } else row.delivered_at = null
   }
   const { data, error } = await supabase.from('shipments').update(row).eq('id', cur.id).select().single()
   if (error) throw shipErr(error, 'updateShipment')
@@ -976,7 +987,7 @@ export async function updateShipment(id, patch = {}, actorId = null) {
   if (row.status === 'delivered' && data.destination?.lat != null) {
     const last = cur.checkpoints[cur.checkpoints.length - 1]
     if (!last || last.lat !== data.destination.lat || last.lng !== data.destination.lng) {
-      const { error: ce } = await supabase.from('shipment_checkpoints').insert({ shipment_id: cur.id, name: data.destination.name, state: data.destination.state || '', lat: data.destination.lat, lng: data.destination.lng, note: 'Delivered', created_by: actorId })
+      const { error: ce } = await supabase.from('shipment_checkpoints').insert({ shipment_id: cur.id, name: data.destination.name, state: data.destination.state || '', lat: data.destination.lat, lng: data.destination.lng, note: 'Delivered', at: row.delivered_at, created_by: actorId })
       if (ce) throw shipErr(ce, 'deliverShipment')
     }
   }
@@ -995,10 +1006,38 @@ export async function addCheckpoint(shipment_id, input = {}, actorId = null) {
   if (cur.status === 'delivered' || cur.status === 'cancelled') throw new Error(`this shipment is ${cur.status} — reopen it to add locations`)
   const p = cleanPoint({ ...input, name: input.name || '' }, 'Location')
   if (!p.name) throw new Error('Location: pick a state or click the map')
-  const { error } = await supabase.from('shipment_checkpoints').insert({ shipment_id: cur.id, name: p.name, state: p.state, lat: p.lat, lng: p.lng, note: tt(input.note, 500), created_by: actorId })
+  const at = cleanWhen(input.at, 'When') || new Date().toISOString()
+  const { error } = await supabase.from('shipment_checkpoints').insert({ shipment_id: cur.id, name: p.name, state: p.state, lat: p.lat, lng: p.lng, note: tt(input.note, 500), at, created_by: actorId })
   if (error) throw shipErr(error, 'addCheckpoint')
   const { error: ue } = await supabase.from('shipments').update({ status: cur.status === 'planned' ? 'in_transit' : cur.status, updated_at: new Date().toISOString() }).eq('id', cur.id)
   if (ue) throw shipErr(ue, 'addCheckpoint')
+  return getShipment(cur.id)
+}
+/** Edit a pin: place (a new state without coordinates moves it to the capital), note, and when the shipment was there. */
+export async function updateCheckpoint(shipment_id, checkpoint_id, patch = {}) {
+  const cur = await getShipment(shipment_id)
+  if (!cur) throw new Error(`no shipment with id ${shipment_id}`)
+  const c = cur.checkpoints.find(x => x.id === Number(checkpoint_id))
+  if (!c) throw new Error(`no checkpoint with id ${checkpoint_id} on this shipment`)
+  const row = {}
+  if (['name', 'state', 'lat', 'lng'].some(k => patch[k] !== undefined)) {
+    const stateChanged = patch.state !== undefined && (patch.state || '') !== (c.state || '')
+    const keep = k => (stateChanged ? null : c[k])
+    Object.assign(row, cleanPoint({ name: patch.name ?? c.name, state: patch.state ?? c.state, lat: patch.lat ?? keep('lat'), lng: patch.lng ?? keep('lng') }, 'Location'))
+  }
+  if (patch.note !== undefined) row.note = tt(patch.note, 500)
+  if (patch.at !== undefined) { const at = cleanWhen(patch.at, 'When'); if (!at) throw new Error('When: give a date and time'); row.at = at }
+  if (!Object.keys(row).length) return cur
+  const { error } = await supabase.from('shipment_checkpoints').update(row).eq('id', c.id).eq('shipment_id', cur.id)
+  if (error) throw shipErr(error, 'updateCheckpoint')
+  const touch = { updated_at: new Date().toISOString() }
+  // The delivery pin's time is the delivery time.
+  if (cur.status === 'delivered' && row.at) {
+    const next = await getShipment(cur.id); const last = next.checkpoints[next.checkpoints.length - 1]
+    if (last?.id === c.id && next.destination?.lat === last.lat && next.destination?.lng === last.lng) touch.delivered_at = row.at
+  }
+  const { error: ue } = await supabase.from('shipments').update(touch).eq('id', cur.id)
+  if (ue) throw shipErr(ue, 'updateCheckpoint')
   return getShipment(cur.id)
 }
 export async function deleteCheckpoint(shipment_id, checkpoint_id) {
@@ -1014,7 +1053,7 @@ export const publicShipment = s => ({
   id: s.id, number: s.number, percent: Number(s.percent), items: s.items || [], status: s.status, mode: s.mode || 'road', vehicle: s.vehicle, eta: s.eta || null,
   origin: s.origin, destination: s.destination, notes: s.notes,
   created_at: s.created_at, updated_at: s.updated_at, delivered_at: s.delivered_at,
-  checkpoints: (s.checkpoints || []).map(c => ({ id: c.id, name: c.name, state: c.state, lat: c.lat, lng: c.lng, note: c.note, created_at: c.created_at })),
+  checkpoints: (s.checkpoints || []).map(c => ({ id: c.id, name: c.name, state: c.state, lat: c.lat, lng: c.lng, note: c.note, at: c.at || c.created_at, created_at: c.created_at })),
 })
 
 /* ----------------------------------------------------------- messages --- */

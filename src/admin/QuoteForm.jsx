@@ -192,7 +192,7 @@ export default function QuoteForm() {
                           <span className="text-muted-foreground tabular-nums">{fmtPct(s.percent)}%</span>
                           <span className="text-muted-foreground">{MODE_LABELS[s.mode] || 'By road'}{s.vehicle && ` · ${s.vehicle}`}</span>
                           <span className="text-muted-foreground truncate flex-1 min-w-[10rem]">{s.origin?.name} → {s.destination?.name}</span>
-                          <span className="text-xs text-muted-foreground">{s.status === 'delivered' ? `Delivered ${fmtShort(s.delivered_at)}` : last ? `${last.name} · ${fmtShort(last.created_at)}` : s.eta ? `Expected ${fmtEta(s.eta)}` : 'Not on the road yet'}</span>
+                          <span className="text-xs text-muted-foreground">{s.status === 'delivered' ? `Delivered ${fmtShort(s.delivered_at)}` : last ? `${last.name} · ${fmtShort(last.at || last.created_at)}` : s.eta ? `Expected ${fmtEta(s.eta)}` : 'Not on the road yet'}</span>
                           <Badge tone={shipmentTone(s.status)}>{SHIPMENT_LABELS[s.status]}</Badge>
                         </Link>
                       </li>
