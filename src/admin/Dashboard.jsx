@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ArrowRight, Briefcase, FileText, Inbox, Mail, Newspaper, Package, Plus, UserPlus, Users } from 'lucide-react'
+import { Activity, ArrowRight, Briefcase, Factory, FileSignature, FileText, Gavel, Inbox, Mail, Mails, Megaphone, Newspaper, Package, Plus, UserPlus, Users } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { Alert, Badge, Button, Card } from './ui'
@@ -13,9 +13,14 @@ const TILES = [
   { key: 'quotesOpen', label: 'Open invoices', icon: FileText, to: '/staff360/quotes?status=open', perm: 'quotes', tone: 'bg-primary/10 text-primary' },
   { key: 'inboundUnread', label: 'Unread emails', icon: Mail, to: '/staff360/messages?unread=1', perm: 'email', tone: 'bg-accent/15 text-accent' },
   { key: 'clients', label: 'Clients', icon: Briefcase, to: '/staff360/clients', perm: 'clients', tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
+  { key: 'tendersOpen', label: 'Open for bids', icon: Megaphone, to: '/staff360/tenders?state=open', perm: 'procurement', tone: 'bg-accent/15 text-accent' },
+  { key: 'bidsNew', label: 'New bids', icon: Gavel, to: '/staff360/bids', perm: 'procurement', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  { key: 'ordersOpen', label: 'Orders awaiting the supplier', icon: FileSignature, to: '/staff360/purchase-orders?status=issued', perm: 'procurement', tone: 'bg-primary/10 text-primary' },
+  { key: 'procUnread', label: 'Unread supplier emails', icon: Mails, to: '/staff360/procurement/messages?unread=1', perm: 'procurement', tone: 'bg-accent/15 text-accent' },
+  { key: 'suppliers', label: 'Suppliers', icon: Factory, to: '/staff360/suppliers', perm: 'procurement', tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
   { key: 'users', label: 'Active users', icon: Users, to: '/staff360/users', perm: 'users', tone: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300' },
 ]
-const TONE = { create: 'green', update: 'blue', delete: 'red', invite: 'amber', upload: 'muted', send: 'green', send_failed: 'red', accepted: 'green', declined: 'red', rotate: 'amber', revoke: 'red', receive: 'accent', reset: 'muted' }
+const TONE = { create: 'green', update: 'blue', delete: 'red', invite: 'amber', upload: 'muted', send: 'green', send_failed: 'red', accepted: 'green', declined: 'red', rotate: 'amber', revoke: 'red', receive: 'accent', reset: 'muted', status: 'blue', published: 'green', acknowledged: 'green', withdraw: 'red', register: 'amber', answer: 'accent', request_info: 'amber' }
 
 const greet = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening' }
 const ago = iso => {
@@ -72,6 +77,8 @@ export default function Dashboard() {
           <div className="flex flex-col gap-2.5">
             {me?.permissions?.products && <Link to="/staff360/products/new"><Button variant="accent" className="w-full justify-start"><Plus className="w-4 h-4" />New product</Button></Link>}
             {me?.permissions?.quotes && <Link to="/staff360/quotes/new"><Button variant="outline" className="w-full justify-start"><FileText className="w-4 h-4" />New invoice</Button></Link>}
+            {me?.permissions?.procurement && <Link to="/staff360/tenders/new"><Button variant={me?.permissions?.products ? 'outline' : 'accent'} className="w-full justify-start"><Megaphone className="w-4 h-4" />New bidding opportunity</Button></Link>}
+            {me?.permissions?.procurement && <Link to="/staff360/purchase-orders/new"><Button variant="outline" className="w-full justify-start"><FileSignature className="w-4 h-4" />New purchase order</Button></Link>}
             {me?.permissions?.posts && <Link to="/staff360/posts/new"><Button variant="outline" className="w-full justify-start"><Plus className="w-4 h-4" />New blog post</Button></Link>}
             {me?.permissions?.users && <Link to="/staff360/users"><Button variant="outline" className="w-full justify-start"><UserPlus className="w-4 h-4" />Invite a user</Button></Link>}
           </div>
@@ -97,10 +104,10 @@ export default function Dashboard() {
               {activity?.map(r => (
                 <li key={r.id} className="flex items-center gap-3 py-3">
                   <div className="w-8 h-8 rounded-full bg-muted text-[10px] font-bold flex items-center justify-center shrink-0">
-                    {({ mcp: 'AI', inbound: '✉', client: 'CL', system: 'SYS' })[r.actor_label] || r.actor_label.slice(0, 2).toUpperCase()}
+                    {({ mcp: 'AI', inbound: '✉', client: 'CL', supplier: 'SU', system: 'SYS' })[r.actor_label] || r.actor_label.slice(0, 2).toUpperCase()}
                   </div>
                   <p className="flex-1 min-w-0 text-sm truncate">
-                    <span className="font-medium">{({ mcp: 'Claude', inbound: 'Inbound email', client: 'A client', system: 'System' })[r.actor_label] || r.actor_label}</span>
+                    <span className="font-medium">{({ mcp: 'Claude', inbound: 'Inbound email', client: 'A client', supplier: 'A supplier', system: 'System' })[r.actor_label] || r.actor_label}</span>
                     <Badge tone={TONE[r.action] || 'muted'} className="mx-1.5">{r.action}</Badge>
                     <span className="text-muted-foreground">{r.entity} {r.entity_id}</span>
                   </p>

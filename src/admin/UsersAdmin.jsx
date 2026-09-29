@@ -6,7 +6,7 @@ import { useAuth } from './AuthContext'
 import { Button, Card, Field, Input, Select, PageHeader, Table, Td, Badge, Alert, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 
-const ROLES = ['admin', 'editor', 'sales']
+const ROLES = ['admin', 'editor', 'sales', 'procurement']
 
 export default function UsersAdmin() {
   const { me } = useAuth()

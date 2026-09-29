@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Briefcase, FileText, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Menu, Moon, Newspaper, Package, ScrollText, Settings, Sun, Users, X, Star } from 'lucide-react'
+import { Briefcase, Factory, FileSignature, FileText, Gavel, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Mails, Menu, Moon, Newspaper, Package, ScrollText, Settings, Sun, Users, X, Star } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { useAdminTheme } from './AdminTheme'
@@ -14,12 +14,17 @@ const NAV = [
   { to: '/staff360/quotes', label: 'Invoices', icon: FileText, perm: 'quotes', group: 'Sales' },
   { to: '/staff360/messages', label: 'Messages', icon: Mail, perm: 'email', group: 'Sales', badge: 'inboundUnread' },
   { to: '/staff360/clients', label: 'Clients', icon: Briefcase, perm: 'clients', group: 'Sales' },
+  // Procurement is the sourcing leg, as Sales is the selling leg: bids and LPOs where sales has enquiries and invoices.
+  { to: '/staff360/tenders', label: 'Bidding', icon: Gavel, perm: 'procurement', group: 'Procurement', badge: 'bidsNew', also: ['/staff360/bids'] },
+  { to: '/staff360/purchase-orders', label: 'Purchase orders', icon: FileSignature, perm: 'procurement', group: 'Procurement' },
+  { to: '/staff360/procurement/messages', label: 'Messages', icon: Mails, perm: 'procurement', group: 'Procurement', badge: 'procUnread' },
+  { to: '/staff360/suppliers', label: 'Suppliers', icon: Factory, perm: 'procurement', group: 'Procurement' },
   { to: '/staff360/users', label: 'Users', icon: Users, perm: 'users', group: 'System' },
   { to: '/staff360/audit', label: 'Audit log', icon: ScrollText, perm: 'audit', group: 'System' },
   { to: '/staff360/templates', label: 'Email templates', icon: LayoutTemplate, perm: 'settings', group: 'System' },
   { to: '/staff360/settings', label: 'Settings', icon: Settings, perm: 'settings', group: 'System' },
 ]
-const GROUPS = ['Manage', 'Sales', 'System']
+const GROUPS = ['Manage', 'Sales', 'Procurement', 'System']
 
 const initials = s => (s || '?').split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('')
 
@@ -30,15 +35,18 @@ export default function AdminLayout() {
   const [stats, setStats] = useState({})
   const { pathname } = useLocation()
 
-  // Unread-mail badge: refreshed on every route change and once a minute.
+  // Unread-mail and new-bid badges: refreshed on every route change and once a minute.
+  const badges = Boolean(me?.permissions?.email || me?.permissions?.procurement || me?.permissions?.posts)
   useEffect(() => {
-    if (!me?.permissions?.email) return
+    if (!badges) return
     const load = () => adminFetch('/stats').then(setStats).catch(() => {})
     load(); const t = setInterval(load, 60000); return () => clearInterval(t)
-  }, [pathname, me?.permissions?.email])
+  }, [pathname, badges])
 
   const items = NAV.filter(n => !n.perm || me?.permissions?.[n.perm])
-  const current = [...NAV].reverse().find(n => (n.end ? pathname === n.to : pathname.startsWith(n.to)))?.label || 'Admin'
+  const at = n => (n.end ? pathname === n.to : pathname.startsWith(n.to) || (n.also || []).some(p => pathname.startsWith(p)))
+  const hit = [...NAV].reverse().find(at)
+  const current = hit ? (hit.group === 'Procurement' && hit.label === 'Messages' ? 'Procurement messages' : pathname.startsWith('/staff360/bids') ? 'Bids' : hit.label) : 'Admin'
   const who = me?.name || me?.email
 
   const sidebar = (
@@ -53,22 +61,22 @@ export default function AdminLayout() {
       <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
         {GROUPS.filter(g => items.some(n => n.group === g)).map(g => (<div key={g} className="space-y-1 [&+&]:mt-5">
         <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{g}</p>
-        {items.filter(n => n.group === g).map(({ to, label, icon: Icon, end, badge }) => (
+        {items.filter(n => n.group === g).map(({ to, label, icon: Icon, end, badge, also }) => { const alsoHere = (also || []).some(p => pathname.startsWith(p)); return (
           <NavLink
             key={to} to={to} end={end} onClick={() => setOpen(false)}
             className={({ isActive }) =>
               `relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                isActive ? 'bg-accent/10 text-accent' : 'text-foreground/70 hover:bg-muted hover:text-foreground'}`}
+                isActive || alsoHere ? 'bg-accent/10 text-accent' : 'text-foreground/70 hover:bg-muted hover:text-foreground'}`}
           >
-            {({ isActive }) => (
+            {({ isActive: on }) => { const isActive = on || alsoHere; return (
               <>
                 {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-accent" />}
                 <Icon className="w-4 h-4 shrink-0" />{label}
                 {badge && stats[badge] > 0 && <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-accent text-accent-foreground text-[11px] font-bold flex items-center justify-center">{stats[badge]}</span>}
               </>
-            )}
+            ) }}
           </NavLink>
-        ))}
+        ) })}
         </div>))}
       </nav>
 

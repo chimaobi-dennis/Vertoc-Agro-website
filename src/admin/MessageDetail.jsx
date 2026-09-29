@@ -8,8 +8,12 @@ import Composer from './Composer'
 import { openDocument } from './documents'
 import { fmtDateTime, messageTone, threadKeyOf } from './format'
 
-export default function MessageDetail() {
+/** One email. scope="procurement" reads it from the procurement inbox and links it to the supplier, bid and order. */
+export default function MessageDetail({ scope = 'sales' }) {
+  const procurement = scope === 'procurement'
+  const base = procurement ? '/procurement' : ''
   const { id } = useParams(); const nav = useNavigate()
+  const [links, setLinks] = useState({})
   const [m, setM] = useState(null)
   const [err, setErr] = useState(null)
   const [client, setClient] = useState(null)
@@ -19,15 +23,18 @@ export default function MessageDetail() {
   const [toast, toastEl] = useToast()
 
   useEffect(() => {
-    adminFetch(`/messages/${id}`).then(async x => {
+    adminFetch(`${base}/messages/${id}`).then(async x => {
       setM(x)
-      if (x.direction === 'in' && !x.read_at) adminFetch(`/messages/${id}/read`, { method: 'POST', body: {} }).then(setM).catch(() => {})
+      if (x.direction === 'in' && !x.read_at) adminFetch(`${base}/messages/${id}/read`, { method: 'POST', body: {} }).then(setM).catch(() => {})
+      if (x.supplier_id) adminFetch(`/suppliers/${x.supplier_id}`).then(s => setLinks(l => ({ ...l, supplier: s }))).catch(() => {})
+      if (x.po_id) adminFetch(`/purchase-orders/${x.po_id}`).then(o => setLinks(l => ({ ...l, order: o }))).catch(() => {})
+      if (x.bid_id) adminFetch(`/bids/${x.bid_id}`).then(b => setLinks(l => ({ ...l, bid: b }))).catch(() => {})
       if (x.client_id) adminFetch(`/clients/${x.client_id}`).then(setClient).catch(() => {})
       if (x.quote_id) adminFetch(`/quotes/${x.quote_id}`).then(setQuote).catch(() => {})
     }).catch(e => setErr(e.message))
-  }, [id])
+  }, [id, base])
 
-  const toggleRead = async () => { try { setM(await adminFetch(`/messages/${id}/read`, { method: 'POST', body: { read: !m.read_at } })); toast(m.read_at ? 'Marked unread' : 'Marked read') } catch (e) { toast(e.message, 'error') } }
+  const toggleRead = async () => { try { setM(await adminFetch(`${base}/messages/${id}/read`, { method: 'POST', body: { read: !m.read_at } })); toast(m.read_at ? 'Marked unread' : 'Marked read') } catch (e) { toast(e.message, 'error') } }
   const createClient = () => nav('/staff360/clients/new', { state: { prefill: { name: m.from_name || m.from_email, data: { email: m.from_email } } } })
 
   if (err) return <Alert>{err}</Alert>
@@ -35,10 +42,11 @@ export default function MessageDetail() {
 
   const inbound = m.direction === 'in'
   const threadKey = threadKeyOf(m)
+  const inbox = `/staff360${base}/messages?t=${encodeURIComponent(threadKey)}`
 
   return (
     <>
-      <Link to={`/staff360/messages?t=${encodeURIComponent(threadKey)}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Conversation</Link>
+      <Link to={inbox} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Conversation</Link>
       <div className="grid lg:grid-cols-[1fr_320px] gap-6 max-w-6xl items-start">
         <Card className="animate-fade-up">
           <div className="p-6 border-b border-border">
@@ -91,17 +99,26 @@ export default function MessageDetail() {
           </Card>
           <Card className="p-5 animate-fade-up text-sm space-y-3" style={{ animationDelay: '140ms' }}>
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Linked to</h2>
+            {procurement && <>
+              <p><span className="text-muted-foreground">Supplier · </span>{m.supplier_id ? <Link to={`/staff360/suppliers/${m.supplier_id}?tab=messages`} className="font-medium text-accent">{links.supplier?.company_name || `#${m.supplier_id}`}</Link> : <span className="text-muted-foreground">none</span>}</p>
+              {!m.supplier_id && inbound && <Button variant="outline" className="w-full h-9" onClick={() => nav('/staff360/suppliers/new', { state: { prefill: { company_name: m.from_name || m.from_email, email: m.from_email } } })}><UserPlus className="w-4 h-4" />Add the sender as a supplier</Button>}
+              <p><span className="text-muted-foreground">Bid · </span>{m.bid_id ? <Link to={`/staff360/bids/${m.bid_id}`} className="font-medium text-accent">{links.bid?.tender ? `${links.bid.tender.number} · bid #${m.bid_id}` : `#${m.bid_id}`}</Link> : <span className="text-muted-foreground">none</span>}</p>
+              <p><span className="text-muted-foreground">Order · </span>{m.po_id ? <Link to={`/staff360/purchase-orders/${m.po_id}`} className="font-medium text-accent">{links.order?.number || `#${m.po_id}`}</Link> : <span className="text-muted-foreground">none</span>}</p>
+            </>}
+            {!procurement && <>
             <p><span className="text-muted-foreground">Client · </span>{m.client_id ? <Link to={`/staff360/clients/${m.client_id}?tab=messages`} className="font-medium text-accent">{client?.name || `#${m.client_id}`}</Link> : <span className="text-muted-foreground">none</span>}</p>
             {!m.client_id && inbound && <Button variant="outline" className="w-full h-9" onClick={createClient}><UserPlus className="w-4 h-4" />Create client from sender</Button>}
             <p><span className="text-muted-foreground">Invoice · </span>{m.quote_id ? <Link to={`/staff360/quotes/${m.quote_id}`} className="font-medium text-accent">{quote?.number || `#${m.quote_id}`}</Link> : <span className="text-muted-foreground">none</span>}</p>
             <p><span className="text-muted-foreground">Enquiry · </span>{m.enquiry_id ? <Link to={`/staff360/enquiries/${m.enquiry_id}`} className="font-medium text-accent">#{m.enquiry_id}</Link> : <span className="text-muted-foreground">none</span>}</p>
+            </>}
           </Card>
         </div>
       </div>
       <Composer open={compose} onClose={() => setCompose(false)} title={inbound ? `Reply to ${m.from_name || m.from_email}` : `Email ${m.to_name || m.to_email}`}
         to={inbound ? m.from_email : m.to_email} subject={inbound ? (/^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`) : m.subject} body=""
         clientId={m.client_id} quoteId={inbound ? null : m.quote_id} enquiryId={m.enquiry_id} replyToId={inbound ? m.id : null}
-        onSent={() => { toast('Sent'); nav(`/staff360/messages?t=${encodeURIComponent(threadKey)}`) }} />
+        scope={scope} supplierId={m.supplier_id ?? null} bidId={m.bid_id ?? null} poId={m.po_id ?? null}
+        onSent={() => { toast('Sent'); nav(inbox) }} />
       {toastEl}
     </>
   )

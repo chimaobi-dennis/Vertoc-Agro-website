@@ -15,19 +15,22 @@ const ext = d => (d.name.includes('.') ? d.name.split('.').pop().toUpperCase().s
 
 /* ---------------------------------------------------------- documents --- */
 
-export function DocumentsPanel({ clientId }) {
+/** Files of one record. `scope` names the owner: { client_id } (the default, from `clientId`), { supplier_id }, { bid_id } or { po_id }. */
+export function DocumentsPanel({ clientId, scope = null, note = 'private to your team' }) {
+  const owner = scope || { client_id: clientId }
+  const query = Object.entries(owner).map(([k, v]) => `${k}=${v}`).join('&')
   const [docs, setDocs] = useState(null)
   const [queue, setQueue] = useState([])         // [{ name, error? }]
   const [drag, setDrag] = useState(false)
   const inputRef = useRef(null)
   const [toast, toastEl] = useToast()
 
-  useEffect(() => { adminFetch(`/documents?client_id=${clientId}`).then(setDocs).catch(e => toast(e.message, 'error')) }, [clientId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { adminFetch(`/documents?${query}`).then(setDocs).catch(e => toast(e.message, 'error')) }, [query]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const upload = async files => {
     for (const file of files) {
       setQueue(q => [...q, { name: file.name }])
-      try { const d = await uploadDocument(file, { client_id: clientId }); setDocs(ds => [d, ...(ds || [])]); setQueue(q => q.filter(x => x.name !== file.name)) }
+      try { const d = await uploadDocument(file, owner); setDocs(ds => [d, ...(ds || [])]); setQueue(q => q.filter(x => x.name !== file.name)) }
       catch (e) { setQueue(q => q.map(x => x.name === file.name ? { ...x, error: e.message } : x)) }
     }
   }
@@ -45,7 +48,7 @@ export function DocumentsPanel({ clientId }) {
         <input ref={inputRef} type="file" multiple accept={ACCEPT} className="sr-only" onChange={e => { upload([...e.target.files]); e.target.value = '' }} />
         <div className="w-11 h-11 rounded-xl bg-accent/15 text-accent flex items-center justify-center mx-auto mb-3"><Upload className="w-5 h-5" /></div>
         <p className="font-semibold">Drop files here, or click to browse</p>
-        <p className="text-xs text-muted-foreground mt-1">Images, PDF, Word, Excel, PowerPoint, CSV or text · up to 20 MB each · private to your team</p>
+        <p className="text-xs text-muted-foreground mt-1">Images, PDF, Word, Excel, PowerPoint, CSV or text · up to 20 MB each · {note}</p>
       </div>
 
       {queue.length > 0 && (
@@ -65,7 +68,7 @@ export function DocumentsPanel({ clientId }) {
           {docs?.map(d => (
             <tr key={d.id} className="hover:bg-muted/40">
               <Td className="w-16">{isImage(d) ? <Thumb id={d.id} className="h-10 w-14" /> : <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center"><FileText className="w-4 h-4" /></div>}</Td>
-              <Td><button onClick={() => openDocument(d.id)} className="font-medium hover:text-accent text-left">{d.name}</button></Td>
+              <Td><button onClick={() => openDocument(d.id)} className="font-medium hover:text-accent text-left">{d.name}</button>{d.label && <span className="block text-xs text-muted-foreground">{d.label}</span>}</Td>
               <Td><Badge>{ext(d)}</Badge></Td>
               <Td className="text-muted-foreground whitespace-nowrap">{fmtBytes(d.bytes)}</Td>
               <Td className="text-muted-foreground whitespace-nowrap">{fmtDate(d.created_at)}</Td>

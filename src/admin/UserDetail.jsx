@@ -7,7 +7,7 @@ import { Alert, Badge, Button, Card, Field, Input, PageHeader, Select, useToast 
 import { Bone } from '../components/Skeleton'
 import { fmtDateTime } from './format'
 
-const ROLES = ['admin', 'editor', 'sales']
+const ROLES = ['admin', 'editor', 'sales', 'procurement']
 
 /** One staff account: profile (editable), sign-in facts from Supabase Auth, recent activity. */
 export default function UserDetail() {
@@ -77,7 +77,7 @@ export default function UserDetail() {
                 <div className="grid md:grid-cols-2 gap-5">
                   <Field label="Name"><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Display name" /></Field>
                   <Field label="Email" hint={self ? 'This is the address you sign in with.' : 'The address they sign in with; changing it takes effect immediately.'}><Input type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></Field>
-                  <Field label="Role" hint={self ? "You can't change your own role." : 'admin: everything · editor: catalogue and blog · sales: clients, invoices, email'}>
+                  <Field label="Role" hint={self ? "You can't change your own role." : 'admin: everything · editor: catalogue and blog · sales: clients, invoices, email · procurement: bidding, suppliers, purchase orders'}>
                     <Select value={form.role} disabled={self} onChange={e => setForm({ ...form, role: e.target.value })}>{ROLES.map(r => <option key={r}>{r}</option>)}</Select>
                   </Field>
                   <Field label="Position" hint='Shown in their emails, e.g. "Precious Ubadire, Managing Director"'><Input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} placeholder="Managing Director" /></Field>

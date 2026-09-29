@@ -17,7 +17,9 @@ const time = iso => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit',
  * with In-Reply-To / References, so the client's mail app files it in the
  * same conversation. A different topic is a new email, not a reply.
  */
-export default function Thread({ threadKey, email = '', clientId = null, refreshKey = 0, onRead, onSent, bodyClass = '' }) {
+export default function Thread({ threadKey, email = '', clientId = null, refreshKey = 0, onRead, onSent, bodyClass = '', scope = 'sales', supplierId = null }) {
+  const procurement = scope === 'procurement'
+  const base = procurement ? '/procurement' : ''
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState(null)
   const [opened, setOpened] = useState(() => new Set())
@@ -33,16 +35,16 @@ export default function Thread({ threadKey, email = '', clientId = null, refresh
 
   const load = useCallback(async () => {
     try {
-      const list = await adminFetch(`/messages/thread?key=${encodeURIComponent(threadKey)}`)
+      const list = await adminFetch(`${base}/messages/thread?key=${encodeURIComponent(threadKey)}`)
       setRows(list); setErr(null)
       if (list.some(m => m.direction === 'in' && !m.read_at)) {
-        await adminFetch('/messages/thread/read', { method: 'POST', body: { key: threadKey } }).catch(() => {})
+        await adminFetch(`${base}/messages/thread/read`, { method: 'POST', body: { key: threadKey } }).catch(() => {})
         onRead?.()
       }
     } catch (e) { setErr(e.message) }
   }, [threadKey]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setRows(null); setBody(''); setFiles([]); setOpened(new Set()); load() }, [load, refreshKey])
-  useEffect(() => { adminFetch('/messages/senders').then(l => { setSenders(l); setFromId(f => f || l[0]?.id || '') }).catch(() => {}) }, [])
+  useEffect(() => { adminFetch(`${base}/messages/senders`).then(l => { setSenders(l); setFromId(f => f || l[0]?.id || '') }).catch(() => {}) }, [base])
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }) }, [rows])
 
   const last = rows?.length ? rows[rows.length - 1] : null
@@ -54,7 +56,10 @@ export default function Thread({ threadKey, email = '', clientId = null, refresh
   const addFile = async e => {
     const file = e.target.files?.[0]; if (!file) return
     setUploading(true)
-    try { const d = await uploadDocument(file, { client_id: clientId || undefined }); setFiles(f => [...f, d]) }
+    try {
+      if (procurement && !supplierId) throw new Error('Files are kept on a supplier record. Add this sender as a supplier to attach files.')
+      const d = await uploadDocument(file, procurement ? { supplier_id: supplierId } : { client_id: clientId || undefined }); setFiles(f => [...f, d])
+    }
     catch (x) { toast(x.message, 'error') } finally { setUploading(false); e.target.value = '' }
   }
   const send = async e => {
@@ -62,7 +67,7 @@ export default function Thread({ threadKey, email = '', clientId = null, refresh
     if (!body.trim() || !to || !last) return
     setSending(true)
     try {
-      const r = await adminFetch('/messages', { method: 'POST', body: { to, subject, body, client_id: clientId, reply_to_id: lastIn?.id ?? last.id, attachment_ids: files.map(f => f.id), from_id: fromId || null } })
+      const r = await adminFetch(`${base}/messages`, { method: 'POST', body: { to, subject, body, ...(procurement ? { supplier_id: supplierId } : { client_id: clientId }), reply_to_id: lastIn?.id ?? last.id, attachment_ids: files.map(f => f.id), from_id: fromId || null } })
       setBody(''); setFiles([]); toast('Sent'); onSent?.(r); load()
     } catch (x) { toast(x.message, 'error') } finally { setSending(false) }
   }
@@ -108,7 +113,7 @@ export default function Thread({ threadKey, email = '', clientId = null, refresh
                   <div className={`mt-1.5 flex items-center justify-end gap-2 text-[11px] ${mine ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
                     <span>{time(m.created_at)}</span>
                     {mine && m.status !== 'sent' && <Badge tone={messageTone(m.status)}>{m.status}</Badge>}
-                    <Link to={`/staff360/messages/${m.id}`} className="underline-offset-2 hover:underline">Open</Link>
+                    <Link to={`/staff360${base}/messages/${m.id}`} className="underline-offset-2 hover:underline">Open</Link>
                   </div>
                   {m.status === 'failed' && <p className="mt-1 text-[11px] text-destructive-foreground bg-destructive/80 rounded-lg px-2 py-1">{m.error}</p>}
                 </div>

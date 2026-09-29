@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Building2, Check, Copy, FileText, Globe, Inbox, KeyRound, LayoutTemplate, Mail, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Building2, Check, Copy, FileText, Gavel, Globe, Inbox, KeyRound, LayoutTemplate, Mail, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Field, Input, PageHeader, Select, Tabs, Textarea, useToast } from './ui'
@@ -15,6 +15,7 @@ const TABS = [
   { key: 'site', label: 'Site', icon: Globe },
   { key: 'company', label: 'Company', icon: Building2 },
   { key: 'quotes', label: 'Invoices', icon: FileText },
+  { key: 'procurement', label: 'Procurement', icon: Gavel },
   { key: 'email', label: 'Email', icon: Mail },
   { key: 'mcp', label: 'MCP & API', icon: Plug },
 ]
@@ -58,7 +59,7 @@ export default function SettingsAdmin() {
 
   return (
     <>
-      <PageHeader eyebrow="System" title="Settings" description="Site identity, company details, invoice defaults, email sending and Claude access — all editable here, nothing hard-coded." />
+      <PageHeader eyebrow="System" title="Settings" description="Site identity, company details, invoice and procurement defaults, email sending and Claude access — all editable here, nothing hard-coded." />
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
       <Tabs tabs={TABS} value={tab} onChange={t => { const n = new URLSearchParams(sp); n.set('tab', t); setSp(n, { replace: true }) }} />
 
@@ -120,6 +121,7 @@ export default function SettingsAdmin() {
             </Group>
           )}
 
+          {tab === 'procurement' && <ProcurementSettings settings={settings} onSaved={onSaved} />}
           {tab === 'email' && <EmailSettings settings={settings} onSaved={onSaved} reload={reload} />}
           {tab === 'mcp' && <McpSettings settings={settings} onSaved={onSaved} reload={reload} />}
         </div>
@@ -358,6 +360,46 @@ function DepartmentsCard() {
       )}
       {toastEl}
     </Card>
+  )
+}
+
+/** Defaults for bidding opportunities and purchase orders, and who hears about what. */
+function ProcurementSettings({ settings, onSaved }) {
+  const [senders, setSenders] = useState([])
+  useEffect(() => { adminFetch('/procurement/messages/senders').then(setSenders).catch(() => setSenders([])) }, [])
+  if (!settings.procurement) return <Alert tone="info">Procurement settings appear once the server is updated.</Alert>
+  return (
+    <>
+      <Group group="procurement" settings={settings} onSaved={onSaved} title="Procurement defaults" description="Applied to every new bidding opportunity and purchase order; each one can still override them.">
+        {({ form, setForm, bind }) => (
+          <div className="grid md:grid-cols-2 gap-5">
+            <Field label="Default currency" hint="ISO code, e.g. NGN, USD"><Input maxLength={3} value={form.default_currency ?? ''} onChange={e => setForm({ ...form, default_currency: e.target.value.toUpperCase() })} /></Field>
+            <Field label="Default unit" hint="What quantities and prices are per"><Input maxLength={20} {...bind('default_unit')} placeholder="MT" /></Field>
+            <Field label="Payment terms" hint="Pre-filled on a new bidding opportunity. Suppliers say whether they accept them." className="md:col-span-2"><Textarea rows={3} {...bind('payment_terms')} /></Field>
+            <Field label="Purchase order terms" hint="Printed on every new PO and LPO" className="md:col-span-2"><Textarea rows={4} {...bind('po_terms')} placeholder="e.g. Goods are subject to inspection for quality and quantity on delivery." /></Field>
+            <Field label="Purchase order notes" hint="Printed above the terms" className="md:col-span-2"><Textarea rows={2} className="min-h-[72px]" {...bind('po_notes')} /></Field>
+            <div className="md:col-span-2 border-t border-border pt-5 grid md:grid-cols-2 gap-5">
+              <Field label="Send procurement email from" hint="Bid confirmations, status emails and orders. Departments are set up under Settings → Email.">
+                <Select value={form.from_id ?? ''} onChange={e => setForm({ ...form, from_id: e.target.value })}>
+                  <option value="">The default From address</option>
+                  {senders.filter(s => s.id).map(s => <option key={s.id} value={s.id}>{s.name} &lt;{s.email}&gt;</option>)}
+                </Select>
+              </Field>
+              <Field label="Notify the procurement team at" hint="Defaults to the notification address under Settings → Email"><Input type="email" {...bind('notify_to')} placeholder="procurement@vertocagro.com" /></Field>
+              <div className="md:col-span-2 space-y-2 text-sm">
+                <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_bids !== false} onChange={ev => setForm({ ...form, notify_bids: ev.target.checked })} />Email the team when a bid arrives, a supplier answers, an order is acknowledged or a supplier writes</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={form.ack_bids !== false} onChange={ev => setForm({ ...form, ack_bids: ev.target.checked })} />Confirm every bid to the supplier as soon as it arrives</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={form.notify_status !== false} onChange={ev => setForm({ ...form, notify_status: ev.target.checked })} />Email the supplier when the status of their bid changes</label>
+              </div>
+            </div>
+          </div>
+        )}
+      </Group>
+      <Card className="p-6 animate-fade-up text-sm">
+        <h2 className="font-semibold">Emails suppliers receive</h2>
+        <p className="text-muted-foreground mt-0.5">The wording of every procurement email — bid received, status changed, request for information, purchase order, account confirmation — is edited under <Link to="/staff360/templates" className="font-semibold text-accent">Email templates</Link>.</p>
+      </Card>
+    </>
   )
 }
 

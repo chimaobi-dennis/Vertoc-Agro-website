@@ -10,6 +10,15 @@ import ProductForm from './ProductForm'
 import PostsAdmin from './PostsAdmin'
 import ReviewsAdmin from './ReviewsAdmin'
 import ShipmentDetail from './ShipmentDetail'
+import TendersAdmin from './TendersAdmin'
+import TenderForm from './TenderForm'
+import BidsAdmin from './BidsAdmin'
+import BidDetail from './BidDetail'
+import SuppliersAdmin from './SuppliersAdmin'
+import SupplierDetail from './SupplierDetail'
+import PurchaseOrdersAdmin from './PurchaseOrdersAdmin'
+import PurchaseOrderForm from './PurchaseOrderForm'
+import ProcurementMessages from './ProcurementMessages'
 import PostForm from './PostForm'
 import UsersAdmin from './UsersAdmin'
 import UserDetail from './UserDetail'
@@ -98,6 +107,20 @@ export default function AdminApp() {
           <Route path="settings" element={P('settings', <SettingsAdmin />)} />
           <Route path="enquiries" element={P('quotes', <EnquiriesAdmin />)} />
           <Route path="enquiries/:id" element={P('quotes', <EnquiryDetail />)} />
+          {/* procurement: the sourcing leg */}
+          <Route path="tenders" element={P('procurement', <TendersAdmin />)} />
+          <Route path="tenders/new" element={P('procurement', <TenderForm />)} />
+          <Route path="tenders/:id" element={P('procurement', <TenderForm />)} />
+          <Route path="bids" element={P('procurement', <BidsAdmin />)} />
+          <Route path="bids/:id" element={P('procurement', <BidDetail />)} />
+          <Route path="suppliers" element={P('procurement', <SuppliersAdmin />)} />
+          <Route path="suppliers/new" element={P('procurement', <SupplierDetail />)} />
+          <Route path="suppliers/:id" element={P('procurement', <SupplierDetail />)} />
+          <Route path="purchase-orders" element={P('procurement', <PurchaseOrdersAdmin />)} />
+          <Route path="purchase-orders/new" element={P('procurement', <PurchaseOrderForm />)} />
+          <Route path="purchase-orders/:id" element={P('procurement', <PurchaseOrderForm />)} />
+          <Route path="procurement/messages" element={P('procurement', <ProcurementMessages />)} />
+          <Route path="procurement/messages/:id" element={P('procurement', <MessageDetail scope="procurement" />)} />
           <Route path="audit" element={P('audit', <AuditLog />)} />
           <Route path="*" element={<Navigate to="/staff360" replace />} />
         </Route>

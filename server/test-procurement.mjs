@@ -153,7 +153,8 @@ try {
     if (DRY) await step('the supplier gets a confirmation, the team a notice (dry run)', async () => {
       const a = await mailTo(SUP.email, 'We received your bid%'), n = await mailTo('procurement@e2e.invalid', 'New bid from%')
       if (!a || a.scope !== 'procurement' || a.bid_id !== guest.id || a.supplier_id !== guest.supplier_id || !/640,000/.test(a.body)) throw new Error('ack: ' + JSON.stringify(a)?.slice(0, 200))
-      if (!n || n.headers?.internal !== true || !/10,000\.00 below/.test(n.body)) throw new Error('notice: ' + JSON.stringify(n)?.slice(0, 200))
+      if (!n || n.headers?.internal !== true || !/we asked NGN 650,000\.00 per MT \(NGN 10,000\.00 below our asking price\)/.test(n.body)) throw new Error('notice: ' + JSON.stringify(n)?.slice(0, 200))
+      if (/\{\{|\}\}/.test(a.body + n.body + a.subject + n.subject)) throw new Error('template tags left in the email')
       return `"${a.subject}" · "${n.subject}"`
     })
     await step('a second bid from the same address is refused', () => refused(() => pub(`/tenders/${tender.number}/bids`, { method: 'POST', body: bidBody({ price: 600000 }) }), /already submitted/, 'duplicate bid'))
@@ -337,6 +338,7 @@ try {
   if (DRY) await step('POST /purchase-orders/:id/send (dry run: PDF attached and filed, → issued)', async () => {
     const r = await buyer(`/purchase-orders/${order.id}/send`, { method: 'POST', body: {} })
     if (r.order.status !== 'issued' || !r.order.issued_at || r.message.status !== 'sent' || r.message.scope !== 'procurement' || r.message.po_id !== order.id || r.message.supplier_id !== sup.id || !r.message.attachments.some(a => a.name === `${order.number}.pdf` && a.document_id)) throw new Error(JSON.stringify(r).slice(0, 300))
+    if (/\{\{|\}\}/.test(r.message.body) || !/Delivery is required by .* at Ibadan, Oyo State\./.test(r.message.body)) throw new Error('order email text: ' + r.message.body.slice(0, 300))
     const docs = await buyer(`/documents?supplier_id=${sup.id}`); const d = docs.find(x => x.name === `${order.number}.pdf`); if (!d) throw new Error('PDF not under the supplier'); paths.push(d.path)
     return `"${r.message.subject}" · PDF filed under the supplier`
   })

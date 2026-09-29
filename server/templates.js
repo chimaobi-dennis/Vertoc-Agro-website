@@ -164,11 +164,17 @@ const quantity = n => { const v = Number(n) || 0; return new Intl.NumberFormat('
 const SAMPLE_BID = { supplier_name: 'Kano Grains Ltd', contact_person: 'Musa Abdullahi', email: 'musa@example.com', phone: '+234 803 000 0000', tender_number: 'VB-2026-0004', tender_title: 'Soybeans supply opportunity', commodity: 'Soybeans', quantity: '500 MT', price: 'NGN 640,000.00 per MT', asking_price: 'NGN 650,000.00 per MT', vs_asking: 'NGN 10,000.00 below our asking price', total: 'NGN 320,000,000.00', commodity_location: 'Kano', delivery_date: '15 November 2026', closes_at: '20 October 2026', terms_answer: 'accepts the stated terms', note: '', status: 'Open', status_explained: '', status_note: '' }
 
 const truthy = v => v != null && v !== '' && v !== false && v !== 0
-/** {{#if x}}…{{/if}} blocks, then {{x}} substitutions. Unknown names render empty. */
+/** {{#if x}}…{{/if}} blocks (they may be nested), then {{x}} substitutions. Unknown names render empty. */
+const INNERMOST_IF = /\{\{#if\s+([\w.]+)\s*\}\}((?:(?!\{\{#if\s)[\s\S])*?)\{\{\/if\}\}/g
 export function renderTemplate(str, vars = {}) {
-  return String(str ?? '')
-    .replace(/\{\{#if\s+([\w.]+)\s*\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, k, inner) => (truthy(vars[k]) ? inner : ''))
-    .replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, k) => (vars[k] == null ? '' : String(vars[k])))
+  let out = String(str ?? '')
+  // Innermost blocks first, until none is left, so a block inside a block resolves correctly.
+  for (let i = 0; i < 20 && /\{\{#if\s/.test(out); i++) {
+    const next = out.replace(INNERMOST_IF, (_, k, inner) => (truthy(vars[k]) ? inner : ''))
+    if (next === out) break
+    out = next
+  }
+  return out.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, k) => (vars[k] == null ? '' : String(vars[k])))
 }
 
 /** The stored template merged over its default; the default alone when no row exists. */
