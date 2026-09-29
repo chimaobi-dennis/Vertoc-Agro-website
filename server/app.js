@@ -21,11 +21,12 @@ import { buildServer } from './mcp.js'
 import * as content from './content.js'
 import { verifyTurnstile } from './verify-turnstile.js'
 import adminRouter from './admin-routes.js'
+import supplierRouter from './supplier-routes.js'
 import { driver } from './store/index.js'
 import { renderQuotePdf } from './quote-pdf.js'
 import { authorised } from './mcp-auth.js'
 import { verifySvix, ingestReceived } from './inbound.js'
-import { resolveResendKey, resolveWebhookSecret, notifyTeam, dryRun, panelLink, acknowledgeEnquiry } from './messaging.js'
+import { resolveResendKey, resolveWebhookSecret, notifyTeam, notifyProcurement, dryRun, panelLink, acknowledgeEnquiry } from './messaging.js'
 import { audit } from './audit.js'
 
 const PORT = process.env.PORT || 8787
@@ -50,7 +51,7 @@ const devOrigins = PROD ? [] : ['http://localhost:5173', 'http://127.0.0.1:5173'
 const allowed = new Set([...devOrigins, ...(process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean)])
 app.use(cors({
   origin: (origin, cb) => cb(null, !origin || allowed.has(origin)),
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
 }))
 // The image upload route parses its own (larger) body; skip it here so the
 // 2 MB global limit doesn't reject uploads before they reach it.
@@ -163,6 +164,9 @@ app.post('/api/q/:token/respond', async (req, res) => {
 
 app.use('/api/admin', adminRouter)
 
+/* -------------------------- procurement: bidding, suppliers, PO links */
+app.use('/api', supplierRouter)
+
 /* --------------------------------------------------- enquiry submission */
 
 const isEmail = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || '').trim())
@@ -260,7 +264,9 @@ app.post('/api/webhooks/resend', async (req, res) => {
     const { key } = await resolveResendKey()
     const { message, created } = await ingestReceived(ev.data, { apiKey: key, dryRun: dryRun() })
     res.json({ ok: true, id: message.id, created })
-    if (created) notifyTeam('inbound_notice', { message, link: panelLink(`/messages/${message.id}`) })
+    // Mail from a supplier lands in the procurement inbox and notifies that team.
+    if (created && message.scope === 'procurement') notifyProcurement('inbound_notice', { message, link: panelLink(`/procurement/messages/${message.id}`) })
+    else if (created) notifyTeam('inbound_notice', { message, link: panelLink(`/messages/${message.id}`) })
   } catch (e) {
     console.error('[inbound]', e.message)
     // 5xx makes Resend retry later rather than drop the email.

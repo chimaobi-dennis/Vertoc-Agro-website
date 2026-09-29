@@ -16,7 +16,7 @@ import * as content from './content.js'
 import { audit } from './audit.js'
 import { sendEmail, renderEmailHtml, fetchSentMessageId } from './email.js'
 import { decryptSecret } from './secrets.js'
-import { renderQuotePdf } from './quote-pdf.js'
+import { renderQuotePdf, renderPurchaseOrderPdf } from './quote-pdf.js'
 import { renderKey } from './templates.js'
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
@@ -43,6 +43,9 @@ export async function resolveWebhookSecret() {
 export const publicUrl = () => (process.env.SITE_URL || process.env.ADMIN_URL || '').replace(/\/$/, '')
 export const quoteLink = q => `${publicUrl()}/q/${q.token}`
 export const panelLink = path => `${publicUrl()}/staff360${path}`
+export const orderLink = o => `${publicUrl()}/po/${o.token}`
+export const supplierLink = path => `${publicUrl()}/supplier${path}`
+export const tenderLink = t => `${publicUrl()}/bidding/${t.number}`
 
 /**
  * Send one email to one person and log it.
@@ -58,8 +61,12 @@ export const panelLink = path => `${publicUrl()}/staff360${path}`
  * @param {number|null} [o.clientId]
  * @param {number|null} [o.quoteId]
  * @param {number|null} [o.enquiryId]
+ * @param {'sales'|'procurement'} [o.scope]  procurement mail is filed under the supplier, apart from sales
+ * @param {number|null} [o.supplierId]
+ * @param {number|null} [o.bidId]
+ * @param {number|null} [o.poId]
  */
-export async function deliver({ actor, to, toName = '', subject, body, attachmentIds = [], extraAttachments = [], cta = null, clientId = null, quoteId = null, enquiryId = null, inReplyTo = null, internal = false, auto = false, fromId = null, signOff = false }) {
+export async function deliver({ actor, to, toName = '', subject, body, attachmentIds = [], extraAttachments = [], cta = null, clientId = null, quoteId = null, enquiryId = null, inReplyTo = null, internal = false, auto = false, fromId = null, signOff = false, scope = 'sales', supplierId = null, bidId = null, poId = null }) {
   to = String(to || '').trim()
   if (!EMAIL_RE.test(to)) throw bad('Please enter a valid recipient email address.')
   subject = String(subject || '').trim().slice(0, 300)
@@ -68,9 +75,11 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
   if (!body) throw bad('Please write a message.')
 
   const settings = await content.getSettings()
-  // Who it is from: the chosen department (or the default From), plus a sign-off line
-  // naming the staff member and their position on free-text emails.
-  const sender = await content.resolveSender(fromId, settings)
+  const procurement = scope === 'procurement'
+  // Who it is from: the chosen department (or the default From; procurement has its own default
+  // under Settings → Procurement), plus a sign-off line naming the staff member and their position
+  // on free-text emails.
+  const sender = await content.resolveSender(fromId || (procurement ? settings.procurement?.from_id : null) || null, settings)
   const who = signOff && actor?.name ? `${actor.name}${actor.position ? `, ${actor.position}` : ''}` : ''
   const signature = [who, sender.signature].filter(Boolean).join('\n')
   const html = renderEmailHtml({ body, signature, company: settings.company, cta })
@@ -99,6 +108,8 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
     subject, body, html, status: 'queued', attachments: meta, sent_by: actor?.id ?? null,
     // `internal` marks mail to the team itself (notifications), kept out of client conversations.
     headers: { ...(parentId ? { 'in-reply-to': parentId, references } : {}), ...(internal ? { internal: true } : {}) }, ...(parentId ? { in_reply_to: parentId } : {}),
+    // Only procurement mail names the new columns, so sales keeps working before migration 014.
+    ...(procurement ? { scope: 'procurement', supplier_id: supplierId, bid_id: bidId, po_id: poId } : {}),
   })
 
   let sent, key = null
@@ -117,7 +128,7 @@ export async function deliver({ actor, to, toName = '', subject, body, attachmen
 
   const messageId = dryRun() ? `<dry-run-${msg.id}@vertocagro.local>` : await fetchSentMessageId({ apiKey: key, id: sent.id })
   const done = await content.updateMessage(msg.id, { status: 'sent', provider_id: sent.id, ...(messageId ? { provider_message_id: messageId } : {}) })
-  await audit({ actor, action: 'send', entity: 'message', entityId: msg.id, after: { to, subject, quote_id: quoteId, enquiry_id: enquiryId, attachments: meta.length } })
+  await audit({ actor, action: 'send', entity: 'message', entityId: msg.id, after: { to, subject, quote_id: quoteId, enquiry_id: enquiryId, ...(procurement ? { scope, supplier_id: supplierId, bid_id: bidId, po_id: poId } : {}), attachments: meta.length } })
 
   // A reply to a fresh enquiry moves it out of "new" on its own — but an automatic
   // acknowledgement is not a reply, so the request stays new for the team.
@@ -265,3 +276,126 @@ export async function inviteUser({ actor, email, name = '', role = 'editor', sup
     return { user: fb.user, via: 'supabase', message: null, warning: `Sent with the plain Supabase email instead: ${e.message}` }
   }
 }
+
+/* ------------------------------------------------------- procurement --- */
+// Everything below is filed under the supplier (scope 'procurement'), apart
+// from sales conversations. The automatic ones are best effort: they never
+// throw and never block the action that triggered them.
+
+const procEnabled = async flag => { const s = await content.getSettings(); return { settings: s, on: s.procurement?.[flag] !== false } }
+
+/** "We received your bid" to the supplier, as soon as it arrives. */
+export async function acknowledgeBid({ bid, tender }) {
+  try {
+    const { settings, on } = await procEnabled('ack_bids')
+    if (!on || !EMAIL_RE.test(String(bid?.email || ''))) return null
+    const tpl = await renderKey('bid_received', { bid, tender, settings, link: supplierLink(`/bids/${bid.id}`) })
+    if (!tpl.subject || !tpl.body) return null
+    return await deliver({ actor: SYSTEM_ACTOR, to: bid.email, toName: bid.contact_person || bid.company_name, subject: tpl.subject, body: tpl.body, cta: tpl.cta, scope: 'procurement', supplierId: bid.supplier_id, bidId: bid.id, auto: true })
+  } catch (e) { console.error('[acknowledge-bid]', e.message); return null }
+}
+
+/** Notification to the procurement team: a bid arrived, a supplier answered, an order was acknowledged, an email came in. */
+export async function notifyProcurement(key, ctx) {
+  try {
+    const { settings, on } = await procEnabled('notify_bids')
+    const to = settings.procurement?.notify_to || settings.email.notify_to || settings.email.reply_to
+    if (!on || !EMAIL_RE.test(to)) return null
+    const tpl = await renderKey(key, { ...ctx, settings })
+    if (!tpl.subject || !tpl.body) return null
+    return await deliver({ actor: SYSTEM_ACTOR, to, subject: tpl.subject, body: tpl.body, cta: tpl.cta, scope: 'procurement', supplierId: ctx.bid?.supplier_id ?? ctx.order?.supplier_id ?? ctx.message?.supplier_id ?? null, bidId: ctx.bid?.id ?? null, poId: ctx.order?.id ?? null, internal: true })
+  } catch (e) { console.error(`[notify-procurement:${key}]`, e.message); return null }
+}
+
+/** The supplier is told whenever the status of their bid changes (Settings → Procurement can switch it off). */
+export async function notifyBidStatus({ bid, tender, actor = SYSTEM_ACTOR, force = false }) {
+  try {
+    const { settings, on } = await procEnabled('notify_status')
+    if ((!on && !force) || !EMAIL_RE.test(String(bid?.email || ''))) return null
+    const tpl = await renderKey('bid_status', { bid, tender, settings, actor, link: supplierLink(`/bids/${bid.id}`) })
+    if (!tpl.subject || !tpl.body) return null
+    return await deliver({ actor, to: bid.email, toName: bid.contact_person || bid.company_name, subject: tpl.subject, body: tpl.body, cta: tpl.cta, scope: 'procurement', supplierId: bid.supplier_id, bidId: bid.id, auto: true })
+  } catch (e) { console.error('[bid-status]', e.message); return null }
+}
+
+/** A request for additional information goes to the supplier by email; they answer in their dashboard. */
+export async function sendBidRequest({ bid, tender, request, actor }) {
+  try {
+    if (!EMAIL_RE.test(String(bid?.email || ''))) return null
+    const tpl = await renderKey('bid_request', { bid, tender, request, actor, link: supplierLink(`/bids/${bid.id}`) })
+    if (!tpl.subject || !tpl.body) return null
+    return await deliver({ actor, to: bid.email, toName: bid.contact_person || bid.company_name, subject: tpl.subject, body: tpl.body, cta: tpl.cta, scope: 'procurement', supplierId: bid.supplier_id, bidId: bid.id, auto: true })
+  } catch (e) { console.error('[bid-request]', e.message); return null }
+}
+
+/**
+ * The one-time link for a supplier account: confirm the email address, or
+ * choose a new password. Unlike the notices above this one throws — without
+ * the email the account cannot be used, so the caller must know.
+ */
+export async function sendSupplierLink({ supplier, kind, token }) {
+  const link = supplierLink(`/${kind === 'reset' ? 'reset' : 'verify'}?token=${token}`)
+  const tpl = await renderKey(kind === 'reset' ? 'supplier_reset' : 'supplier_verify', { supplier, link })
+  const d = DEFAULT_LINK_TEXT[kind === 'reset' ? 'reset' : 'verify']
+  return deliver({ actor: SYSTEM_ACTOR, to: supplier.email, toName: supplier.contact_person || supplier.company_name, subject: tpl.subject || d.subject, body: tpl.body || d.body, cta: tpl.cta || { label: d.cta, url: link }, scope: 'procurement', supplierId: supplier.id, internal: true, auto: true })
+}
+// A switched-off template must not lock suppliers out of their accounts.
+const DEFAULT_LINK_TEXT = {
+  verify: { subject: 'Confirm your supplier account', body: 'Please confirm your email address with the button below to activate your supplier account. The link works once and expires in 24 hours.', cta: 'Confirm my email address' },
+  reset: { subject: 'Choose a new password', body: 'Use the button below to choose a new password for your supplier account. The link works once and expires in 2 hours.', cta: 'Choose a new password' },
+}
+
+/** Email a PO / LPO: PDF attached, the supplier's link as the button, status -> issued. */
+export async function sendPurchaseOrder(id, { actor, to, subject, body, attachmentIds = [], fromId = null }) {
+  const o = await content.getPurchaseOrder(id)
+  if (!o) throw bad('order not found', 404)
+  if (['acknowledged', 'fulfilled'].includes(o.status)) throw bad(`This order was already ${o.status}; raise a new one instead.`)
+  if (o.status === 'cancelled') throw bad('This order was cancelled. Set it back to draft to send it.')
+  if (!o.items?.length) throw bad('Add at least one line item before sending.')
+  const settings = await content.getSettings()
+  const link = orderLink(o)
+  const pdf = await renderPurchaseOrderPdf(o, settings, link)
+  const recipient = to || o.supplier_email
+  const tpl = await renderKey('purchase_order', { order: o, link, settings, actor })
+  // File the PDF under the supplier, replacing the copy from an earlier send of the same order.
+  let pdfDoc = null
+  try {
+    const previous = (await content.listDocuments({ po_id: o.id })).find(d => d.name === `${o.number}.pdf`)
+    if (previous) await content.deleteDocument(previous.id)
+    pdfDoc = await content.createDocumentFromBuffer({ supplier_id: o.supplier_id, po_id: o.id, bid_id: o.bid_id, name: `${o.number}.pdf`, content_type: 'application/pdf', content: pdf, folder: `orders/${o.id}` }, actor?.id ?? null)
+  } catch (e) { console.error('[send-order] pdf not filed:', e.message) }
+  const msg = await deliver({
+    actor, to: recipient, toName: o.supplier_name,
+    subject: subject || tpl.subject, body: body || tpl.body,
+    attachmentIds: pdfDoc ? [pdfDoc.id, ...attachmentIds] : attachmentIds, extraAttachments: pdfDoc ? [] : [{ filename: `${o.number}.pdf`, content: pdf }],
+    cta: tpl.cta || { label: 'View and acknowledge online', url: link },
+    scope: 'procurement', supplierId: o.supplier_id, bidId: o.bid_id, poId: o.id, fromId,
+  })
+  const order = await content.markPurchaseOrderIssued(o.id)
+  await audit({ actor, action: 'send', entity: 'purchase_order', entityId: o.id, after: { number: o.number, to: recipient, message_id: msg.id } })
+  return { order, message: msg }
+}
+
+/**
+ * The same email to every supplier whose bid on an opportunity has one of
+ * the given statuses ("contact the shortlisted suppliers"). Each supplier
+ * gets their own email, addressed by name, in their own conversation.
+ * {{name}}, {{supplier_name}}, {{tender_number}} and {{tender_title}} are filled in per supplier.
+ */
+export async function messageBidders({ tender, bids, subject, body, actor, fromId = null }) {
+  subject = String(subject || '').trim(); body = String(body || '').trim()
+  if (!subject) throw bad('Please enter a subject.')
+  if (!body) throw bad('Please write a message.')
+  if (!bids.length) throw bad('No supplier matches.')
+  const { renderTemplate } = await import('./templates.js')
+  const sent = [], failed = []
+  for (const b of bids) {
+    const vars = { name: b.contact_person || b.company_name, supplier_name: b.company_name, tender_number: tender.number, tender_title: tender.title }
+    try {
+      const m = await deliver({ actor, to: b.email, toName: b.contact_person || b.company_name, subject: renderTemplate(subject, vars), body: renderTemplate(body, vars), scope: 'procurement', supplierId: b.supplier_id, bidId: b.id, fromId, signOff: true })
+      sent.push({ bid_id: b.id, to: b.email, message_id: m.id })
+    } catch (e) { failed.push({ bid_id: b.id, to: b.email, error: e.message }) }
+  }
+  return { sent, failed }
+}
+

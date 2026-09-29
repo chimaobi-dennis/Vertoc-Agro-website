@@ -1,5 +1,6 @@
 /*
- * Invoice PDF (the API and database still call it a quote), rendered
+ * Invoice PDF (the API and database still call it a quote) and purchase
+ * order PDF (PO / LPO), rendered
  * server-side with jsPDF; it runs under Node without a browser. Used for
  * the email attachment, the admin preview and the public download, so all
  * three are byte-for-byte the same document. This is the original design:
@@ -31,14 +32,47 @@ const qty = n => { const v = Number(n) || 0; return Number.isInteger(v) ? String
  */
 export async function renderQuotePdf(quote, settings, fields = [], link = '') {
   const { company = {}, quotes: qs = {} } = settings
+  return renderDocument({
+    company, link, title: 'INVOICE', number: quote.number, heading: quote.title, currency: quote.currency || 'USD',
+    party: { label: 'PREPARED FOR', lines: [quote.client_name || '—', quote.client_email] },
+    meta: [['Date', fmtDate(quote.sent_at || quote.created_at)], ['Valid until', fmtDate(quote.valid_until)], ['Currency', quote.currency || 'USD']],
+    money: quote, details: fields.map(f => [f.label, display(f, quote.data?.[f.key])]),
+    prose: [['Notes', quote.notes], ['Terms', quote.terms], ['Payment', qs.payment_text]],
+  })
+}
+
+/**
+ * Purchase order (PO) or local purchase order (LPO): the same sheet as the
+ * invoice, addressed to a supplier, with where and when to deliver and the
+ * payment terms.
+ * @param {object} po         row from purchase_orders
+ * @param {object} settings   { company }
+ * @param {string} [link]     the supplier's link, printed in the footer
+ * @returns {Promise<Buffer>}
+ */
+export async function renderPurchaseOrderPdf(po, settings, link = '') {
+  const { company = {} } = settings
+  const cur = po.currency || 'NGN'
+  return renderDocument({
+    company, link, title: po.kind === 'po' ? 'PURCHASE ORDER' : 'LOCAL PURCHASE ORDER', number: po.number, heading: po.title, currency: cur,
+    party: { label: 'SUPPLIER', lines: [po.supplier_name || '—', ...String(po.supplier_address || '').split('\n'), po.supplier_email] },
+    meta: [['Date', fmtDate(po.issued_at || po.created_at)], ['Deliver by', fmtDate(po.delivery_date)], ['Currency', cur]],
+    money: po, details: [['Deliver to', po.delivery_location]],
+    prose: [['Payment terms', po.payment_terms], ['Notes', po.notes], ['Terms', po.terms]],
+    viewLabel: 'Acknowledge online',
+  })
+}
+
+/** The sheet both documents share: header band, party and details, items, totals, fields, prose, footer. */
+async function renderDocument({ company, link, title, number, heading, currency: cur, party, meta, money: sums, details = [], prose: blocks = [], viewLabel = 'View online' }) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const W = 210, M = 16
-  const cur = quote.currency || 'USD'
+  const titleSize = title.length > 10 ? 17 : 22
 
   /* header band. The company block wraps inside the space left of the
      title and number (never runs into them); the band grows to fit. */
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(22); const titleW = doc.getTextWidth('INVOICE')
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(11); const numberW = doc.getTextWidth(String(quote.number || ''))
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(titleSize); const titleW = doc.getTextWidth(title)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(11); const numberW = doc.getTextWidth(String(number || ''))
   const blockW = W - 2 * M - Math.max(titleW, numberW) - 12
   doc.setFontSize(9)
   const contact = [company.phone, company.email].filter(Boolean).join('  ·  ')
@@ -50,32 +84,32 @@ export async function renderQuotePdf(quote, settings, fields = [], link = '') {
   doc.text(company.name || 'Vertoc Agro', M, 16)
   doc.setFontSize(9); doc.setFont('helvetica', 'normal')
   doc.text(block, M, 23)
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(22)
-  doc.text('INVOICE', W - M, 16, { align: 'right' })
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(titleSize)
+  doc.text(title, W - M, 16, { align: 'right' })
   doc.setFontSize(11); doc.setFont('helvetica', 'normal')
-  doc.text(String(quote.number || ''), W - M, 24, { align: 'right' })
+  doc.text(String(number || ''), W - M, 24, { align: 'right' })
 
-  /* meta + client */
+  /* meta + party */
   let y = bandH + 12
   doc.setTextColor(...MUTED); doc.setFontSize(8.5); doc.setFont('helvetica', 'bold')
-  doc.text('PREPARED FOR', M, y); doc.text('DETAILS', 120, y)
+  doc.text(party.label, M, y); doc.text('DETAILS', 120, y)
   doc.setTextColor(...INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5)
-  const who = [quote.client_name || '—', quote.client_email].filter(Boolean)
+  const who = party.lines.map(l => String(l || '').trim()).filter(Boolean).flatMap(l => doc.splitTextToSize(l, 96))
   doc.text(who, M, y + 6)
-  const meta = [['Date', fmtDate(quote.sent_at || quote.created_at)], ['Valid until', fmtDate(quote.valid_until)], ['Currency', cur]]
   meta.forEach(([k, v], i) => {
     doc.setTextColor(...MUTED); doc.text(k, 120, y + 6 + i * 5.5)
     doc.setTextColor(...INK); doc.text(String(v), W - M, y + 6 + i * 5.5, { align: 'right' })
   })
   y += 6 + Math.max(who.length, meta.length) * 5.5 + 6
 
-  if (quote.title) {
+  if (heading) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...NAVY)
-    doc.text(String(quote.title), M, y); y += 8
+    const lines = doc.splitTextToSize(String(heading), W - 2 * M)
+    doc.text(lines, M, y); y += 8 + (lines.length - 1) * 5.5
   }
 
   /* items */
-  const items = Array.isArray(quote.items) ? quote.items : []
+  const items = Array.isArray(sums.items) ? sums.items : []
   autoTable(doc, {
     startY: y, margin: { left: M, right: M },
     head: [['#', 'Description', 'Qty', 'Unit', 'Unit price', 'Amount']],
@@ -88,10 +122,10 @@ export async function renderQuotePdf(quote, settings, fields = [], link = '') {
   y = doc.lastAutoTable.finalY + 4
 
   /* totals */
-  const rows = [['Subtotal', formatMoney(quote.subtotal, cur)]]
-  if (Number(quote.discount) > 0) rows.push(['Discount', `- ${formatMoney(quote.discount, cur)}`])
-  if (Number(quote.tax_rate) > 0) rows.push([`Tax (${Number(quote.tax_rate)}%)`, formatMoney(taxOf(quote), cur)])
-  rows.push(['Total', formatMoney(quote.total, cur)])
+  const rows = [['Subtotal', formatMoney(sums.subtotal, cur)]]
+  if (Number(sums.discount) > 0) rows.push(['Discount', `- ${formatMoney(sums.discount, cur)}`])
+  if (Number(sums.tax_rate) > 0) rows.push([`Tax (${Number(sums.tax_rate)}%)`, formatMoney(taxOf(sums), cur)])
+  rows.push(['Total', formatMoney(sums.total, cur)])
   autoTable(doc, {
     startY: y, margin: { left: 120, right: M }, tableWidth: W - M - 120,
     body: rows, theme: 'plain',
@@ -101,8 +135,8 @@ export async function renderQuotePdf(quote, settings, fields = [], link = '') {
   })
   y = doc.lastAutoTable.finalY + 8
 
-  /* user-defined fields */
-  const extra = fields.map(f => [f.label, display(f, quote.data?.[f.key])]).filter(([, v]) => v)
+  /* labelled details (user-defined invoice fields; where to deliver an order) */
+  const extra = details.filter(([, v]) => v)
   if (extra.length) {
     y = section(doc, 'Details', y)
     autoTable(doc, {
@@ -113,15 +147,13 @@ export async function renderQuotePdf(quote, settings, fields = [], link = '') {
   }
 
   /* prose blocks */
-  y = prose(doc, 'Notes', quote.notes, y)
-  y = prose(doc, 'Terms', quote.terms, y)
-  y = prose(doc, 'Payment', qs.payment_text, y)
+  for (const [label, body] of blocks) y = prose(doc, label, body, y)
 
   /* footer on every page */
   const pages = doc.getNumberOfPages()
   for (let p = 1; p <= pages; p++) {
     doc.setPage(p); doc.setFontSize(8); doc.setTextColor(...MUTED); doc.setFont('helvetica', 'normal')
-    doc.text(`${quote.number}  ·  ${company.name || 'Vertoc Agro'}${link ? `  ·  View online: ${link}` : ''}`, M, 290)
+    doc.text(`${number}  ·  ${company.name || 'Vertoc Agro'}${link ? `  ·  ${viewLabel}: ${link}` : ''}`, M, 290)
     doc.text(`Page ${p} of ${pages}`, W - M, 290, { align: 'right' })
   }
   return Buffer.from(doc.output('arraybuffer'))

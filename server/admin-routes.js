@@ -15,6 +15,7 @@ import { renderEmailHtml } from './email.js'
 import { renderQuotePdf } from './quote-pdf.js'
 import { encryptSecret, sha256, newToken } from './secrets.js'
 import { refreshMcpSettings } from './mcp-auth.js'
+import procurementRoutes from './procurement-routes.js'
 
 const router = Router()
 router.use(authenticate)
@@ -53,6 +54,7 @@ router.get('/stats', h(async (_req, res) => {
       return error ? 0 : (n ?? 0)
     } catch { return 0 }
   }
+  const unreadAll = await count('messages', q => q.eq('direction', 'in').is('read_at', null))
   res.json({
     clients: await count('clients', q => q.eq('status', 'active')),
     products: await count('products'),
@@ -61,8 +63,9 @@ router.get('/stats', h(async (_req, res) => {
     users: await count('profiles', q => q.eq('active', true)),
     quotesOpen: await count('quotes', q => q.in('status', ['sent', 'viewed'])),
     purchasesPending: await count('purchases', q => q.eq('status', 'pending')),
-    inboundUnread: await count('messages', q => q.eq('direction', 'in').is('read_at', null)),
     reviewsPending: await Promise.resolve().then(() => count('reviews', q => q.eq('status', 'pending'))).catch(() => 0),   // 0 until migration 009 exists
+    // Procurement has its own inbox: its unread mail is counted apart (zeros until migration 014 exists).
+    ...(proc => ({ ...proc, inboundUnread: Math.max(0, unreadAll - proc.procUnread) }))(await content.procurementStats().catch(() => ({ tendersOpen: 0, bidsNew: 0, suppliers: 0, ordersOpen: 0, procUnread: 0 }))),
   })
 }))
 
@@ -122,7 +125,7 @@ mountContent('posts', 'post', {
 
 /* -------------------------------------------------------------- users --- */
 
-const ROLES = ['admin', 'editor', 'sales']
+const ROLES = ['admin', 'editor', 'sales', 'procurement']
 const isEmail = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || ''))
 
 router.get('/users', requireRole('admin'), h(async (_req, res) => {
@@ -521,30 +524,47 @@ router.delete('/settings/secrets/:name', settingsAdmin, h(async (req, res) => {
   res.json(list)
 }))
 
-/* documents: metadata here, bytes straight to storage via signed URLs */
-router.get('/documents', crm, h(async (req, res) => {
-  res.json(await content.listDocuments({ client_id: idOrNull(req.query.client_id), quote_id: idOrNull(req.query.quote_id) }))
+/* documents: metadata here, bytes straight to storage via signed URLs.
+   A file that hangs off a supplier, a bid or a purchase order belongs to
+   procurement; every other file belongs to sales. Each side sees its own. */
+const anyDocs = requireRole(...new Set([...PERMISSIONS.clients, ...PERMISSIONS.procurement]))
+const isProcDoc = d => d?.supplier_id != null || d?.bid_id != null || d?.po_id != null
+const procScope = o => ['supplier_id', 'bid_id', 'po_id'].some(k => o?.[k] != null && o[k] !== '')
+const docGate = (req, procurementSide) => {
+  const roles = procurementSide ? PERMISSIONS.procurement : PERMISSIONS.clients
+  if (!roles.includes(req.user.role)) throw bad(`This action requires role: ${roles.join(' or ')}.`, 403)
+}
+router.get('/documents', anyDocs, h(async (req, res) => {
+  const side = procScope(req.query); docGate(req, side)
+  const docs = await content.listDocuments({ client_id: idOrNull(req.query.client_id), quote_id: idOrNull(req.query.quote_id), supplier_id: idOrNull(req.query.supplier_id), bid_id: idOrNull(req.query.bid_id), po_id: idOrNull(req.query.po_id) })
+  res.json(docs.filter(d => isProcDoc(d) === side))
 }))
-router.post('/documents', crm, h(async (req, res) => {
+router.post('/documents', anyDocs, h(async (req, res) => {
+  docGate(req, procScope(req.body))
   res.status(201).json(await exposing(content.createDocument)(req.body || {}, req.user.id))
 }))
-router.post('/documents/:id/complete', crm, h(async (req, res) => {
+const docFor = async (req, { any = false } = {}) => {
+  const d = await content.getDocument(req.params.id, { any })
+  if (!d) throw bad('document not found', 404)
+  docGate(req, isProcDoc(d)); return d
+}
+router.post('/documents/:id/complete', anyDocs, h(async (req, res) => {
+  await docFor(req, { any: true })
   const doc = await exposing(content.completeDocument)(req.params.id)
-  await audit({ actor: req.user, action: 'upload', entity: 'document', entityId: doc.id, after: { name: doc.name, bytes: doc.bytes, client_id: doc.client_id, quote_id: doc.quote_id } })
+  await audit({ actor: req.user, action: 'upload', entity: 'document', entityId: doc.id, after: { name: doc.name, bytes: doc.bytes, client_id: doc.client_id, quote_id: doc.quote_id, ...(isProcDoc(doc) ? { supplier_id: doc.supplier_id, bid_id: doc.bid_id, po_id: doc.po_id } : {}) } })
   res.json(doc)
 }))
-router.get('/documents/:id/url', crm, h(async (req, res) => {
+router.get('/documents/:id/url', anyDocs, h(async (req, res) => {
+  await docFor(req)
   res.json(await exposing(content.documentUrl)(req.params.id, { download: req.query.download === '1' }))
 }))
-router.delete('/documents/:id', crm, h(async (req, res) => {
-  const before = await content.getDocument(req.params.id, { any: true })
-  if (!before) throw bad('document not found', 404)
+router.delete('/documents/:id', anyDocs, h(async (req, res) => {
+  const before = await docFor(req, { any: true })
   const r = await content.deleteDocument(before.id)
   await audit({ actor: req.user, action: 'delete', entity: 'document', entityId: before.id, before })
   res.json(r)
 }))
 
-/* quotes */
 router.get('/quotes', inbox, h(async (req, res) => {
   res.json(await content.listQuotes({ status: req.query.status || 'all', client_id: idOrNull(req.query.client_id) }))
 }))
@@ -644,67 +664,89 @@ router.delete('/shipments/:sid/checkpoints/:cid', inbox, h(async (req, res) => {
   res.json(after)
 }))
 
-/* messages (one-to-one email) */
-router.get('/messages', mail, h(async (req, res) => {
-  res.json(await content.listMessages({
-    client_id: idOrNull(req.query.client_id), quote_id: idOrNull(req.query.quote_id), enquiry_id: idOrNull(req.query.enquiry_id),
-    direction: req.query.direction || 'all', unread: req.query.unread === '1', q: req.query.q || '', limit: Math.min(Number(req.query.limit) || 200, 500),
-  }))
-}))
-router.get('/messages/threads', mail, h(async (req, res) => {
-  res.json(await content.listThreads({ q: req.query.q || '', unread: req.query.unread === '1', label: req.query.label || '', client_id: idOrNull(req.query.client_id) }))
-}))
-// Sender identities for the composer: the default From plus the departments from Settings.
-router.get('/messages/senders', mail, h(async (_req, res) => res.json(await content.listDepartments())))
-router.get('/messages/labels', mail, h(async (_req, res) => {
-  res.json({ labels: await content.getLabelCatalogue(), colors: content.LABEL_COLORS })
-}))
-router.put('/messages/labels', mail, h(async (req, res) => {
-  const labels = await exposing(content.setLabelCatalogue)(req.body?.labels)
-  await audit({ actor: req.user, action: 'update', entity: 'labels', entityId: null, after: { labels } })
-  res.json({ labels, colors: content.LABEL_COLORS })
-}))
-router.put('/messages/thread/label', mail, h(async (req, res) => {
-  const label = await exposing(content.setThreadLabel)(req.body?.key, req.body?.label, req.user, req.body?.color)
-  await audit({ actor: req.user, action: 'label', entity: 'thread', entityId: req.body?.key, after: { label: label?.name ?? null } })
-  res.json({ key: req.body?.key, label })
-}))
-router.get('/messages/thread', mail, h(async (req, res) => {
-  const rows = await content.getThread(req.query.key)
-  if (!rows) throw bad('conversation not found', 404)
-  res.json(rows)
-}))
-router.post('/messages/thread/read', mail, h(async (req, res) => {
-  res.json({ read: await content.markThreadRead(req.body?.key) })
-}))
-router.post('/messages/:id/read', mail, h(async (req, res) => {
-  const m = await content.getMessage(req.params.id)
-  if (!m) throw bad('message not found', 404)
-  res.json(await content.markMessageRead(m.id, req.body?.read !== false))
-}))
-router.get('/messages/:id', mail, h(async (req, res) => {
-  const m = await content.getMessage(req.params.id)
-  if (!m) throw bad('message not found', 404)
-  res.json(m)
-}))
-router.post('/messages', mail, h(async (req, res) => {
-  const b = req.body || {}
-  let clientId = idOrNull(b.client_id), enquiryId = idOrNull(b.enquiry_id), toName = b.to_name
-  if (clientId != null) { const c = await content.getClient(clientId); if (!c) throw bad('client not found', 404); toName ??= c.name }
-  if (enquiryId != null) { const e = await content.getEnquiry(enquiryId); if (!e) throw bad('enquiry not found', 404); toName ??= e.name; clientId ??= e.client_id }
-  // A reply: address, subject and links default to the message being answered, and it threads under it.
-  let inReplyTo = null, to = b.to, subject = b.subject, quoteId = null
-  if (b.reply_to_id != null) {
-    inReplyTo = await content.getMessage(b.reply_to_id); if (!inReplyTo) throw bad('message to reply to not found', 404)
-    const theirs = inReplyTo.direction === 'in'
-    to ||= theirs ? inReplyTo.from_email : inReplyTo.to_email
-    toName ??= theirs ? inReplyTo.from_name : inReplyTo.to_name
-    if (!subject) subject = /^re:/i.test(inReplyTo.subject || '') ? inReplyTo.subject : `Re: ${inReplyTo.subject || ''}`.trim()
-    clientId ??= inReplyTo.client_id; enquiryId ??= inReplyTo.enquiry_id; quoteId = inReplyTo.quote_id ?? null
+/* messages (one-to-one email). Sales and procurement each have their own
+   inbox: the same handlers are mounted twice, and a message is only ever
+   reachable through the side it belongs to. */
+const procurementOnly = requireRole(...PERMISSIONS.procurement)
+function mountMessages(prefix, guard, scope) {
+  const procurement = scope === 'procurement'
+  const own = async id => {
+    const m = await content.getMessage(id)
+    if (!m || (m.scope || 'sales') !== scope) throw bad('message not found', 404)
+    return m
   }
-  const msg = await deliver({ actor: req.user, to, toName, subject, body: b.body, attachmentIds: b.attachment_ids || [], clientId, enquiryId, quoteId, inReplyTo, fromId: b.from_id || null, signOff: true })
-  res.status(201).json({ ...msg, thread_key: content.threadKeyOf(msg) })
-}))
+  router.get(prefix, guard, h(async (req, res) => {
+    res.json(await content.listMessages({
+      client_id: idOrNull(req.query.client_id), quote_id: idOrNull(req.query.quote_id), enquiry_id: idOrNull(req.query.enquiry_id),
+      ...(procurement ? { scope, supplier_id: idOrNull(req.query.supplier_id), bid_id: idOrNull(req.query.bid_id), po_id: idOrNull(req.query.po_id) } : ((await content.hasScopeColumn()) ? { scope } : {})),
+      direction: req.query.direction || 'all', unread: req.query.unread === '1', q: req.query.q || '', limit: Math.min(Number(req.query.limit) || 200, 500),
+    }))
+  }))
+  router.get(`${prefix}/threads`, guard, h(async (req, res) => {
+    res.json(await content.listThreads({ q: req.query.q || '', unread: req.query.unread === '1', label: req.query.label || '', client_id: procurement ? null : idOrNull(req.query.client_id), supplier_id: procurement ? idOrNull(req.query.supplier_id) : null, scope }))
+  }))
+  // Sender identities for the composer: the default From plus the departments from Settings.
+  router.get(`${prefix}/senders`, guard, h(async (_req, res) => {
+    const list = await content.listDepartments()
+    if (!procurement) return res.json(list)
+    // Procurement writes from its own department first, when one is chosen under Settings → Procurement.
+    const first = (await content.getSettings()).procurement?.from_id
+    res.json(first ? [...list.filter(d => d.id === first), ...list.filter(d => d.id !== first)] : list)
+  }))
+  router.get(`${prefix}/labels`, guard, h(async (_req, res) => {
+    res.json({ labels: await content.getLabelCatalogue(), colors: content.LABEL_COLORS })
+  }))
+  router.put(`${prefix}/labels`, guard, h(async (req, res) => {
+    const labels = await exposing(content.setLabelCatalogue)(req.body?.labels)
+    await audit({ actor: req.user, action: 'update', entity: 'labels', entityId: null, after: { labels } })
+    res.json({ labels, colors: content.LABEL_COLORS })
+  }))
+  router.put(`${prefix}/thread/label`, guard, h(async (req, res) => {
+    const label = await exposing(content.setThreadLabel)(req.body?.key, req.body?.label, req.user, req.body?.color)
+    await audit({ actor: req.user, action: 'label', entity: 'thread', entityId: req.body?.key, after: { label: label?.name ?? null } })
+    res.json({ key: req.body?.key, label })
+  }))
+  router.get(`${prefix}/thread`, guard, h(async (req, res) => {
+    const rows = await content.getThread(req.query.key, { scope })
+    if (!rows) throw bad('conversation not found', 404)
+    res.json(rows)
+  }))
+  router.post(`${prefix}/thread/read`, guard, h(async (req, res) => {
+    res.json({ read: await content.markThreadRead(req.body?.key, { scope }) })
+  }))
+  router.post(`${prefix}/:id/read`, guard, h(async (req, res) => {
+    const m = await own(req.params.id)
+    res.json(await content.markMessageRead(m.id, req.body?.read !== false))
+  }))
+  router.get(`${prefix}/:id`, guard, h(async (req, res) => res.json(await own(req.params.id))))
+  router.post(prefix, guard, h(async (req, res) => {
+    const b = req.body || {}
+    let clientId = procurement ? null : idOrNull(b.client_id), enquiryId = procurement ? null : idOrNull(b.enquiry_id), toName = b.to_name
+    let supplierId = procurement ? idOrNull(b.supplier_id) : null, bidId = procurement ? idOrNull(b.bid_id) : null, poId = procurement ? idOrNull(b.po_id) : null
+    if (clientId != null) { const c = await content.getClient(clientId); if (!c) throw bad('client not found', 404); toName ??= c.name }
+    if (enquiryId != null) { const e = await content.getEnquiry(enquiryId); if (!e) throw bad('enquiry not found', 404); toName ??= e.name; clientId ??= e.client_id }
+    if (poId != null) { const o = await content.getPurchaseOrder(poId); if (!o) throw bad('order not found', 404); supplierId ??= o.supplier_id; bidId ??= o.bid_id; toName ??= o.supplier_name }
+    if (bidId != null) { const x = await content.getBid(bidId); if (!x) throw bad('bid not found', 404); supplierId ??= x.supplier_id; toName ??= x.contact_person || x.company_name }
+    if (supplierId != null) { const x = await content.getSupplier(supplierId); if (!x) throw bad('supplier not found', 404); toName ??= x.contact_person || x.company_name }
+    // A reply: address, subject and links default to the message being answered, and it threads under it.
+    let inReplyTo = null, to = b.to, subject = b.subject, quoteId = null
+    if (b.reply_to_id != null) {
+      inReplyTo = await own(b.reply_to_id).catch(() => { throw bad('message to reply to not found', 404) })
+      const theirs = inReplyTo.direction === 'in'
+      to ||= theirs ? inReplyTo.from_email : inReplyTo.to_email
+      toName ??= theirs ? inReplyTo.from_name : inReplyTo.to_name
+      if (!subject) subject = /^re:/i.test(inReplyTo.subject || '') ? inReplyTo.subject : `Re: ${inReplyTo.subject || ''}`.trim()
+      if (procurement) { supplierId ??= inReplyTo.supplier_id ?? null; bidId ??= inReplyTo.bid_id ?? null; poId ??= inReplyTo.po_id ?? null }
+      else { clientId ??= inReplyTo.client_id; enquiryId ??= inReplyTo.enquiry_id; quoteId = inReplyTo.quote_id ?? null }
+    }
+    // No supplier named: a known supplier address files the email under their record.
+    if (procurement && supplierId == null && to) { const x = await content.findSupplierByEmail(to); if (x) { supplierId = x.id; toName ??= x.contact_person || x.company_name } }
+    const msg = await deliver({ actor: req.user, to, toName, subject, body: b.body, attachmentIds: b.attachment_ids || [], clientId, enquiryId, quoteId, inReplyTo, fromId: b.from_id || null, signOff: true, scope, supplierId, bidId, poId })
+    res.status(201).json({ ...msg, thread_key: content.threadKeyOf(msg) })
+  }))
+}
+mountMessages('/messages', mail, 'sales')
+mountMessages('/procurement/messages', procurementOnly, 'procurement')
 
 /* purchases */
 router.get('/purchases', crm, h(async (req, res) => {
@@ -765,7 +807,7 @@ router.put('/templates/:key', settingsAdmin, h(async (req, res) => {
   if (!TEMPLATE_KEYS.includes(key)) throw bad('unknown template', 404)
   const before = await templateFor(key)
   const b = req.body || {}
-  if (b.subject !== undefined && !String(b.subject).trim() && key !== 'blank') throw bad('Subject cannot be empty.')
+  if (b.subject !== undefined && !String(b.subject).trim() && !['blank', 'supplier_blank'].includes(key)) throw bad('Subject cannot be empty.')
   if (b.body !== undefined && !String(b.body).trim()) throw bad('Body cannot be empty.')
   // Row may not exist yet (fresh install): upsert the merged result.
   const merged = { key, name: before.name, description: b.description ?? before.description, subject: b.subject ?? before.subject, body: b.body ?? before.body, cta_label: b.cta_label ?? before.cta_label, enabled: b.enabled ?? before.enabled, variables: before.variables }
@@ -784,5 +826,8 @@ router.post('/templates/:key/reset', settingsAdmin, h(async (req, res) => {
   await audit({ actor: req.user, action: 'reset', entity: 'email_template', entityId: key, before: templatePublic(before), after: templatePublic(after) })
   res.json(templatePublic(after))
 }))
+
+/* procurement: suppliers, bidding opportunities, bids, purchase orders */
+router.use(procurementRoutes)
 
 export default router

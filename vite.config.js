@@ -10,6 +10,7 @@ export default defineConfig({
   server: {
     port: 5173,
     // Content API during local dev; see server/ for the backend.
-    proxy: { '/api': 'http://localhost:8787' },
+    // VITE_PROXY_TARGET points the dev server at another backend (a local test stack).
+    proxy: { '/api': process.env.VITE_PROXY_TARGET || 'http://localhost:8787' },
   },
 })

@@ -44,7 +44,7 @@ export const {
   listQuotes, getQuote, getQuoteByToken, createQuote, updateQuote, deleteQuote, markQuoteSent, markQuoteViewed, respondToQuote, publicQuote, convertQuoteToPurchase,
   listShipments, getShipment, createShipment, updateShipment, deleteShipment, addCheckpoint, updateCheckpoint, deleteCheckpoint, publicShipment, SHIPMENT_STATUSES, SHIPMENT_MODES, SHIPMENTS_MIGRATION_HINT, SHIPMENT_DETAILS_HINT, SHIPMENT_DEPARTURE_HINT,
   createMessage, updateMessage, getMessage, listMessages, markMessageRead, getMessageByProviderId, latestOutboundTo, countUnreadInbound, findClientByEmail, getQuoteByNumber,
-  listThreads, getThread, markThreadRead, splitQuoted, parseThreadKey, threadKeyOf, cleanSubject,
+  listThreads, getThread, markThreadRead, splitQuoted, parseThreadKey, threadKeyOf, cleanSubject, hasScopeColumn, MESSAGE_SCOPES,
   getLabelCatalogue, setLabelCatalogue, setThreadLabel, LABEL_COLORS, DEFAULT_LABELS,
   listDepartments, setDepartments, resolveSender,
   getHomepageStats, setHomepageStats, DEFAULT_STATS, STAT_ICON_NAMES,
@@ -56,3 +56,16 @@ export const {
   listTemplates, getTemplate, upsertTemplate, updateTemplate, createDocumentFromBuffer,
   listPurchases, getPurchase, createPurchase, updatePurchase, deletePurchase,
 } = store
+
+// Procurement (the sourcing leg) lives in its own module; Supabase only.
+const procurement = hasSupabase ? await import('./procurement.js') : {}
+export const {
+  PROCUREMENT_MIGRATION_HINT, procurementStats,
+  SUPPLIER_STATUSES, safeSupplier, listSuppliers, getSupplier, getSupplierByUser, findSupplierByEmail, createSupplier, updateSupplier, deleteSupplier,
+  issueSupplierToken, supplierForToken, attachSupplierAccount, markSupplierVerified,
+  TENDER_STATUSES, TENDER_PREFIX, tenderState, listTenders, getTender, createTender, updateTender, deleteTender, publicTender, listPublicTenders, getPublicTender,
+  BID_STATUSES, BID_LABELS, BID_DECLARATION, BID_MAX_FILES, createBid, bidForUploadToken, countBidFiles, listBids, getBid, updateBid, deleteBid, closeOutTender,
+  askBid, deleteBidRequest, publicBid, listSupplierBids, getSupplierBid, withdrawBid, answerBidRequest,
+  PO_KINDS, PO_KIND_LABELS, PO_PREFIX, PO_STATUSES, listPurchaseOrders, getPurchaseOrder, getPurchaseOrderByToken, getPurchaseOrderByNumber,
+  createPurchaseOrder, updatePurchaseOrder, deletePurchaseOrder, markPurchaseOrderIssued, markPurchaseOrderViewed, respondToPurchaseOrder, publicPurchaseOrder, listSupplierOrders,
+} = procurement

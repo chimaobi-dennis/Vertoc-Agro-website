@@ -443,6 +443,16 @@ export const DEFAULT_SETTINGS = {
     notify_inbound: true, notify_responses: true,
   },
   mcp: { enabled: true, token_hash: '', token_hint: '', rotated_at: null },
+  procurement: {
+    default_currency: 'NGN', default_unit: 'MT',
+    payment_terms: 'Payment on delivery, after quality and quantity confirmation.',   // pre-filled on a new bidding opportunity
+    po_terms: '', po_notes: '',   // printed on every new PO / LPO
+    ack_bids: true,               // confirm a bid to the supplier as soon as it arrives
+    notify_bids: true,            // email the team when a bid arrives, a supplier answers a request or a PO
+    notify_status: true,          // email the supplier when the status of their bid changes
+    notify_to: '',                // team address for procurement notifications; falls back to the email settings
+    from_id: '',                  // department procurement emails are sent from; empty = the default From
+  },
 }
 const SETTING_GROUPS = Object.keys(DEFAULT_SETTINGS)
 
@@ -468,6 +478,7 @@ export async function updateSettings(patch) {
       else if (d === null) merged[k] = v == null ? null : String(v)
       else merged[k] = String(v ?? '').trim().slice(0, 4000)
     }
+    if (group === 'procurement') { merged.default_currency = currencyCode(merged.default_currency || 'NGN'); merged.default_unit = merged.default_unit || 'MT'; if (merged.notify_to && !EMAIL_RE.test(merged.notify_to)) throw new Error('The procurement notification address is not a valid email address') }
     if (group === 'quotes') { merged.default_currency = currencyCode(merged.default_currency); merged.valid_days = Math.min(Math.max(Math.round(merged.valid_days) || 14, 1), 365) }
     if (group === 'email' && merged.from && !/^(.+<)?[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+>?$/.test(merged.from)) throw new Error('From must look like "Name <address@domain>" or a plain address')
     if (group === 'site') for (const k of ['facebook', 'instagram', 'linkedin', 'twitter', 'threads']) if (merged[k] && !/^https?:\/\//i.test(merged[k])) throw new Error(`${k} must start with http:// or https://`)
@@ -507,7 +518,7 @@ const safeName = n => String(n || 'file').replace(/[\\/]+/g, '-').replace(/[^\w.
  * browser a signed upload URL so the bytes go straight to storage (Vercel
  * caps function bodies at 4.5 MB; documents can be 20 MB).
  */
-export async function createDocument({ client_id = null, quote_id = null, name, content_type, bytes }, actorId = null) {
+export async function createDocument({ client_id = null, quote_id = null, supplier_id = null, bid_id = null, po_id = null, label = '', name, content_type, bytes }, actorId = null) {
   const ct = String(content_type || '').toLowerCase().split(';')[0].trim()
   if (!DOC_TYPES[ct]) throw new Error('That file type is not allowed. Use images, PDF, Word, Excel, PowerPoint, CSV or text files.')
   const size = Number(bytes) || 0
@@ -516,10 +527,18 @@ export async function createDocument({ client_id = null, quote_id = null, name, 
   client_id = idOrNull(client_id); quote_id = idOrNull(quote_id)
   if (client_id != null) { const c = await getClient(client_id); if (!c) throw new Error(`no client with id ${client_id}`) }
   if (quote_id != null) { const q = await getQuote(quote_id); if (!q) throw new Error(`no quote with id ${quote_id}`); client_id ??= q.client_id }
+  // Procurement files hang off a supplier, a bid or a purchase order (migration 014).
+  supplier_id = idOrNull(supplier_id); bid_id = idOrNull(bid_id); po_id = idOrNull(po_id)
+  const one = async (table, id, what) => { const r = unwrap(await supabase.from(table).select('id,supplier_id').eq('id', id).limit(1), `createDocument:${what}`)?.[0]; if (!r) throw new Error(`no ${what} with id ${id}`); return r }
+  if (bid_id != null) supplier_id ??= (await one('bids', bid_id, 'bid')).supplier_id
+  if (po_id != null) supplier_id ??= (await one('purchase_orders', po_id, 'order')).supplier_id
+  if (supplier_id != null) { const r = unwrap(await supabase.from('suppliers').select('id').eq('id', supplier_id).limit(1), 'createDocument:supplier')?.[0]; if (!r) throw new Error(`no supplier with id ${supplier_id}`) }
+  const procurement = supplier_id != null || bid_id != null || po_id != null
   const clean = safeName(name)
-  const folder = client_id ? `clients/${client_id}` : quote_id ? `quotes/${quote_id}` : 'shared'
+  const folder = client_id ? `clients/${client_id}` : quote_id ? `quotes/${quote_id}` : bid_id ? `bids/${bid_id}` : supplier_id ? `suppliers/${supplier_id}` : po_id ? `orders/${po_id}` : 'shared'
   const path = `${folder}/${Date.now()}-${randomBytes(4).toString('hex')}-${clean.toLowerCase().replace(/[^a-z0-9.]+/g, '-')}`
-  const row = { client_id, quote_id, name: clean, path, content_type: ct, bytes: size, kind: ct.startsWith('image/') ? 'image' : 'file', status: 'pending', uploaded_by: actorId }
+  const row = { client_id, quote_id, name: clean, path, content_type: ct, bytes: size, kind: ct.startsWith('image/') ? 'image' : 'file', status: 'pending', uploaded_by: actorId,
+    ...(procurement ? { supplier_id, bid_id, po_id, label: String(label || '').replace(/\s+/g, ' ').trim().slice(0, 80) } : {}) }
   const document = unwrap(await supabase.from('documents').insert(row).select().single(), 'createDocument')
   const signed = unwrap(await supabase.storage.from('documents').createSignedUploadUrl(path), 'createDocument:sign')
   return { document, upload: { path, token: signed.token, signedUrl: signed.signedUrl } }
@@ -546,10 +565,13 @@ export async function getDocument(id, { any = false } = {}) {
   return (unwrap(await q.limit(1), 'getDocument'))?.[0] ?? null
 }
 
-export async function listDocuments({ client_id, quote_id, limit = 200 } = {}) {
+export async function listDocuments({ client_id, quote_id, supplier_id, bid_id, po_id, limit = 200 } = {}) {
   let q = supabase.from('documents').select('*').eq('status', 'ready').order('created_at', { ascending: false }).limit(limit)
   if (client_id != null) q = q.eq('client_id', Number(client_id))
   if (quote_id != null) q = q.eq('quote_id', Number(quote_id))
+  if (supplier_id != null) q = q.eq('supplier_id', Number(supplier_id))
+  if (bid_id != null) q = q.eq('bid_id', Number(bid_id))
+  if (po_id != null) q = q.eq('po_id', Number(po_id))
   return unwrap(await q, 'listDocuments') ?? []
 }
 
@@ -577,7 +599,7 @@ export async function deleteDocument(id) {
 }
 
 /** A file the server already holds (inbound attachment): store it and record it as ready. */
-export async function createDocumentFromBuffer({ client_id = null, quote_id = null, name, content_type, content, folder = 'inbound' }, actorId = null) {
+export async function createDocumentFromBuffer({ client_id = null, quote_id = null, supplier_id = null, bid_id = null, po_id = null, name, content_type, content, folder = 'inbound' }, actorId = null) {
   const ct = String(content_type || '').toLowerCase().split(';')[0].trim()
   if (!DOC_TYPES[ct]) throw new Error(`attachment type not allowed: ${ct}`)
   if (!content?.length) throw new Error('empty attachment')
@@ -585,7 +607,9 @@ export async function createDocumentFromBuffer({ client_id = null, quote_id = nu
   const clean = safeName(name)
   const path = `${folder}/${Date.now()}-${randomBytes(4).toString('hex')}-${clean.toLowerCase().replace(/[^a-z0-9.]+/g, '-')}`
   unwrap(await supabase.storage.from('documents').upload(path, content, { contentType: ct, upsert: false }), 'createDocumentFromBuffer:upload')
-  const row = { client_id: idOrNull(client_id), quote_id: idOrNull(quote_id), name: clean, path, content_type: ct, bytes: content.length, kind: ct.startsWith('image/') ? 'image' : 'file', status: 'ready', uploaded_by: actorId }
+  const proc = [supplier_id, bid_id, po_id].some(v => v != null)
+  const row = { client_id: idOrNull(client_id), quote_id: idOrNull(quote_id), name: clean, path, content_type: ct, bytes: content.length, kind: ct.startsWith('image/') ? 'image' : 'file', status: 'ready', uploaded_by: actorId,
+    ...(proc ? { supplier_id: idOrNull(supplier_id), bid_id: idOrNull(bid_id), po_id: idOrNull(po_id) } : {}) }
   return unwrap(await supabase.from('documents').insert(row).select().single(), 'createDocumentFromBuffer')
 }
 
@@ -1069,8 +1093,12 @@ export async function updateMessage(id, patch) {
 export async function getMessage(id) {
   return (unwrap(await supabase.from('messages').select('*').eq('id', Number(id)).limit(1), 'getMessage'))?.[0] ?? null
 }
-export async function listMessages({ client_id, quote_id, enquiry_id, direction = 'all', unread = false, q = '', limit = 200 } = {}) {
+export async function listMessages({ client_id, quote_id, enquiry_id, supplier_id, bid_id, po_id, scope, direction = 'all', unread = false, q = '', limit = 200 } = {}) {
   let qry = supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(limit)
+  if (scope) qry = inScope(qry, await scopeFilter(scope))
+  if (supplier_id != null) qry = qry.eq('supplier_id', Number(supplier_id))
+  if (bid_id != null) qry = qry.eq('bid_id', Number(bid_id))
+  if (po_id != null) qry = qry.eq('po_id', Number(po_id))
   if (client_id != null) qry = qry.eq('client_id', Number(client_id))
   if (quote_id != null) qry = qry.eq('quote_id', Number(quote_id))
   if (enquiry_id != null) qry = qry.eq('enquiry_id', Number(enquiry_id))
@@ -1534,33 +1562,59 @@ async function teamAddresses() {
   const [settings, staff] = await Promise.all([getSettings(), supabase.from('profiles').select('email').then(r => r.data || [])])
   const e = settings.email || {}
   const norm = s => (String(s || '').match(/<([^>]+)>/)?.[1] || String(s || '')).trim().toLowerCase()
-  return { notify: new Set([e.from, e.reply_to, e.notify_to, e.inbound_address].map(norm).filter(Boolean)), staff: new Set(staff.map(p => norm(p.email)).filter(Boolean)) }
+  return { notify: new Set([e.from, e.reply_to, e.notify_to, e.inbound_address, settings.procurement?.notify_to].map(norm).filter(Boolean)), staff: new Set(staff.map(p => norm(p.email)).filter(Boolean)) }
 }
 // Notifications go to the team's own addresses; staff invitations go to a staff address with no
-// client record attached. Mail to a client record is a conversation even if that client happens to
-// use a staff address (test clients do).
+// client record attached. Mail to a client or supplier record is a conversation even if that record
+// happens to use a staff address (test clients do).
 const isInternal = (m, team) => {
   if (m.headers?.internal === true) return true
   if (m.direction !== 'out') return false
   const to = String(m.to_email || '').toLowerCase()
-  return team.notify.has(to) || (m.client_id == null && team.staff.has(to))
+  return team.notify.has(to) || (m.client_id == null && m.supplier_id == null && team.staff.has(to))
 }
 
-// A thread is one subject with one counterpart (client record, or bare address): "Re:" / "Fwd:"
-// prefixes are ignored, so a reply stays in its thread and a new subject starts a new one.
+// Sales and procurement keep separate conversations: `messages.scope` (migration 014). Until the
+// column exists everything is sales, exactly as before, and procurement asks for the migration.
+export const MESSAGE_SCOPES = ['sales', 'procurement']
+const SCOPE_HINT = 'Procurement needs the database migration 014: run server/migrations/014_procurement.sql in the Supabase SQL editor first.'
+let scopeColumn = null, scopeCheckedAt = 0
+export async function hasScopeColumn() {
+  if (scopeColumn === true) return true
+  if (scopeColumn === false && Date.now() - scopeCheckedAt < 15000) return false   // look again shortly: the migration may just have been run
+  const { error } = await supabase.from('messages').select('scope').limit(1)
+  scopeColumn = !error; scopeCheckedAt = Date.now()
+  return scopeColumn
+}
+const scopeOf = s => (s === 'procurement' ? 'procurement' : 'sales')
+// The value to filter `scope` by, or null while the column does not exist yet. (It returns the
+// value rather than the filtered query: a query builder is thenable, so handing one back from an
+// async function would run it.)
+async function scopeFilter(scope) {
+  if (await hasScopeColumn()) return scopeOf(scope)
+  if (scopeOf(scope) === 'procurement') throw Object.assign(new Error(SCOPE_HINT), { expose: true, status: 409 })
+  return null
+}
+const inScope = (qry, value) => (value ? qry.eq('scope', value) : qry)
+
+// A thread is one subject with one counterpart (supplier or client record, or bare address): "Re:" /
+// "Fwd:" prefixes are ignored, so a reply stays in its thread and a new subject starts a new one.
 const RE_PREFIX = /^\s*((re|fwd?|fw|aw|sv|tr|wg)\s*:\s*)+/i
 export const cleanSubject = s => String(s || '').replace(RE_PREFIX, '').replace(/\s+/g, ' ').trim()
 const normSubject = s => cleanSubject(s).toLowerCase() || '(no subject)'
-const counterpartKey = m => (m.client_id != null ? `c${m.client_id}` : `e:${counterpart(m)}`)
+const counterpartKey = m => (m.supplier_id != null ? `s${m.supplier_id}` : m.client_id != null ? `c${m.client_id}` : `e:${counterpart(m)}`)
 export const threadKeyOf = m => `${counterpartKey(m)}|${normSubject(m.subject)}`
 export function parseThreadKey(key) {
   const k = String(key || ''); const i = k.indexOf('|'); if (i < 0) return null
   const who = k.slice(0, i), subject = k.slice(i + 1)
-  if (/^c\d+$/.test(who)) return { client_id: Number(who.slice(1)), email: null, subject }
-  if (who.startsWith('e:') && who.length > 2) return { client_id: null, email: who.slice(2).toLowerCase().replace(/[%,()]/g, ''), subject }
+  if (/^c\d+$/.test(who)) return { client_id: Number(who.slice(1)), supplier_id: null, email: null, subject }
+  if (/^s\d+$/.test(who)) return { client_id: null, supplier_id: Number(who.slice(1)), email: null, subject }
+  if (who.startsWith('e:') && who.length > 2) return { client_id: null, supplier_id: null, email: who.slice(2).toLowerCase().replace(/[%,()]/g, ''), subject }
   return null
 }
-const forCounterpart = (qry, k) => (k.client_id != null ? qry.eq('client_id', k.client_id) : qry.is('client_id', null).or(`from_email.ilike.${k.email},to_email.ilike.${k.email}`))
+const forCounterpart = (qry, k) => (k.supplier_id != null ? qry.eq('supplier_id', k.supplier_id) : k.client_id != null ? qry.eq('client_id', k.client_id) : qry.is('client_id', null).or(`from_email.ilike.${k.email},to_email.ilike.${k.email}`))
+// A thread under a bare address holds only messages that belong to no record.
+const sameParty = (m, k) => (k.email == null ? true : m.supplier_id == null && m.client_id == null)
 
 /* ------------------------------------------------------------- labels --- */
 // Thread labels live in the settings table under 'thread_labels' (not a settings group, so they
@@ -1610,15 +1664,17 @@ export async function setThreadLabel(key, label, actor = null, color = null) {
   return { ...entry, at: row.threads[key].at }
 }
 
-export async function listThreads({ q = '', unread = false, label = '', client_id = null, limit = 1000 } = {}) {
-  let qry = supabase.from('messages').select('id,client_id,direction,status,from_email,from_name,to_email,to_name,subject,body,created_at,read_at,attachments,headers').order('created_at', { ascending: false }).limit(limit)
+export async function listThreads({ q = '', unread = false, label = '', client_id = null, supplier_id = null, scope = 'sales', limit = 1000 } = {}) {
+  const cols = 'id,client_id,direction,status,from_email,from_name,to_email,to_name,subject,body,created_at,read_at,attachments,headers' + ((await hasScopeColumn()) ? ',supplier_id' : '')
+  let qry = inScope(supabase.from('messages').select(cols).order('created_at', { ascending: false }).limit(limit), await scopeFilter(scope))
   if (client_id != null) qry = qry.eq('client_id', Number(client_id))
+  if (supplier_id != null) qry = qry.eq('supplier_id', Number(supplier_id))
   const [rows, team] = await Promise.all([qry.then(r => unwrap(r, 'listThreads') ?? []), teamAddresses()])
   const map = new Map()
   for (const m of rows) {
     if (isInternal(m, team)) continue
     const key = threadKeyOf(m); let t = map.get(key)
-    if (!t) { t = { key, client_id: m.client_id ?? null, email: counterpart(m), name: '', subject: cleanSubject(m.subject) || '(no subject)', last: null, unread: 0, count: 0, updated_at: m.created_at }; map.set(key, t) }
+    if (!t) { t = { key, client_id: m.client_id ?? null, supplier_id: m.supplier_id ?? null, email: counterpart(m), name: '', subject: cleanSubject(m.subject) || '(no subject)', last: null, unread: 0, count: 0, updated_at: m.created_at }; map.set(key, t) }
     t.count++
     if (m.direction === 'in' && !m.read_at) t.unread++
     if (!t.last) { const { text } = splitQuoted(m.body); t.last = { id: m.id, direction: m.direction, snippet: text.replace(/\s+/g, ' ').slice(0, 140), created_at: m.created_at, status: m.status, attachments: m.attachments?.length || 0 } }
@@ -1628,6 +1684,11 @@ export async function listThreads({ q = '', unread = false, label = '', client_i
   if (ids.length) {
     const clients = unwrap(await supabase.from('clients').select('id,name,data').in('id', ids), 'listThreads:clients') ?? []
     for (const t of map.values()) { const c = clients.find(x => x.id === t.client_id); if (c) { t.name = c.name; t.email = t.email || String(c.data?.email || '').toLowerCase() } }
+  }
+  const sids = [...new Set([...map.values()].map(t => t.supplier_id).filter(v => v != null))]
+  if (sids.length) {
+    const suppliers = unwrap(await supabase.from('suppliers').select('id,company_name,email').in('id', sids), 'listThreads:suppliers') ?? []
+    for (const t of map.values()) { const c = suppliers.find(x => x.id === t.supplier_id); if (c) { t.name = c.company_name; t.email = t.email || String(c.email || '').toLowerCase() } }
   }
   const labels = await readLabelsRow()
   let list = [...map.values()]
@@ -1644,17 +1705,19 @@ export async function listThreads({ q = '', unread = false, label = '', client_i
   else if (want) list = list.filter(t => t.label?.name.toLowerCase() === want)
   return list
 }
-export async function getThread(key, { limit = 500 } = {}) {
+export async function getThread(key, { limit = 500, scope = 'sales' } = {}) {
   const k = parseThreadKey(key); if (!k) return null
-  const qry = forCounterpart(supabase.from('messages').select('*').order('created_at', { ascending: true }).limit(limit), k)
+  if (k.supplier_id != null && scopeOf(scope) !== 'procurement') return null
+  const qry = forCounterpart(inScope(supabase.from('messages').select('*').order('created_at', { ascending: true }).limit(limit), await scopeFilter(scope)), k)
   const [rows, team] = await Promise.all([qry.then(r => unwrap(r, 'getThread') ?? []), teamAddresses()])
-  return rows.filter(m => !isInternal(m, team) && normSubject(m.subject) === k.subject)
+  return rows.filter(m => !isInternal(m, team) && sameParty(m, k) && normSubject(m.subject) === k.subject)
     .map(m => { const { text, quoted } = splitQuoted(m.body); return { ...m, html: undefined, text, quoted } })
 }
-export async function markThreadRead(key) {
+export async function markThreadRead(key, { scope = 'sales' } = {}) {
   const k = parseThreadKey(key); if (!k) return 0
-  const qry = forCounterpart(supabase.from('messages').select('id,subject').eq('direction', 'in').is('read_at', null), k)
-  const ids = (unwrap(await qry, 'markThreadRead') ?? []).filter(m => normSubject(m.subject) === k.subject).map(m => m.id)
+  if (k.supplier_id != null && scopeOf(scope) !== 'procurement') return 0
+  const qry = forCounterpart(inScope(supabase.from('messages').select('*').eq('direction', 'in').is('read_at', null), await scopeFilter(scope)), k)
+  const ids = (unwrap(await qry, 'markThreadRead') ?? []).filter(m => sameParty(m, k) && normSubject(m.subject) === k.subject).map(m => m.id)
   if (!ids.length) return 0
   unwrap(await supabase.from('messages').update({ read_at: new Date().toISOString() }).in('id', ids), 'markThreadRead:update')
   return ids.length

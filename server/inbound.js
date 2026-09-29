@@ -84,7 +84,21 @@ export async function ingestReceived(data, { apiKey, dryRun = false }) {
   if (num) { const q = await content.getQuoteByNumber(num); if (q) { quote_id = q.id; client_id ??= q.client_id } }
   const inReplyTo = headers['in-reply-to'] || headers['In-Reply-To'] || null
   const prior = await content.latestOutboundTo(from.email)
-  if (prior) { quote_id ??= prior.quote_id; enquiry_id ??= prior.enquiry_id; client_id ??= prior.client_id }
+
+  // Procurement or sales? A reply follows the conversation it answers; an order number in the
+  // subject is procurement; otherwise a sender known only as a supplier is procurement too.
+  // (All of this is quiet until migration 014 exists: the lookups fail and the mail is sales.)
+  let proc = null
+  try {
+    const orderNo = subject.match(/\b(?:LPO|PO)-\d{4}-\d{4,6}\b/i)?.[0]
+    const order = orderNo && !num ? await content.getPurchaseOrderByNumber(orderNo) : null
+    if (order) proc = { supplier_id: order.supplier_id, bid_id: order.bid_id, po_id: order.id }
+    else if (prior?.scope === 'procurement') proc = { supplier_id: prior.supplier_id ?? null, bid_id: prior.bid_id ?? null, po_id: prior.po_id ?? null }
+    else if (!prior && !client && !num) { const s = await content.findSupplierByEmail(from.email); if (s) proc = { supplier_id: s.id, bid_id: null, po_id: null } }
+    if (proc && proc.supplier_id == null) { const s = await content.findSupplierByEmail(from.email); if (s) proc.supplier_id = s.id }
+  } catch { proc = null }
+  if (proc) { client_id = null; quote_id = null; enquiry_id = null }
+  else if (prior) { quote_id ??= prior.quote_id; enquiry_id ??= prior.enquiry_id; client_id ??= prior.client_id }
 
   // Attachments → private documents bucket.
   const attachments = []
@@ -93,7 +107,7 @@ export async function ingestReceived(data, { apiKey, dryRun = false }) {
       if (!a.download_url) continue
       const r = await fetch(a.download_url); if (!r.ok) continue
       const buf = Buffer.from(await r.arrayBuffer())
-      const doc = await content.createDocumentFromBuffer({ client_id, name: a.filename || 'attachment', content_type: a.content_type, content: buf, folder: `inbound/${emailId}` })
+      const doc = await content.createDocumentFromBuffer({ client_id, ...(proc ? { supplier_id: proc.supplier_id, bid_id: proc.bid_id, po_id: proc.po_id } : {}), name: a.filename || 'attachment', content_type: a.content_type, content: buf, folder: `inbound/${emailId}` })
       attachments.push({ document_id: doc.id, name: doc.name })
     } catch (e) { console.error('[inbound] attachment skipped:', e.message) }
   }
@@ -105,7 +119,8 @@ export async function ingestReceived(data, { apiKey, dryRun = false }) {
     headers: { 'message-id': full.message_id || data.message_id || null, 'in-reply-to': inReplyTo, references: headers.references || null, date: headers.date || null },
     provider_id: emailId, provider_message_id: full.message_id || data.message_id || null, in_reply_to: inReplyTo,
     attachments, sent_by: null,
+    ...(proc ? { scope: 'procurement', ...proc } : {}),
   })
-  await audit({ actor: { id: null, label: 'inbound' }, action: 'receive', entity: 'message', entityId: message.id, after: { from: from.email, subject, client_id, quote_id, attachments: attachments.length } })
+  await audit({ actor: { id: null, label: 'inbound' }, action: 'receive', entity: 'message', entityId: message.id, after: { from: from.email, subject, client_id, quote_id, ...(proc ? { scope: 'procurement', ...proc } : {}), attachments: attachments.length } })
   return { message, created: true }
 }
