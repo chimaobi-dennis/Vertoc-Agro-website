@@ -474,9 +474,11 @@ export const publicBid = (b, x = {}) => ({
   company_name: b.company_name, contact_person: b.contact_person, phone: b.phone, email: b.email, address: b.address,
   commodity: b.commodity, quantity: Number(b.quantity), unit: b.unit, price: Number(b.price), currency: b.currency, total: Number(b.total),
   commodity_location: b.commodity_location, delivery_date: b.delivery_date, accepts_terms: b.accepts_terms, terms_note: b.terms_note, note: b.note,
-  can_withdraw: BID_LIVE.includes(b.status), can_attach: BID_LIVE.includes(b.status),
+  // Documents can still be added to an awarded bid (we may ask for more); a bid that is out of the running is closed.
+  can_withdraw: BID_LIVE.includes(b.status), can_attach: !['withdrawn', 'not_selected'].includes(b.status),
   ...(x.tender ? { tender: publicTender(x.tender) } : {}),
-  ...(x.documents ? { documents: x.documents.map(d => ({ id: d.id, name: d.name, label: d.label || '', bytes: d.bytes, content_type: d.content_type, created_at: d.created_at })) } : {}),
+  // `mine`: uploaded by the supplier (no staff member behind it), so theirs to remove.
+  ...(x.documents ? { documents: x.documents.map(d => ({ id: d.id, name: d.name, label: d.label || '', bytes: d.bytes, content_type: d.content_type, created_at: d.created_at, mine: d.uploaded_by == null })) } : {}),
   ...(x.requests ? { requests: x.requests.map(r => ({ id: r.id, question: r.question, asked_at: r.asked_at, answer: r.answer, answered_at: r.answered_at })) } : {}),
   ...(x.orders ? { orders: x.orders.filter(o => o.status !== 'draft').map(o => ({ kind: o.kind, number: o.number, token: o.token, status: o.status, total: Number(o.total), currency: o.currency, issued_at: o.issued_at })) } : {}),
 })

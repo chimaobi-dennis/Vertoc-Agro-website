@@ -45,7 +45,8 @@ export default function Header() {
             />
           </Link>
 
-          <nav className="hidden md:flex items-center gap-6">
+          {/* nine links need about 1000px beside the logo and the button: below that, the menu button */}
+          <nav className="hidden lg:flex items-center gap-4 xl:gap-6">
             {NAV_LINKS.map(l => (
               <NavLink
                 key={l.to}
@@ -73,7 +74,7 @@ export default function Header() {
 
             <Link
               to="/quote"
-              className="hidden md:inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-accent px-6 h-10 text-sm font-semibold text-accent-foreground hover:opacity-90 transition-opacity"
+              className="hidden lg:inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-accent px-6 h-10 text-sm font-semibold text-accent-foreground hover:opacity-90 transition-opacity"
             >
               Get a Quote
             </Link>
@@ -84,7 +85,7 @@ export default function Header() {
               aria-label="Open menu"
               aria-haspopup="dialog"
               aria-expanded={menuOpen}
-              className={`inline-flex items-center justify-center h-9 w-9 md:hidden rounded-full transition-colors ${
+              className={`inline-flex items-center justify-center h-9 w-9 lg:hidden rounded-full transition-colors ${
                 solid ? 'text-foreground hover:bg-muted' : 'text-white hover:bg-white/10'
               }`}
             >

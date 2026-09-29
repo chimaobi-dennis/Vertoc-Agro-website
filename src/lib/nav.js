@@ -5,6 +5,7 @@ export const NAV_LINKS = [
   { label: 'About', to: '/about' },
   { label: 'Services', to: '/services' },
   { label: 'Products', to: '/products' },
+  { label: 'Bidding', to: '/bidding' },
   { label: 'Sustainability', to: '/sustainability' },
   { label: 'Blog', to: '/blog' },
   { label: 'Gallery', to: '/gallery' },

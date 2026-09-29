@@ -300,7 +300,9 @@ try {
   })
   await step('POST /tenders/:id/close-out: the rest are not selected', async () => {
     const r = await buyer(`/tenders/${tender.id}/close-out`, { method: 'POST', body: { note: 'Thank you for bidding.', ...N } }); if (r.changed !== 1 || r.notified !== (DRY ? 1 : 0)) throw new Error(JSON.stringify(r).slice(0, 120))
-    const mine = await pub(`/supplier/bids/${bid2.id}`, { token: sup2.token }); if (mine.status !== 'not_selected' || mine.can_withdraw || mine.status_note !== 'Thank you for bidding.') throw new Error(JSON.stringify(mine).slice(0, 200))
+    const mine = await pub(`/supplier/bids/${bid2.id}`, { token: sup2.token }); if (mine.status !== 'not_selected' || mine.can_withdraw || mine.can_attach || mine.status_note !== 'Thank you for bidding.') throw new Error(JSON.stringify(mine).slice(0, 200))
+    await refused(() => pub(`/supplier/bids/${bid2.id}/files`, { method: 'POST', token: sup2.token, body: { name: 'late.pdf', content_type: 'application/pdf', bytes: 10 } }), /can no longer be changed/, 'attach after the decision')
+    const won = await pub(`/supplier/bids/${guest.id}`, { token: sup.token }); if (!won.can_attach || won.can_withdraw) throw new Error('an awarded bid should still take documents, and not be withdrawn')
     await refused(() => pub(`/supplier/bids/${bid2.id}/withdraw`, { method: 'POST', token: sup2.token }), /no longer be withdrawn/, 'withdraw after decision')
     return `${r.changed} bid closed out`
   })
@@ -381,6 +383,14 @@ try {
   await step('DELETE /suppliers/:id: refused with orders, fine without', async () => { await refused(() => buyer(`/suppliers/${sup.id}`, { method: 'DELETE' }), /Archive the supplier/, 'delete with orders'); return (await buyer(`/suppliers/${manual.id}`, { method: 'DELETE' })).deleted })
 
   /* -------------------------------------------------------- documents --- */
+  await step('a supplier cannot remove a file our team added', async () => {
+    const s = await buyer('/documents', { method: 'POST', body: { bid_id: guest.id, name: 'e2e-inspection-report.pdf', content_type: 'application/pdf', bytes: PDF.length } }); paths.push(s.upload.path)
+    const { error } = await anonClient().storage.from('documents').uploadToSignedUrl(s.upload.path, s.upload.token, new Blob([PDF], { type: 'application/pdf' }), { contentType: 'application/pdf' }); if (error) throw new Error(error.message)
+    await buyer(`/documents/${s.document.id}/complete`, { method: 'POST' })
+    const b = await pub(`/supplier/bids/${guest.id}`, { token: sup.token }); const d = b.documents.find(x => x.id === s.document.id); if (!d || d.mine !== false) throw new Error(JSON.stringify(b.documents))
+    if (b.documents.some(x => /^L?PO-/.test(x.name))) throw new Error('the order PDF is listed among the bid documents')
+    return refused(() => pub(`/supplier/bids/${guest.id}/files/${d.id}`, { method: 'DELETE', token: sup.token }), /added by our team/, 'supplier deletes a staff file')
+  })
   await step('documents: each side handles its own', async () => {
     const mine = await buyer(`/documents?bid_id=${guest.id}`)
     await refused(() => sales(`/documents?supplier_id=${sup.id}`), /^403/, 'sales → supplier files')

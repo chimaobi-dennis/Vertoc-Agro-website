@@ -26,7 +26,7 @@ export default function MobileMenu({ open, onClose }) {
   return (
     <>
       <div
-        className={`fixed inset-0 z-50 bg-black/80 transition-opacity duration-300 md:hidden ${
+        className={`fixed inset-0 z-50 bg-black/80 transition-opacity duration-300 lg:hidden ${
           open ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onClick={onClose}
@@ -36,7 +36,7 @@ export default function MobileMenu({ open, onClose }) {
         role="dialog"
         aria-modal="true"
         aria-label="Menu"
-        className={`fixed inset-y-0 right-0 z-50 h-full w-3/4 max-w-sm bg-background p-6 shadow-lg transition-transform duration-300 ease-in-out md:hidden ${
+        className={`fixed inset-y-0 right-0 z-50 h-full w-3/4 max-w-sm bg-background p-6 shadow-lg transition-transform duration-300 ease-in-out lg:hidden ${
           open ? 'translate-x-0' : 'translate-x-full'
         }`}
       >

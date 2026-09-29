@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
 import Home from './pages/Home'
 import About from './pages/About'
@@ -24,9 +24,18 @@ import TermsOfService from './pages/TermsOfService'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import { SiteProvider } from './lib/site'
 import { EditingProvider } from './lib/editing'
+import { SupplierProvider } from './lib/supplier'
+import Bidding from './pages/Bidding'
+import BiddingDetail from './pages/BiddingDetail'
+import PurchaseOrderView from './pages/PurchaseOrderView'
 
 // Code-split: public visitors never download the admin panel.
 const AdminApp = lazy(() => import('./admin/AdminApp'))
+// …nor the supplier portal, until they open it.
+const SupplierApp = lazy(() => import('./supplier/SupplierApp'))
+
+/** Procurement pages know whether a supplier is signed in (to fill in the bid form, to open the portal). */
+const WithSupplier = () => <SupplierProvider><Outlet /></SupplierProvider>
 
 function LegacyAdminRedirect() {
   const { pathname, search, hash } = useLocation()
@@ -57,6 +66,12 @@ export default function App() {
         <Route path="/contact" element={<Contact />} />
         <Route path="/quote" element={<Quote />} />
         <Route path="/q/:token" element={<QuoteView />} />
+        <Route path="/po/:token" element={<PurchaseOrderView />} />
+        <Route element={<WithSupplier />}>
+          <Route path="/bidding" element={<Bidding />} />
+          <Route path="/bidding/:number" element={<BiddingDetail />} />
+          <Route path="/supplier/*" element={<Suspense fallback={<main className="flex-grow"><div className="min-h-screen bg-background" /></main>}><SupplierApp /></Suspense>} />
+        </Route>
         <Route path="/testimonials" element={<Testimonials />} />
         <Route path="/industries" element={<Industries />} />
         <Route path="/industries/why-choose-us" element={<WhyChooseUs />} />

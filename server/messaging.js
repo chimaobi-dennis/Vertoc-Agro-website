@@ -362,7 +362,7 @@ export async function sendPurchaseOrder(id, { actor, to, subject, body, attachme
   try {
     const previous = (await content.listDocuments({ po_id: o.id })).find(d => d.name === `${o.number}.pdf`)
     if (previous) await content.deleteDocument(previous.id)
-    pdfDoc = await content.createDocumentFromBuffer({ supplier_id: o.supplier_id, po_id: o.id, bid_id: o.bid_id, name: `${o.number}.pdf`, content_type: 'application/pdf', content: pdf, folder: `orders/${o.id}` }, actor?.id ?? null)
+    pdfDoc = await content.createDocumentFromBuffer({ supplier_id: o.supplier_id, po_id: o.id, name: `${o.number}.pdf`, content_type: 'application/pdf', content: pdf, folder: `orders/${o.id}` }, actor?.id ?? null)
   } catch (e) { console.error('[send-order] pdf not filed:', e.message) }
   const msg = await deliver({
     actor, to: recipient, toName: o.supplier_name,

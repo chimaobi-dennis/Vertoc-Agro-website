@@ -447,6 +447,90 @@ vehicle number, the expected arrival and the notes.
   `{ name, state, lat, lng }`, `notes`.
 - Statuses: `planned` → `in_transit` (first pin) → `delivered`; `cancelled`.
 
+### Procurement: bidding, suppliers, PO / LPO (Phase 6)
+
+Needs `server/migrations/014_procurement.sql`. Sales is the selling leg;
+**procurement is the sourcing leg**, with the same building blocks: where
+sales has enquiries, invoices, clients and messages, procurement has bids,
+purchase orders (PO / LPO), suppliers and its own inbox. A staff role
+`procurement` sees only that side (admins see both).
+
+**On the website**
+
+- `/bidding` lists the bidding opportunities (open, opening soon, recently
+  closed): commodity, quantity, specification, delivery location, asking
+  price, payment terms, closing date. `/bidding/<number>` shows one in full
+  with the bid form while it is open.
+- **Submitting a bid** needs no account: company, contact, phone, email,
+  address, commodity, quantity, price per unit (the asking price is shown,
+  the supplier still enters theirs), location, delivery date, whether they
+  accept the payment terms, documents (company registration, CAC, quality
+  certificate, references, other) and the declaration. The total is worked
+  out by the server. Honeypot, throttle and Turnstile as on the quote form;
+  documents go straight to storage on signed URLs.
+- **Supplier accounts** (`/supplier/*`): register, confirm the email from a
+  one-time link, sign in, reset the password. Bids made with an email
+  address before the account existed are in the dashboard as soon as the
+  address is confirmed. The dashboard shows open opportunities, the
+  supplier's bids and their status, requests for information (answered
+  there), awarded bids and purchase orders. Suppliers sign in with Supabase
+  Auth through their own client (storage key `vertoc-supplier-auth`), are
+  checked against `suppliers` — never `profiles` — and get no staff
+  profile, so they do not appear under Users and cannot reach the panel.
+- `/po/<token>` is the supplier's page for an order: PDF, acknowledge or
+  decline.
+
+**In the panel** (group *Procurement*)
+
+- **Bidding** — create and publish opportunities (number `VB-YYYY-NNNN`),
+  set the opening and closing dates, close, reopen or cancel. The *Bids*
+  tab compares what came in against the asking price: filter by status,
+  price, quantity, location, supplier and accepted terms; order by price,
+  quantity, total, delivery or date; tick two to four bids for a
+  side-by-side comparison; email the shortlisted suppliers (one email
+  each); close out (everything still in play becomes *not selected*).
+- **A bid** moves Open → Under review → Shortlisted → Awarded / Not
+  selected (the supplier may withdraw while it is in play). Every change
+  can carry a note and emails the supplier. Staff can ask for more
+  information; the supplier answers in the dashboard and the team is told.
+  Awarding marks the opportunity awarded; from an awarded bid a **PO or
+  LPO** is raised in one step.
+- **Purchase orders** — `PO-YYYY-NNNN` / `LPO-YYYY-NNNN`, line items and
+  totals like an invoice, delivery and payment terms, PDF, send by email,
+  statuses draft → issued → acknowledged / declined → fulfilled.
+- **Suppliers** — the record, its bids, orders, documents and conversation;
+  whether they have an account; block, archive, send a password link.
+- **Messages** — the procurement inbox. `messages.scope` keeps it apart
+  from sales: threads are keyed by supplier (`s<id>|subject`), a supplier's
+  reply lands there, and each side's unread badge counts its own mail.
+- **Settings → Procurement** — default currency and unit, payment terms,
+  PO terms, the department procurement email is sent from, the team's
+  notification address, and which emails go out. The wording of every
+  email is under Email templates (`bid_received`, `bid_notice`,
+  `bid_status`, `bid_request`, `bid_update_notice`, `supplier_verify`,
+  `supplier_reset`, `purchase_order`, `po_response`, `supplier_blank`).
+
+**API**
+
+- Public: `GET /api/tenders`, `GET /api/tenders/:number`,
+  `POST /api/tenders/:number/bids`, `POST /api/bids/:id/files` (+
+  `/:docId/complete`, with the `X-Upload-Token` a guest gets with the bid),
+  `GET /api/po/:token` (+ `/pdf`, `POST /respond`).
+- Supplier (bearer = supplier session): `POST /api/supplier/register |
+  verify | resend | forgot | reset`, `GET/PATCH /api/supplier/me`,
+  `GET /api/supplier/bids`, `GET /api/supplier/bids/:id`,
+  `POST …/withdraw`, `POST …/requests/:rid/answer`, `POST/DELETE …/files`,
+  `GET /api/supplier/orders`.
+- Panel (permission `procurement`): `/tenders`, `/tenders/:id`
+  (`/close-out`, `/message`), `/bids`, `/bids/:id` (`/requests`),
+  `/suppliers`, `/suppliers/:id` (`/send-link`), `/purchase-orders`,
+  `/purchase-orders/:id` (`/pdf`, `/send`), `/procurement/messages/*`,
+  `/procurement/templates/:key/render`, `/procurement/overview`. Documents
+  take `supplier_id`, `bid_id` or `po_id`; each side handles its own files.
+
+Until migration 014 is run, sales works exactly as before, the public list
+is empty, and the panel names the file to run.
+
 ### Testing
 
 With the backend running and steps 1–2 done:
@@ -461,6 +545,22 @@ upload, the quote lifecycle and the public accept flow, and removes everything
 it made — even on failure. It **never emails anyone**: the send steps run only
 when the backend was started with `EMAIL_DRY_RUN=1`; otherwise they are
 reported as skipped.
+
+Procurement has its own suite, run the same way:
+
+```
+node server/test-procurement.mjs
+```
+
+It creates three staff accounts (admin, procurement, sales) and two
+suppliers, walks bidding, documents, statuses, requests for information,
+awards, PO / LPO and the procurement inbox, checks that each side is closed
+to the other, and removes everything. Like the main suite it never emails
+anyone: without `EMAIL_DRY_RUN=1` on the backend it switches the
+procurement notifications off for the run and skips the steps that would
+send. The steps behind the captcha run only where the backend has no
+`TURNSTILE_SECRET_KEY`. `THROTTLE_SCALE=100` on a local backend keeps the
+rate limits out of the way of repeated runs.
 
 ## Security
 

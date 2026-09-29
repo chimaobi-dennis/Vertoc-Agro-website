@@ -163,7 +163,11 @@ router.post('/supplier/register', h(async (req, res) => {
   if (existing?.status === 'blocked') throw bad('We cannot open an account for this supplier at the moment. Please contact us.', 403)
   const sb = await supabase()
   const { data, error } = await sb.auth.admin.createUser({ email, password: b.password, email_confirm: false, user_metadata: { account_type: 'supplier', name: contact_person, company: company_name } })
-  if (error) { if (/already|registered|exists/i.test(error.message)) throw taken(); throw new Error(`register: ${error.message}`) }
+  if (error) {
+    if (/already|registered|exists/i.test(error.message)) throw taken()
+    if (/password/i.test(error.message)) throw bad(error.message)   // the project's own password rules, in its words
+    throw new Error(`register: ${error.message}`)
+  }
   const user = data.user
   // Before migration 014 the sign-up trigger files every new account as an inactive staff profile: take it out again.
   await sb.from('profiles').delete().eq('id', user.id).eq('active', false).then(() => {}, () => {})
@@ -275,6 +279,7 @@ router.get('/supplier/bids/:id/files/:docId/url', asSupplier(async (req, res, s)
 router.delete('/supplier/bids/:id/files/:docId', asSupplier(async (req, res, s) => {
   const { b, d } = await ownFile(s, req.params.id, req.params.docId)
   attachable(b)
+  if (d.uploaded_by != null) throw bad('This document was added by our team and cannot be removed here.', 403)
   await content.deleteDocument(d.id)
   await audit({ actor: SUPPLIER, action: 'delete', entity: 'document', entityId: d.id, before: { name: d.name, bid_id: b.id, supplier_id: s.id } })
   res.json({ deleted: true, id: d.id })
