@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, Loader2, MailCheck } from 'lucide-react'
 import Turnstile from '../components/Turnstile'
+import PasswordInput from '../components/PasswordInput'
 import { supplierFetch, useSupplier } from '../lib/supplier'
 import { AuthCard, Label, Notice, Problem, accent, input, outline, primary } from './ui'
 
@@ -35,7 +36,7 @@ export function SupplierLogin() {
         {unverified && !sent && <button type="button" onClick={resend} className="text-sm font-semibold text-accent">Send the confirmation email again</button>}
         {sent && <Notice>If that address has an account waiting for confirmation, a new link is on its way.</Notice>}
         <label className="block"><Label>Email address</Label><input required type="email" autoComplete="email" className={input} value={f.email} onChange={e => setF({ ...f, email: e.target.value })} /></label>
-        <label className="block"><Label>Password</Label><input required type="password" autoComplete="current-password" className={input} value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /></label>
+        <label className="block"><Label>Password</Label><PasswordInput required autoComplete="current-password" className={input} value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /></label>
         <button type="submit" disabled={busy} className={`${primary} w-full`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />}{busy ? 'Signing in…' : 'Sign in'}</button>
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
           <Link to={`/supplier/forgot${f.email ? `?email=${encodeURIComponent(f.email)}` : ''}`} className="font-semibold text-accent">Forgot your password?</Link>
@@ -92,8 +93,8 @@ export function SupplierRegister() {
               <label className="block sm:col-span-2"><Label>Email address *</Label><input required type="email" maxLength={200} className={input} value={f.email} onChange={set('email')} autoComplete="email" /></label>
               <label className="block sm:col-span-2"><Label hint="(optional)">Company address</Label><textarea rows={2} maxLength={500} className={input} value={f.address} onChange={set('address')} autoComplete="street-address" /></label>
               <label className="block sm:col-span-2"><Label hint="(optional)">What do you supply?</Label><input maxLength={500} className={input} value={f.commodities} onChange={set('commodities')} placeholder="Soybeans, maize, cocoa…" /></label>
-              <label className="block"><Label>Password *</Label><input required type="password" minLength={8} maxLength={72} autoComplete="new-password" className={input} value={f.password} onChange={set('password')} /><span className="block text-xs text-muted-foreground mt-1.5">At least 8 characters.</span></label>
-              <label className="block"><Label>Password again *</Label><input required type="password" minLength={8} maxLength={72} autoComplete="new-password" className={input} value={f.again} onChange={set('again')} /></label>
+              <label className="block"><Label>Password *</Label><PasswordInput required minLength={8} maxLength={72} autoComplete="new-password" className={input} value={f.password} onChange={set('password')} /><span className="block text-xs text-muted-foreground mt-1.5">At least 8 characters.</span></label>
+              <label className="block"><Label>Password again *</Label><PasswordInput required minLength={8} maxLength={72} autoComplete="new-password" className={input} value={f.again} onChange={set('again')} /></label>
             </div>
             <div className="hidden" aria-hidden="true"><label htmlFor="website-supplier">Leave this field blank</label><input id="website-supplier" type="text" tabIndex={-1} autoComplete="off" value={f.website} onChange={set('website')} /></div>
             <Turnstile onVerify={setToken} />
@@ -174,8 +175,8 @@ export function SupplierReset() {
     <AuthCard title="Choose a new password">
       <form onSubmit={submit} className="space-y-4">
         <Problem>{err}</Problem>
-        <label className="block"><Label>New password</Label><input required type="password" minLength={8} maxLength={72} autoComplete="new-password" className={input} value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /><span className="block text-xs text-muted-foreground mt-1.5">At least 8 characters.</span></label>
-        <label className="block"><Label>New password again</Label><input required type="password" minLength={8} maxLength={72} autoComplete="new-password" className={input} value={f.again} onChange={e => setF({ ...f, again: e.target.value })} /></label>
+        <label className="block"><Label>New password</Label><PasswordInput required minLength={8} maxLength={72} autoComplete="new-password" className={input} value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /><span className="block text-xs text-muted-foreground mt-1.5">At least 8 characters.</span></label>
+        <label className="block"><Label>New password again</Label><PasswordInput required minLength={8} maxLength={72} autoComplete="new-password" className={input} value={f.again} onChange={e => setF({ ...f, again: e.target.value })} /></label>
         <button type="submit" disabled={busy} className={`${primary} w-full`}>{busy ? 'Saving…' : 'Save my new password'}</button>
         <p className="text-sm text-center"><Link to="/supplier/forgot" className="font-semibold text-accent">Ask for a new link</Link></p>
       </form>

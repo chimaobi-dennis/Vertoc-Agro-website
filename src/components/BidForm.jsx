@@ -57,10 +57,15 @@ export default function BidForm({ tender }) {
     catch (e) { mark(item.key, { state: 'failed', error: e.message }) }
   }
 
+  // Documents are optional unless the opportunity names some as mandatory.
+  const mustHave = Array.isArray(tender.required_documents) ? tender.required_documents : []
+  const labels = [...mustHave.filter(l => !FILE_LABELS.includes(l)), ...FILE_LABELS]
   const submit = async e => {
     e.preventDefault(); setErr(null)
     if (f.accepts_terms === '') return setErr('Please say whether you accept the stated payment terms.')
     if (!f.confirmed) return setErr('Please tick the confirmation to submit your bid.')
+    const lacking = mustHave.filter(l => !files.some(i => i.label === l))
+    if (lacking.length) return setErr(`Please attach the required document${lacking.length === 1 ? '' : 's'}: ${lacking.join(', ')}.`)
     setBusy(true)
     try {
       const { website, ...body } = f
@@ -169,12 +174,13 @@ export default function BidForm({ tender }) {
 
       <fieldset className="space-y-3">
         <legend className="text-xs font-semibold uppercase tracking-widest text-accent mb-1">Supporting documents</legend>
-        <p className="text-sm text-muted-foreground">Attach what supports your bid. PDF, Word, Excel or images, up to 20 MB each and 10 files in all. You can add more later from your supplier dashboard.</p>
+        <p className="text-sm font-medium text-foreground">{mustHave.length ? 'The documents marked “Required” must be attached. The others are optional – you may upload supporting documents where applicable.' : 'Optional – You may upload supporting documents where applicable.'}</p>
+        <p className="text-sm text-muted-foreground">PDF, Word, Excel or images, up to 20 MB each and 10 files in all. You can add more later from your supplier dashboard.</p>
         <ul className="rounded-2xl border border-border divide-y divide-border bg-card">
-          {FILE_LABELS.map(label => { const mine = files.filter(i => i.label === label); return (
+          {labels.map(label => { const mine = files.filter(i => i.label === label); const must = mustHave.includes(label); return (
             <li key={label} className="px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <span className="text-sm font-medium flex items-center gap-2"><FileText className="w-4 h-4 text-muted-foreground" />{label}</span>
+                <span className="text-sm font-medium flex items-center gap-2"><FileText className="w-4 h-4 text-muted-foreground" />{label}{must ? <span className="text-[11px] font-semibold uppercase tracking-wide text-destructive">Required</span> : <span className="text-xs font-normal text-muted-foreground">(optional)</span>}</span>
                 <input ref={el => { pickers.current[label] = el }} type="file" multiple accept={FILE_ACCEPT} className="sr-only" onChange={e => { addFiles(label, [...e.target.files]); e.target.value = '' }} aria-label={`Add ${label}`} />
                 <button type="button" onClick={() => pickers.current[label]?.click()} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full border border-border text-xs font-semibold hover:bg-muted"><Paperclip className="w-3.5 h-3.5" />{mine.length ? 'Add another' : 'Choose file'}</button>
               </div>

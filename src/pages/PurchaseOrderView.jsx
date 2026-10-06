@@ -1,5 +1,6 @@
 /* The supplier's page for a purchase order: /po/<token>. The token is the only credential. */
 import { useEffect, useState } from 'react'
+import { OtpField, useOtp } from '../components/OtpStep'
 import { useParams } from 'react-router-dom'
 import { Ban, CheckCircle2, Clock, Download, FileText, PackageCheck, XCircle } from 'lucide-react'
 import { fetchJson } from '../lib/api'
@@ -20,18 +21,21 @@ export default function PurchaseOrderView() {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  const otp = useOtp(`/po/${token}/otp`)   // acknowledging needs the code we email
 
   useEffect(() => {
     fetchJson(`/po/${token}`).then(d => { setO(d); setState('ready') }).catch(e => setState(/404/.test(e.message) ? 'missing' : 'error'))
   }, [token])
 
   const respond = async () => {
+    // First press: have the code emailed. Second press: send the answer with it.
+    if (answer === 'acknowledge' && otp.stage === null) { const r = await otp.request(); if (r !== 'skip') return }
     setBusy(true); setErr(null)
     try {
-      const r = await fetch(`${BASE}/api/po/${token}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: answer, note }) })
+      const r = await fetch(`${BASE}/api/po/${token}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: answer, note, ...(answer === 'acknowledge' && otp.stage === 'sent' ? { otp: otp.code } : {}) }) })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d.error || 'Something went wrong. Please try again.')
-      setO(d); setAnswer(null)
+      setO(d); setAnswer(null); otp.reset()
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
 
@@ -124,10 +128,12 @@ export default function PurchaseOrderView() {
                     <h2 className="font-semibold mb-1">{answer === 'acknowledge' ? 'Acknowledge this order?' : 'Decline this order?'}</h2>
                     <p className="text-sm text-muted-foreground mb-4">{answer === 'acknowledge' ? 'By acknowledging you confirm that you will supply the items above at these prices, by the delivery date, on these payment terms.' : 'Tell us why, so our procurement team can follow up.'}</p>
                     <textarea rows={3} value={note} onChange={e => setNote(e.target.value)} placeholder="Optional message to our procurement team" className="w-full rounded-xl border border-border bg-card p-3 text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25" />
+                    {answer === 'acknowledge' && otp.stage === null && <p className="text-xs text-muted-foreground mt-3">To confirm it is you, we will email a one-time verification code to the address this order was sent to.</p>}
+                    {answer === 'acknowledge' && <OtpField otp={otp} />}
                     {err && <p className="text-sm text-destructive mt-2" role="alert">{err}</p>}
                     <div className="flex flex-wrap gap-3 mt-4">
-                      <button onClick={respond} disabled={busy} className={`${btn} ${answer === 'acknowledge' ? 'bg-accent text-accent-foreground hover:bg-accent/90' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}>{busy ? 'Sending…' : answer === 'acknowledge' ? 'Yes, acknowledge' : 'Yes, decline'}</button>
-                      <button onClick={() => setAnswer(null)} disabled={busy} className={`${btn} text-muted-foreground hover:text-foreground`}>Cancel</button>
+                      <button onClick={respond} disabled={busy || otp.busy || (answer === 'acknowledge' && otp.stage === 'sent' && !otp.ready)} className={`${btn} ${answer === 'acknowledge' ? 'bg-accent text-accent-foreground hover:bg-accent/90' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}>{busy || otp.busy ? 'Sending…' : answer === 'acknowledge' ? (otp.stage === null ? 'Email me the code' : 'Confirm and acknowledge') : 'Yes, decline'}</button>
+                      <button onClick={() => { setAnswer(null); otp.reset(); setErr(null) }} disabled={busy} className={`${btn} text-muted-foreground hover:text-foreground`}>Cancel</button>
                     </div>
                   </div>
                 )}

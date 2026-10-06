@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Download, FileText, Plus, Search, Settings2 } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Button, Card, Input, PageHeader, Table, Td } from './ui'
+import { useSort } from '../lib/sort'
 import { Bone } from '../components/Skeleton'
 import { displayValue as display } from './DynamicField'
 
@@ -37,6 +38,7 @@ export default function ClientsAdmin() {
   ]
   const ready = rows && fields
 
+  const [sorted, sortControl] = useSort(visible, { name: 'name' })
   return (
     <>
       <PageHeader eyebrow="CRM" title="Clients" description={ready ? `${visible.length} of ${rows.length} ${status}` : ' '}
@@ -62,12 +64,13 @@ export default function ClientsAdmin() {
         </div>
       </div>
 
+      <div className="flex justify-end mb-3">{sortControl}</div>
       <Card>
         <Table head={['Name', ...cols.map(c => c.label), '']}>
           {!ready && [0, 1, 2, 3].map(i => (
             <tr key={i}>{[...Array(cols.length + 2)].map((_, j) => <Td key={j}><Bone className="h-4 w-24" /></Td>)}</tr>
           ))}
-          {ready && visible.map(r => (
+          {ready && sorted.map(r => (
             <tr key={r.id} className="hover:bg-muted/40">
               <Td><Link to={`/staff360/clients/${r.id}`} className="font-medium hover:text-accent">{r.name}</Link></Td>
               {cols.map(c => <Td key={c.key} className="text-muted-foreground">{display(c, r.data?.[c.key])}</Td>)}

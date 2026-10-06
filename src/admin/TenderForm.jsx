@@ -12,10 +12,10 @@ import { Alert, Badge, Button, Card, Field, Input, PageHeader, Tabs, Textarea, c
 import { Bone } from '../components/Skeleton'
 import BidsTable from './BidsTable'
 import { DraftNotice, useDraft } from './useDraft'
-import { TENDER_LABELS, fmtMoment, fromLocalInput, fromNow, money, perUnit, poTone, qty, tenderTone, toLocalInput } from '../lib/procurement'
+import { FILE_LABELS, TENDER_LABELS, fmtMoment, fromLocalInput, fromNow, money, perUnit, poTone, qty, tenderTone, toLocalInput } from '../lib/procurement'
 
 const inDays = d => { const x = new Date(Date.now() + d * 86400e3); x.setHours(17, 0, 0, 0); return toLocalInput(x.toISOString()) }
-const blank = s => ({ number: '', title: '', commodity: '', quantity: '', unit: s?.default_unit || 'MT', specification: '', delivery_location: '', delivery_period: '', delivery_by: '', asking_price: '', currency: s?.default_currency || 'NGN', payment_terms: s?.payment_terms || '', requirements: '', opens_at: '', closes_at: inDays(14) })
+const blank = s => ({ number: '', title: '', commodity: '', quantity: '', unit: s?.default_unit || 'MT', specification: '', delivery_location: '', delivery_period: '', delivery_by: '', asking_price: '', currency: s?.default_currency || 'NGN', payment_terms: s?.payment_terms || '', requirements: '', required_documents: [], opens_at: '', closes_at: inDays(14) })
 const TABS = [{ key: 'bids', label: 'Bids', icon: Gavel }, { key: 'details', label: 'Details', icon: FileText }]
 
 export default function TenderForm() {
@@ -36,7 +36,7 @@ export default function TenderForm() {
   const fill = t => setForm({
     number: (String(t.number || '').match(/-(\d+)$/) || [])[1] || '', title: t.title, commodity: t.commodity, quantity: t.quantity, unit: t.unit, specification: t.specification,
     delivery_location: t.delivery_location, delivery_period: t.delivery_period, delivery_by: t.delivery_by || '', asking_price: t.asking_price ?? '', currency: t.currency,
-    payment_terms: t.payment_terms, requirements: t.requirements, opens_at: toLocalInput(t.opens_at), closes_at: toLocalInput(t.closes_at),
+    payment_terms: t.payment_terms, requirements: t.requirements, required_documents: t.required_documents || [], opens_at: toLocalInput(t.opens_at), closes_at: toLocalInput(t.closes_at),
   })
   const load = useCallback(() => adminFetch(`/tenders/${id}`).then(t => { setTender(t); fill(t); setDirty(false) }).catch(e => setErr(e.message)), [id])
   useEffect(() => {
@@ -125,6 +125,11 @@ export default function TenderForm() {
               <div />
               <Field label="Payment terms" hint="Suppliers say whether they accept these. The default comes from Settings → Procurement." className="md:col-span-2"><Textarea rows={3} value={form.payment_terms} onChange={e => set({ payment_terms: e.target.value })} /></Field>
               <Field label="Additional requirements" hint="Certifications, inspection, documentation, packaging…" className="md:col-span-2"><Textarea rows={4} value={form.requirements} onChange={e => set({ requirements: e.target.value })} /></Field>
+              <fieldset className="md:col-span-2">
+                <legend className="block text-sm font-semibold text-foreground mb-1.5">Documents suppliers must upload</legend>
+                <p className="text-xs text-muted-foreground mb-3">Documents are optional on the bid form unless you tick them here. Ticked ones must be attached before a bid can be submitted.</p>
+                <div className="grid sm:grid-cols-2 gap-2">{FILE_LABELS.filter(l => !/^Other/.test(l)).map(l => <label key={l} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={(form.required_documents || []).includes(l)} onChange={e => set({ required_documents: e.target.checked ? [...(form.required_documents || []), l] : form.required_documents.filter(x => x !== l) })} />{l}</label>)}</div>
+              </fieldset>
             </Card>
 
             <Card className="p-6 grid md:grid-cols-2 gap-5 animate-fade-up" style={{ animationDelay: '140ms' }}>

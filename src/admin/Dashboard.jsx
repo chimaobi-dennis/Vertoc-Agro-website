@@ -1,24 +1,27 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ArrowRight, Briefcase, Factory, FileSignature, FileText, Gavel, Inbox, Mail, Mails, Megaphone, Newspaper, Package, Plus, UserPlus, Users } from 'lucide-react'
+import { Activity, ArrowRight, Banknote, Briefcase, TrendingUp, Truck, Factory, FileSignature, FileText, Gavel, Inbox, Mail, Mails, Megaphone, Newspaper, Package, Plus, UserPlus, Users } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { Alert, Badge, Button, Card } from './ui'
 import { Bone } from '../components/Skeleton'
 
 const TILES = [
-  { key: 'products', label: 'Products', icon: Package, to: '/staff360/products', perm: 'products', tone: 'bg-primary/10 text-primary' },
-  { key: 'posts', label: 'Blog posts', icon: Newspaper, to: '/staff360/posts', perm: 'posts', tone: 'bg-accent/15 text-accent' },
-  { key: 'enquiriesNew', label: 'New enquiries', icon: Inbox, to: '/staff360/enquiries', perm: 'quotes', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
-  { key: 'quotesOpen', label: 'Open invoices', icon: FileText, to: '/staff360/quotes?status=open', perm: 'quotes', tone: 'bg-primary/10 text-primary' },
-  { key: 'inboundUnread', label: 'Unread emails', icon: Mail, to: '/staff360/messages?unread=1', perm: 'email', tone: 'bg-accent/15 text-accent' },
+  { key: 'products', label: 'Products', icon: Package, to: '/staff360/products', perm: 'content', tone: 'bg-primary/10 text-primary' },
+  { key: 'posts', label: 'Blog posts', icon: Newspaper, to: '/staff360/posts', perm: 'content', tone: 'bg-accent/15 text-accent' },
+  { key: 'enquiriesNew', label: 'New enquiries', icon: Inbox, to: '/staff360/enquiries', perm: 'enquiries', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  { key: 'quotesOpen', label: 'Open invoices', icon: FileText, to: '/staff360/quotes?status=open', perm: 'invoices', tone: 'bg-primary/10 text-primary' },
+  { key: 'inboundUnread', label: 'Unread emails', icon: Mail, to: '/staff360/messages?unread=1', perm: 'messages', tone: 'bg-accent/15 text-accent' },
   { key: 'clients', label: 'Clients', icon: Briefcase, to: '/staff360/clients', perm: 'clients', tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
-  { key: 'tendersOpen', label: 'Open for bids', icon: Megaphone, to: '/staff360/tenders?state=open', perm: 'procurement', tone: 'bg-accent/15 text-accent' },
-  { key: 'bidsNew', label: 'New bids', icon: Gavel, to: '/staff360/bids', perm: 'procurement', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
-  { key: 'ordersOpen', label: 'Orders awaiting the supplier', icon: FileSignature, to: '/staff360/purchase-orders?status=issued', perm: 'procurement', tone: 'bg-primary/10 text-primary' },
-  { key: 'procUnread', label: 'Unread supplier emails', icon: Mails, to: '/staff360/procurement/messages?unread=1', perm: 'procurement', tone: 'bg-accent/15 text-accent' },
-  { key: 'suppliers', label: 'Suppliers', icon: Factory, to: '/staff360/suppliers', perm: 'procurement', tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
-  { key: 'users', label: 'Active users', icon: Users, to: '/staff360/users', perm: 'users', tone: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300' },
+  { key: 'tendersOpen', label: 'Open for bids', icon: Megaphone, to: '/staff360/tenders?state=open', perm: 'bidding', tone: 'bg-accent/15 text-accent' },
+  { key: 'bidsNew', label: 'New bids', icon: Gavel, to: '/staff360/bids', perm: 'bidding', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  { key: 'ordersOpen', label: 'Orders awaiting the supplier', icon: FileSignature, to: '/staff360/purchase-orders?status=issued', perm: 'purchase_orders', tone: 'bg-primary/10 text-primary' },
+  { key: 'procUnread', label: 'Unread supplier emails', icon: Mails, to: '/staff360/procurement/messages?unread=1', perm: 'supplier_messages', tone: 'bg-accent/15 text-accent' },
+  { key: 'suppliers', label: 'Suppliers', icon: Factory, to: '/staff360/suppliers', perm: 'suppliers', tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
+  { key: 'paymentsNew', label: 'Payments to confirm', icon: Banknote, to: '/staff360/payments?status=submitted', perm: 'payments', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  { key: 'deliveriesMoving', label: 'Supplier shipments under way', icon: Truck, to: '/staff360/deliveries', perm: 'shipments', tone: 'bg-primary/10 text-primary' },
+  { key: 'investmentsNew', label: 'Investments to review', icon: TrendingUp, to: '/staff360/investments?status=pending', perm: 'investments', tone: 'bg-accent/15 text-accent' },
+  { key: 'users', label: 'Active staff', icon: Users, to: '/staff360/staff', perm: 'staff', tone: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300' },
 ]
 const TONE = { create: 'green', update: 'blue', delete: 'red', invite: 'amber', upload: 'muted', send: 'green', send_failed: 'red', accepted: 'green', declined: 'red', rotate: 'amber', revoke: 'red', receive: 'accent', reset: 'muted', status: 'blue', published: 'green', acknowledged: 'green', withdraw: 'red', register: 'amber', answer: 'accent', request_info: 'amber' }
 
@@ -31,7 +34,7 @@ const ago = iso => {
 }
 
 export default function Dashboard() {
-  const { me } = useAuth()
+  const { me, can } = useAuth()
   const [stats, setStats] = useState(null)
   const [activity, setActivity] = useState(null)
   const [err, setErr] = useState(null)
@@ -62,7 +65,7 @@ export default function Dashboard() {
           <Link key={key} to={to} className="animate-fade-up" style={{ animationDelay: `${i * 70}ms` }}>
             <Card hover className="p-5 lg:p-6 h-full">
               <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-5 ${tone}`}><Icon className="w-5 h-5" /></div>
-              {stats ? <p className="text-3xl lg:text-4xl font-bold tracking-tight">{stats[key]}</p> : <Bone className="h-9 w-16 mb-1" />}
+              {stats ? <p className="text-3xl lg:text-4xl font-bold tracking-tight">{stats[key] ?? 0}</p> : <Bone className="h-9 w-16 mb-1" />}
               <p className="text-sm text-muted-foreground mt-1">{label}</p>
               <p className="text-xs font-semibold text-accent mt-4 flex items-center gap-1">View <ArrowRight className="w-3 h-3" /></p>
             </Card>
@@ -75,12 +78,12 @@ export default function Dashboard() {
           <h2 className="font-semibold mb-1">Quick actions</h2>
           <p className="text-sm text-muted-foreground mb-5">Jump straight into the common tasks.</p>
           <div className="flex flex-col gap-2.5">
-            {me?.permissions?.products && <Link to="/staff360/products/new"><Button variant="accent" className="w-full justify-start"><Plus className="w-4 h-4" />New product</Button></Link>}
-            {me?.permissions?.quotes && <Link to="/staff360/quotes/new"><Button variant="outline" className="w-full justify-start"><FileText className="w-4 h-4" />New invoice</Button></Link>}
-            {me?.permissions?.procurement && <Link to="/staff360/tenders/new"><Button variant={me?.permissions?.products ? 'outline' : 'accent'} className="w-full justify-start"><Megaphone className="w-4 h-4" />New bidding opportunity</Button></Link>}
-            {me?.permissions?.procurement && <Link to="/staff360/purchase-orders/new"><Button variant="outline" className="w-full justify-start"><FileSignature className="w-4 h-4" />New purchase order</Button></Link>}
-            {me?.permissions?.posts && <Link to="/staff360/posts/new"><Button variant="outline" className="w-full justify-start"><Plus className="w-4 h-4" />New blog post</Button></Link>}
-            {me?.permissions?.users && <Link to="/staff360/users"><Button variant="outline" className="w-full justify-start"><UserPlus className="w-4 h-4" />Invite a user</Button></Link>}
+            {can('content', 'create') && <Link to="/staff360/products/new"><Button variant="accent" className="w-full justify-start"><Plus className="w-4 h-4" />New product</Button></Link>}
+            {can('invoices', 'create') && <Link to="/staff360/quotes/new"><Button variant="outline" className="w-full justify-start"><FileText className="w-4 h-4" />New invoice</Button></Link>}
+            {can('bidding', 'create') && <Link to="/staff360/tenders/new"><Button variant={can('content', 'create') ? 'outline' : 'accent'} className="w-full justify-start"><Megaphone className="w-4 h-4" />New bidding opportunity</Button></Link>}
+            {can('purchase_orders', 'create') && <Link to="/staff360/purchase-orders/new"><Button variant="outline" className="w-full justify-start"><FileSignature className="w-4 h-4" />New purchase order</Button></Link>}
+            {can('content', 'create') && <Link to="/staff360/posts/new"><Button variant="outline" className="w-full justify-start"><Plus className="w-4 h-4" />New blog post</Button></Link>}
+            {can('staff', 'create') && <Link to="/staff360/staff"><Button variant="outline" className="w-full justify-start"><UserPlus className="w-4 h-4" />Invite a staff member</Button></Link>}
           </div>
         </Card>
 

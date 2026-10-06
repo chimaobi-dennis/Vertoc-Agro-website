@@ -1,6 +1,7 @@
 /* Shared admin primitives. See DESIGN.md for the language they implement. */
 import { forwardRef, useEffect, useState } from 'react'
 import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react'
+import PasswordField from '../components/PasswordInput'
 
 const VARIANTS = {
   primary: 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm',
@@ -30,6 +31,9 @@ export const IconInput = ({ icon: Icon, className = '', ...p }) => (
     <Input {...p} className={`pl-10 ${className}`} />
   </div>
 )
+
+/** Password with the show/hide eye; takes the same props as IconInput. */
+export const PasswordInput = ({ className = '', ...p }) => <PasswordField {...p} className={`${control} h-11 ${className}`} />
 
 export const Field = ({ label, hint, error, children, className = '' }) => (
   <label className={`block ${className}`}>

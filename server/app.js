@@ -22,11 +22,13 @@ import * as content from './content.js'
 import { verifyTurnstile } from './verify-turnstile.js'
 import adminRouter from './admin-routes.js'
 import supplierRouter from './supplier-routes.js'
+import clientRouter from './client-routes.js'
+import investorRouter from './investor-routes.js'
 import { driver } from './store/index.js'
 import { renderQuotePdf } from './quote-pdf.js'
 import { authorised } from './mcp-auth.js'
 import { verifySvix, ingestReceived } from './inbound.js'
-import { resolveResendKey, resolveWebhookSecret, notifyTeam, notifyProcurement, dryRun, panelLink, acknowledgeEnquiry } from './messaging.js'
+import { resolveResendKey, resolveWebhookSecret, notifyTeam, notifyProcurement, dryRun, panelLink, acknowledgeEnquiry, sendOtp } from './messaging.js'
 import { audit } from './audit.js'
 
 const PORT = process.env.PORT || 8787
@@ -145,10 +147,38 @@ app.get('/api/q/:token/pdf', async (req, res) => {
   }
 })
 
+// Accepting an invoice needs a one-time code, emailed to the address the invoice was made out to.
+// Until migration 015 exists the step is skipped and acceptance works as before.
+const noOtpYet = e => e?.expose && /database migration/.test(e.message)
+app.post('/api/q/:token/otp', async (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown'
+  if (throttled(ip, 10)) return res.status(429).json({ error: 'Too many attempts. Please try again later.' })
+  try {
+    const q = await liveQuote(req.params.token)
+    if (!q) return res.status(404).json({ error: 'not found' })
+    if (!['draft', 'sent', 'viewed'].includes(q.status)) return res.status(409).json({ error: 'This invoice has already been answered.' })
+    const { code, minutes } = await content.issueOtp('quote_accept', q.id, q.client_email)
+    try { await sendOtp({ to: q.client_email, name: q.client_name, code, purpose: 'accept invoice', reference: q.number, minutes, clientId: q.client_id, quoteId: q.id }) }
+    catch (e) { console.error('[otp]', e.message); return res.status(503).json({ error: 'We could not send the code just now. Please try again in a few minutes.' }) }
+    res.json({ sent_to: content.maskEmail(q.client_email), minutes })
+  } catch (e) {
+    if (noOtpYet(e)) return res.json({ skip: true })
+    if (e.expose) return res.status(e.status || 400).json({ error: e.message, ...(e.retry_after ? { retry_after: e.retry_after } : {}) })
+    console.error('[otp]', e.message); res.status(500).json({ error: 'Something went wrong on our side.' })
+  }
+})
+
 app.post('/api/q/:token/respond', async (req, res) => {
   const ip = req.ip || req.socket.remoteAddress || 'unknown'
   if (throttled(ip, 10)) return res.status(429).json({ error: 'Too many attempts. Please try again later.' })
   try {
+    if (req.body?.action === 'accept') {
+      const pending = await liveQuote(req.params.token)
+      if (pending && ['draft', 'sent', 'viewed'].includes(pending.status)) {
+        try { await content.consumeOtp('quote_accept', pending.id, req.body?.otp) }
+        catch (e) { if (!noOtpYet(e)) return res.status(e.status || 400).json({ error: e.expose ? e.message : 'Something went wrong on our side.' }) }
+      }
+    }
     const q = await content.respondToQuote(req.params.token, req.body?.action, req.body?.note)
     if (!q) return res.status(404).json({ error: 'not found' })
     await audit({ actor: { id: null, label: 'client' }, action: q.status, entity: 'quote', entityId: q.id, after: { number: q.number, note: q.response_note } })
@@ -166,6 +196,8 @@ app.use('/api/admin', adminRouter)
 
 /* -------------------------- procurement: bidding, suppliers, PO links */
 app.use('/api', supplierRouter)
+app.use('/api', clientRouter)
+app.use('/api', investorRouter)
 
 /* --------------------------------------------------- enquiry submission */
 

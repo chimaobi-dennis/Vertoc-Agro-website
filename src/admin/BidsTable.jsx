@@ -12,14 +12,18 @@ import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Field, Input, Modal, Select, Table, Td, Textarea, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import BidStatusDialog from './BidStatusDialog'
+import { useAuth } from './AuthContext'
 import { BID_LABELS, BID_STATUSES, bidTone, fmtDay, money, pct, perUnit, qty } from '../lib/procurement'
 
-const SORTS = [['price', 'Price, lowest first'], ['quantity', 'Quantity, largest first'], ['total', 'Total value'], ['delivery', 'Delivery date, soonest first'], ['supplier', 'Supplier, A–Z'], ['date', 'Newest first']]
-const EMPTY = { status: 'all', q: '', min_price: '', max_price: '', min_quantity: '', location: '', accepts_terms: '', sort: 'price' }
+const SORTS = [['date', 'Newest first'], ['oldest', 'Oldest first'], ['price', 'Price, lowest first'], ['price_desc', 'Price, highest first'], ['quantity', 'Quantity, largest first'], ['total', 'Total value'], ['delivery', 'Delivery date, soonest first'], ['supplier', 'Supplier, A – Z'], ['supplier_desc', 'Supplier, Z – A'], ['status', 'Status']]
+// Orders the server does not know are done here, on what it returned.
+const LOCAL = { oldest: (a, b) => String(a.created_at).localeCompare(String(b.created_at)), price_desc: (a, b) => b.price - a.price, supplier_desc: (a, b) => String(b.company_name).localeCompare(String(a.company_name), undefined, { sensitivity: 'base' }), status: (a, b) => BID_STATUSES.indexOf(a.status) - BID_STATUSES.indexOf(b.status) }
+const EMPTY = { status: 'all', q: '', min_price: '', max_price: '', min_quantity: '', location: '', accepts_terms: '', sort: 'date' }
 const versus = b => (b.vs_asking == null ? null : b.vs_asking === 0 ? { text: 'at asking', cls: 'text-muted-foreground' } : b.vs_asking < 0 ? { text: `${pct(b.vs_asking_pct)} below`, cls: 'text-emerald-600 dark:text-emerald-400' } : { text: `${pct(b.vs_asking_pct)} above`, cls: 'text-destructive' })
 
 export default function BidsTable({ tender = null, supplierId = null, onChanged }) {
-  const [f, setF] = useState({ ...EMPTY, sort: tender ? 'price' : 'date' })
+  const { can } = useAuth()
+  const [f, setF] = useState({ ...EMPTY, sort: 'date' })
   const [more, setMore] = useState(false)
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState(null)
@@ -33,10 +37,11 @@ export default function BidsTable({ tender = null, supplierId = null, onChanged 
     const p = new URLSearchParams()
     if (tender) p.set('tender_id', tender.id)
     if (supplierId) p.set('supplier_id', supplierId)
-    for (const [k, v] of Object.entries(f)) if (v !== '' && v != null && !(k === 'status' && v === 'all')) p.set(k, v)
+    for (const [k, v] of Object.entries(f)) if (v !== '' && v != null && !(k === 'status' && v === 'all')) p.set(k, k === 'sort' && LOCAL[v] ? 'date' : v)
     return p.toString()
   }, [f, tender, supplierId])
-  const load = useCallback(() => adminFetch(`/bids?${query}`).then(r => { setRows(r); setErr(null) }).catch(e => setErr(e.message)), [query])
+  const order = LOCAL[f.sort]
+  const load = useCallback(() => adminFetch(`/bids?${query}`).then(r => { setRows(order ? [...r].sort(order) : r); setErr(null) }).catch(e => setErr(e.message)), [query, order])
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t) }, [load])
 
   const set = patch => setF(x => ({ ...x, ...patch }))
@@ -50,6 +55,7 @@ export default function BidsTable({ tender = null, supplierId = null, onChanged 
   return (
     <div className="space-y-4">
       {err && <Alert>{err}</Alert>}
+      {tender?.award && <AwardSummary award={tender.award} unit={tender.unit} currency={tender.currency} />}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -87,6 +93,7 @@ export default function BidsTable({ tender = null, supplierId = null, onChanged 
               <Td className="w-8"><input type="checkbox" checked={picked.has(b.id)} onChange={() => toggle(b.id)} aria-label={`Compare ${b.company_name}`} /></Td>
               <Td className="min-w-[190px]">
                 <Link to={`/staff360/bids/${b.id}`} className="font-medium hover:text-accent">{b.company_name}</Link>
+                {b.unlocked && <Badge tone="amber" className="ml-2">unlocked</Badge>}{b.revision > 0 && <Badge tone="blue" className="ml-2">revised</Badge>}{b.submissions > 1 && (b.latest ? <Badge tone="green" className="ml-2">latest of {b.submissions}</Badge> : b.superseded ? <Badge className="ml-2">superseded</Badge> : null)}
                 <span className="block text-xs text-muted-foreground">{b.contact_person}{b.documents > 0 && <> · <FileText className="inline w-3 h-3 -mt-0.5" /> {b.documents}</>}{b.requests_open > 0 && <> · <MessageCircleQuestion className="inline w-3 h-3 -mt-0.5" /> awaiting answer</>}</span>
               </Td>
               {!tender && <Td>{b.tender ? <Link to={`/staff360/tenders/${b.tender.id}`} className="hover:text-accent"><span className="font-medium">{b.tender.number}</span><span className="block text-xs text-muted-foreground max-w-[200px] truncate">{b.tender.title}</span></Link> : '—'}</Td>}
@@ -96,7 +103,7 @@ export default function BidsTable({ tender = null, supplierId = null, onChanged 
               <Td className="text-muted-foreground max-w-[140px] truncate">{b.commodity_location}</Td>
               <Td className="text-muted-foreground whitespace-nowrap">{fmtDay(b.delivery_date)}</Td>
               <Td className="whitespace-nowrap">{b.accepts_terms ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="w-3.5 h-3.5" />Accepted</span> : <span className="inline-flex items-center gap-1 text-xs text-destructive" title={b.terms_note || undefined}><XCircle className="w-3.5 h-3.5" />Not accepted</span>}</Td>
-              <Td><Badge tone={bidTone(b.status)} className="whitespace-nowrap">{BID_LABELS[b.status]}</Badge></Td>
+              <Td><Badge tone={bidTone(b.status)} className="whitespace-nowrap">{BID_LABELS[b.status]}</Badge>{b.status === 'awarded' && <span className="block text-xs text-muted-foreground mt-1 whitespace-nowrap tabular-nums">{qty(b.awarded_quantity ?? b.quantity, b.unit)} at {money(b.awarded_price ?? b.price, b.currency)}</span>}</Td>
               <Td className="text-right whitespace-nowrap">
                 {b.status !== 'withdrawn' && <button type="button" onClick={() => setDialog({ bid: b })} className="text-xs font-semibold text-accent mr-3">Status</button>}
                 <Link to={`/staff360/bids/${b.id}`} className="text-xs font-semibold text-accent">Open →</Link>
@@ -107,8 +114,8 @@ export default function BidsTable({ tender = null, supplierId = null, onChanged 
         </Table>
       </Card>
 
-      <BidStatusDialog bid={dialog?.bid || null} to={dialog?.to || null} onClose={() => setDialog(null)} onSaved={r => { toast(`${r.company_name}: ${BID_LABELS[r.status]}${r.notified ? ' — supplier emailed' : ''}`); changed() }} />
-      <CompareDialog open={compare} onClose={() => setCompare(false)} bids={chosen} onStatus={(bid, to) => { setCompare(false); setDialog({ bid, to }) }} />
+      <BidStatusDialog bid={dialog?.bid || null} to={dialog?.to || null} award={tender?.award || null} onClose={() => setDialog(null)} onSaved={r => { toast(`${r.company_name}: ${BID_LABELS[r.status]}${r.notified ? ' — supplier emailed' : ''}`); changed() }} />
+      <CompareDialog open={compare} onClose={() => setCompare(false)} bids={chosen} mayAward={can('bidding', 'award')} onStatus={(bid, to) => { setCompare(false); setDialog({ bid, to }) }} />
       {tender && <GroupMessage open={group === 'message'} onClose={() => setGroup(null)} tender={tender} count={counts.shortlisted || 0} onDone={r => { toast(`${r.sent.length} email${r.sent.length === 1 ? '' : 's'} sent${r.failed.length ? `, ${r.failed.length} failed` : ''}`, r.failed.length ? 'error' : 'ok'); changed() }} />}
       {tender && <CloseOut open={group === 'closeout'} onClose={() => setGroup(null)} tender={tender} count={live} onDone={r => { toast(`${r.changed} bid${r.changed === 1 ? '' : 's'} marked not selected${r.notified ? `, ${r.notified} supplier${r.notified === 1 ? '' : 's'} emailed` : ''}`); changed() }} />}
       {toastEl}
@@ -116,8 +123,23 @@ export default function BidsTable({ tender = null, supplierId = null, onChanged 
   )
 }
 
+/** Total requirement → awarded so far → what is still to award. */
+export function AwardSummary({ award, unit, currency }) {
+  const cell = (label, value, sub, cls = '') => <div className="px-5 py-4"><p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p><p className={`text-xl font-bold tabular-nums mt-0.5 ${cls}`}>{value}</p>{sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}</div>
+  return (
+    <Card className="animate-fade-up overflow-hidden">
+      <div className="grid sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border">
+        {cell('Total requirement', qty(award.required, unit))}
+        {cell('Total awarded', qty(award.awarded, unit), award.suppliers ? `${award.awarded_pct}% · ${award.suppliers} supplier${award.suppliers === 1 ? '' : 's'} · ${money(award.value, currency)}` : 'Nothing awarded yet', award.awarded > 0 ? 'text-emerald-600 dark:text-emerald-400' : '')}
+        {cell('Balance remaining', qty(award.balance, unit), award.balance === 0 && award.awarded > 0 ? 'Fully awarded' : 'Still to award', award.balance > 0 && award.awarded > 0 ? 'text-amber-600 dark:text-amber-400' : '')}
+      </div>
+      <div className="h-1.5 bg-muted"><div className="h-full bg-accent transition-all" style={{ width: `${Math.min(100, award.awarded_pct)}%` }} /></div>
+    </Card>
+  )
+}
+
 /** Two to four bids in columns, the best value of each row marked. */
-function CompareDialog({ open, onClose, bids, onStatus }) {
+function CompareDialog({ open, onClose, bids, onStatus, mayAward }) {
   if (!open || bids.length < 2) return null
   const best = (get, lowest = true) => { const vals = bids.map(get).filter(v => v != null); return vals.length ? (lowest ? Math.min(...vals) : Math.max(...vals)) : null }
   const lowPrice = best(b => b.price), bigQty = best(b => b.quantity, false), soon = bids.map(b => b.delivery_date).filter(Boolean).sort()[0]
@@ -142,7 +164,7 @@ function CompareDialog({ open, onClose, bids, onStatus }) {
           <thead><tr className="text-left align-bottom"><th className="px-2 py-2 w-36" />{bids.map(b => <th key={b.id} className="px-2 py-2 font-semibold min-w-[170px]"><Link to={`/staff360/bids/${b.id}`} className="hover:text-accent">{b.company_name}</Link></th>)}</tr></thead>
           <tbody className="divide-y divide-border">
             {rows.map(([label, cell]) => <tr key={label} className="align-top"><th scope="row" className="px-2 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</th>{bids.map(b => <td key={b.id} className="px-2 py-2.5">{cell(b)}</td>)}</tr>)}
-            <tr><th className="px-2 py-3" />{bids.map(b => <td key={b.id} className="px-2 py-3"><div className="flex flex-wrap gap-1.5">{b.status !== 'withdrawn' && <><Button type="button" variant="outline" className="h-8 px-2.5 text-xs" onClick={() => onStatus(b, 'shortlisted')}>Shortlist</Button><Button type="button" variant="accent" className="h-8 px-2.5 text-xs" onClick={() => onStatus(b, 'awarded')}>Award</Button></>}</div></td>)}</tr>
+            <tr><th className="px-2 py-3" />{bids.map(b => <td key={b.id} className="px-2 py-3"><div className="flex flex-wrap gap-1.5">{b.status !== 'withdrawn' && <><Button type="button" variant="outline" className="h-8 px-2.5 text-xs" onClick={() => onStatus(b, 'shortlisted')}>Shortlist</Button>{mayAward && <Button type="button" variant="accent" className="h-8 px-2.5 text-xs" onClick={() => onStatus(b, 'awarded')}>Award</Button>}</>}</div></td>)}</tr>
           </tbody>
         </table>
       </div>

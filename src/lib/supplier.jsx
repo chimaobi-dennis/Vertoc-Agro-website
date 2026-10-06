@@ -103,3 +103,23 @@ async function fetchMe(token) {
 }
 
 export const useSupplier = () => useContext(Ctx)
+
+/** One file to any supplier upload route: details through our API, bytes to storage, then a confirm call. */
+export async function uploadSupplierFile(file, startPath, extra = {}) {
+  if (file.size > FILE_MAX_BYTES) throw new Error(`${file.name} is over 20 MB.`)
+  if (!supplierAuth) throw new Error('Uploads are not available right now.')
+  const content_type = fileType(file)
+  const { document, upload } = await supplierFetch(startPath, { method: 'POST', body: { name: file.name, content_type, bytes: file.size, ...extra } })
+  const { error } = await supplierAuth.storage.from('documents').uploadToSignedUrl(upload.path, upload.token, file, { contentType: content_type, upsert: false })
+  if (error) throw new Error(error.message || 'The upload failed. Please try again.')
+  return supplierFetch(`${startPath}/${document.id}/complete`, { method: 'POST' })
+}
+
+/** Check the current password, then set a new one. */
+export async function changeSupplierPassword(email, current, next) {
+  if (!supplierAuth) throw new Error('This is not available right now.')
+  const { error: wrong } = await supplierAuth.auth.signInWithPassword({ email, password: current })
+  if (wrong) throw new Error('Your current password is not right.')
+  const { error } = await supplierAuth.auth.updateUser({ password: next })
+  if (error) throw new Error(error.message)
+}

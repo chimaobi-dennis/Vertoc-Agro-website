@@ -396,7 +396,23 @@ try {
     return `viewed · ${d.items.length} items · ${d.fields.map(f => f.label + '=' + f.value).join(',')}`
   })
   await step('public PDF download', async () => { const r = await fetch(`${API}/api/q/${quote.token}/pdf?download=1`); if (r.status !== 200 || !/pdf/.test(r.headers.get('content-type'))) throw new Error(r.status); return r.headers.get('content-disposition') })
-  await step('client accepts online', async () => { const r = await fetch(`${API}/api/q/${quote.token}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'accept', note: 'e2e ok' }) }); const d = await r.json(); if (d.status !== 'accepted') throw new Error(JSON.stringify(d)); return d.status })
+  await step('client accepts online, with the emailed code', async () => {
+    const post = (path, body) => fetch(`${API}/api/q/${quote.token}/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async r => ({ status: r.status, d: await r.json().catch(() => ({})) }))
+    const bare = await post('respond', { action: 'accept', note: 'e2e ok' })
+    if (bare.d.status === 'accepted') return 'accepted (no code step before migration 015)'
+    if (bare.status !== 400 || !/code/.test(bare.d.error || '')) throw new Error(JSON.stringify(bare))
+    if (!S.email.dry_run) {   // the code would be a real email: accept by hand instead
+      const q = await api(`/quotes/${quote.id}`, { method: 'PATCH', body: { status: 'accepted' } }); if (q.status !== 'accepted') throw new Error(q.status)
+      return 'accepting without a code is refused ✓ · accepted by staff instead (a code would be emailed)'
+    }
+    const o = await post('otp', {}); if (o.status !== 200 || !/\*+@e2e\.invalid$/.test(o.d.sent_to || '')) throw new Error('otp: ' + JSON.stringify(o))
+    const again = await post('otp', {}); if (again.status !== 429) throw new Error('a second code straight away: ' + again.status)
+    const wrong = await post('respond', { action: 'accept', otp: '000000' }); if (wrong.status !== 400 || !/not right/.test(wrong.d.error)) throw new Error('wrong code: ' + JSON.stringify(wrong))
+    const { data: m } = await svc.from('messages').select('body,headers').eq('to_email', 'buyer3@e2e.invalid').ilike('subject', 'Your verification code%').order('id', { ascending: false }).limit(1).single()
+    const code = (m.body.match(/\b(\d{6})\b/) || [])[1]; if (!code || m.headers?.internal !== true) throw new Error('no code in the email, or it shows in conversations')
+    const ok = await post('respond', { action: 'accept', note: 'e2e ok', otp: code }); if (ok.d.status !== 'accepted') throw new Error(JSON.stringify(ok))
+    return `code sent to ${o.d.sent_to} · no code, wrong code and a second request refused · accepted`
+  })
   await step('a second answer is refused', async () => { const r = await fetch(`${API}/api/q/${quote.token}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'decline' }) }); if (r.status !== 409) throw new Error(r.status); return '409 ✓' })
   await step('accepted quote locks prices', () => refused(() => api(`/quotes/${quote.id}`, { method: 'PATCH', body: { discount: 1 } }), /locked/, 'edit accepted'))
   const purchase = await step('POST /quotes/:id/convert → purchase', async () => { const p = await api(`/quotes/${quote.id}/convert`, { method: 'POST' }); if (Number(p.amount) !== 52137.5 || p.reference !== quote.number || p.client_id !== client2.id) throw new Error(JSON.stringify(p).slice(0, 100)); return p })

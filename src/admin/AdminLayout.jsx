@@ -1,30 +1,36 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Briefcase, Factory, FileSignature, FileText, Gavel, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Mails, Menu, Moon, Newspaper, Package, ScrollText, Settings, Sun, Users, X, Star } from 'lucide-react'
+import { Banknote, BarChart3, Briefcase, Factory, Landmark, TrendingUp, Truck, FileSignature, FileText, Gavel, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Mails, Menu, Moon, Newspaper, Package, ScrollText, Settings, Sun, Users, X, Star } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { useAdminTheme } from './AdminTheme'
 
+// `perm` is a module of the permission table (server/permissions.js): an item shows when the person may view it.
 const NAV = [
   { to: '/staff360', label: 'Dashboard', icon: LayoutDashboard, end: true, group: 'Manage' },
-  { to: '/staff360/products', label: 'Products', icon: Package, perm: 'products', group: 'Manage' },
-  { to: '/staff360/posts', label: 'Blog', icon: Newspaper, perm: 'posts', group: 'Manage' },
-  { to: '/staff360/reviews', label: 'Reviews', icon: Star, perm: 'posts', group: 'Manage', badge: 'reviewsPending' },
-  { to: '/staff360/enquiries', label: 'Enquiries', icon: Inbox, perm: 'quotes', group: 'Sales' },
-  { to: '/staff360/quotes', label: 'Invoices', icon: FileText, perm: 'quotes', group: 'Sales' },
-  { to: '/staff360/messages', label: 'Messages', icon: Mail, perm: 'email', group: 'Sales', badge: 'inboundUnread' },
+  { to: '/staff360/products', label: 'Products', icon: Package, perm: 'content', group: 'Manage' },
+  { to: '/staff360/posts', label: 'Blog', icon: Newspaper, perm: 'content', group: 'Manage' },
+  { to: '/staff360/reviews', label: 'Reviews', icon: Star, perm: 'content', group: 'Manage', badge: 'reviewsPending' },
+  { to: '/staff360/enquiries', label: 'Enquiries', icon: Inbox, perm: 'enquiries', group: 'Sales' },
+  { to: '/staff360/quotes', label: 'Invoices', icon: FileText, perm: 'invoices', group: 'Sales' },
+  { to: '/staff360/payments', label: 'Payments', icon: Banknote, perm: 'payments', group: 'Sales', badge: 'paymentsNew' },
+  { to: '/staff360/messages', label: 'Messages', icon: Mail, perm: 'messages', group: 'Sales', badge: 'inboundUnread' },
   { to: '/staff360/clients', label: 'Clients', icon: Briefcase, perm: 'clients', group: 'Sales' },
   // Procurement is the sourcing leg, as Sales is the selling leg: bids and LPOs where sales has enquiries and invoices.
-  { to: '/staff360/tenders', label: 'Bidding', icon: Gavel, perm: 'procurement', group: 'Procurement', badge: 'bidsNew', also: ['/staff360/bids'] },
-  { to: '/staff360/purchase-orders', label: 'Purchase orders', icon: FileSignature, perm: 'procurement', group: 'Procurement' },
-  { to: '/staff360/procurement/messages', label: 'Messages', icon: Mails, perm: 'procurement', group: 'Procurement', badge: 'procUnread' },
-  { to: '/staff360/suppliers', label: 'Suppliers', icon: Factory, perm: 'procurement', group: 'Procurement' },
-  { to: '/staff360/users', label: 'Users', icon: Users, perm: 'users', group: 'System' },
+  { to: '/staff360/tenders', label: 'Bidding', icon: Gavel, perm: 'bidding', group: 'Procurement', badge: 'bidsNew', also: ['/staff360/bids'] },
+  { to: '/staff360/purchase-orders', label: 'Purchase orders', icon: FileSignature, perm: 'purchase_orders', group: 'Procurement' },
+  { to: '/staff360/deliveries', label: 'Supplier shipments', icon: Truck, perm: 'shipments', group: 'Procurement', badge: 'deliveriesMoving' },
+  { to: '/staff360/procurement/messages', label: 'Messages', icon: Mails, perm: 'supplier_messages', group: 'Procurement', badge: 'procUnread' },
+  { to: '/staff360/suppliers', label: 'Suppliers', icon: Factory, perm: 'suppliers', group: 'Procurement' },
+  { to: '/staff360/investments', label: 'Investments', icon: TrendingUp, perm: 'investments', group: 'Investment', badge: 'investmentsNew' },
+  { to: '/staff360/investors', label: 'Investors', icon: Landmark, perm: 'investments', group: 'Investment' },
+  { to: '/staff360/staff', label: 'Staff', icon: Users, perm: 'staff', group: 'System' },
+  { to: '/staff360/reports', label: 'Reports', icon: BarChart3, perm: 'reports', group: 'System' },
   { to: '/staff360/audit', label: 'Audit log', icon: ScrollText, perm: 'audit', group: 'System' },
   { to: '/staff360/templates', label: 'Email templates', icon: LayoutTemplate, perm: 'settings', group: 'System' },
   { to: '/staff360/settings', label: 'Settings', icon: Settings, perm: 'settings', group: 'System' },
 ]
-const GROUPS = ['Manage', 'Sales', 'Procurement', 'System']
+const GROUPS = ['Manage', 'Sales', 'Procurement', 'Investment', 'System']
 
 const initials = s => (s || '?').split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('')
 
@@ -36,7 +42,7 @@ export default function AdminLayout() {
   const { pathname } = useLocation()
 
   // Unread-mail and new-bid badges: refreshed on every route change and once a minute.
-  const badges = Boolean(me?.permissions?.email || me?.permissions?.procurement || me?.permissions?.posts)
+  const badges = NAV.some(n => n.badge && me?.permissions?.[n.perm])
   useEffect(() => {
     if (!badges) return
     const load = () => adminFetch('/stats').then(setStats).catch(() => {})
@@ -87,7 +93,7 @@ export default function AdminLayout() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold truncate">{who}</p>
-            <p className="text-xs text-muted-foreground capitalize">{me?.role}</p>
+            <p className="text-xs text-muted-foreground truncate">{me?.role_name || me?.role}</p>
           </div>
           <button onClick={signOut} title="Sign out" aria-label="Sign out"
             className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">

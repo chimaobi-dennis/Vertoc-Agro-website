@@ -4,7 +4,7 @@ import { ArrowRight, Lock, Mail } from 'lucide-react'
 import { supabase, authConfigured, missingAuthVars } from '../lib/supabase'
 import { useAuth } from './AuthContext'
 import AuthShell from './AuthShell'
-import { Button, Field, IconInput, Alert } from './ui'
+import { Button, Field, IconInput, PasswordInput, Alert } from './ui'
 
 export default function Login() {
   const { session, me, error: authErr, loading } = useAuth()
@@ -26,9 +26,9 @@ export default function Login() {
   return (
     <AuthShell>
       <img src="/assets/img/logo.png" alt="Vertoc Agro" className="h-9 mb-10 lg:hidden" />
-      <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">Admin</p>
+      <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">Staff</p>
       <h1 className="font-serif text-3xl md:text-4xl font-bold text-foreground tracking-tight mb-2">Welcome back</h1>
-      <p className="text-muted-foreground mb-8">Sign in to manage products, posts and enquiries.</p>
+      <p className="text-muted-foreground mb-8">Sign in to the Vertoc Agro staff panel.</p>
 
       {!authConfigured ? (
         <Alert>
@@ -43,7 +43,7 @@ export default function Login() {
               value={email} onChange={e => setEmail(e.target.value)} />
           </Field>
           <Field label="Password">
-            <IconInput icon={Lock} type="password" autoComplete="current-password" required placeholder="••••••••••"
+            <PasswordInput icon={Lock} autoComplete="current-password" required placeholder="••••••••••"
               value={password} onChange={e => setPassword(e.target.value)} />
           </Field>
           {(err || (session && authErr)) && <Alert>{err || authErr}</Alert>}

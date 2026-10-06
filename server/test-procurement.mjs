@@ -291,6 +291,54 @@ try {
   }); else skip('writing to the shortlisted suppliers', 'it would send a real email')
 
   /* ------------------------------------------------------------- award --- */
+  /* -------------------------------- after the deadline: withdraw, unlock --- */
+  await step('after closing, a bid can no longer be withdrawn', async () => {
+    await buyer(`/tenders/${tender.id}`, { method: 'PATCH', body: { status: 'closed' } })
+    const mine = await pub(`/supplier/bids/${bid2.id}`, { token: sup2.token }); if (mine.can_withdraw || mine.can_edit) throw new Error(JSON.stringify({ w: mine.can_withdraw, e: mine.can_edit }))
+    return refused(() => pub(`/supplier/bids/${bid2.id}/withdraw`, { method: 'POST', token: sup2.token }), /Bidding has closed/, 'withdraw after closing')
+  })
+  await step('unlocking needs the unlock permission and a reason', async () => {
+    await refused(() => buyer(`/bids/${bid2.id}/unlock`, { method: 'POST', body: { reason: 'Price was per bag' } }), /^403/, 'procurement role unlocks')
+    await refused(() => admin(`/bids/${bid2.id}/unlock`, { method: 'POST', body: { reason: ' ' } }), /reason/, 'no reason')
+    await refused(() => pub(`/supplier/bids/${bid2.id}/revise`, { method: 'POST', token: sup2.token, body: { price: 1 } }), /not open for changes/, 'revise a locked bid')
+    return '403 for the procurement role · reason required · locked bids cannot be edited'
+  })
+  await step('POST /bids/:id/unlock → the supplier adjusts and resubmits; everything is kept', async () => {
+    const u = await admin(`/bids/${bid2.id}/unlock`, { method: 'POST', body: { reason: 'The price was entered per bag instead of per tonne.', ...N } })
+    if (!u.unlocked_at || u.revisions.length !== 1 || u.revisions[0].before.price !== 665000 || u.revisions[0].resubmitted_at) throw new Error(JSON.stringify(u.revisions))
+    await refused(() => admin(`/bids/${bid2.id}/unlock`, { method: 'POST', body: { reason: 'again please' } }), /already unlocked/, 'unlock twice')
+    const mine = await pub(`/supplier/bids/${bid2.id}`, { token: sup2.token }); if (!mine.can_edit || !/per bag/.test(mine.unlock_reason)) throw new Error('supplier cannot edit')
+    await refused(() => pub(`/supplier/bids/${guest.id}/revise`, { method: 'POST', token: sup2.token, body: { price: 1 } }), /^404/, "someone else's bid")
+    const r = await pub(`/supplier/bids/${bid2.id}/revise`, { method: 'POST', token: sup2.token, body: { price: 655000, quantity: 900 } })
+    if (r.price !== 655000 || r.quantity !== 900 || r.total !== 589500000 || r.can_edit || r.revision !== 1) throw new Error(JSON.stringify(r).slice(0, 300))
+    await refused(() => pub(`/supplier/bids/${bid2.id}/revise`, { method: 'POST', token: sup2.token, body: { price: 1 } }), /not open for changes/, 'second edit')
+    const a = await admin(`/bids/${bid2.id}`); const rev = a.revisions[0]
+    if (!rev.resubmitted_at || rev.after.price !== 655000 || !rev.changes.some(c => c.field === 'price' && c.from === 665000 && c.to === 655000) || !rev.changes.some(c => c.field === 'quantity') || !rev.unlocked_by_name) throw new Error(JSON.stringify(rev))
+    const notes = await pub('/supplier/notifications', { token: sup2.token }); if (!notes.some(n => /reopened/.test(n.title))) throw new Error('no portal notification')
+    if (DRY) { const m = await mailTo(SUP2.email, 'Your bid on%reopened%'); if (!m || !/per bag/.test(m.body)) throw new Error('unlock email'); const t = await mailTo('procurement@e2e.invalid', '%resubmitted their bid%'); if (!t || !/Price: 665000 → 655000/.test(t.body)) throw new Error('team not told: ' + t?.body) }
+    const log = (await admin('/audit?limit=60')).filter(x => x.entity === 'bid' && String(x.entity_id) === String(bid2.id)).map(x => x.action)
+    if (!log.includes('unlock') || !log.includes('resubmit')) throw new Error('audit: ' + log.join())
+    await buyer(`/tenders/${tender.id}`, { method: 'PATCH', body: { status: 'published' } })
+    return `665000 → 655000, 1000 → 900 MT · reason, who, when and the changes are on record · audit: unlock, resubmit`
+  })
+
+  /* ---------------------------------------------------------- split award --- */
+  await step('one opportunity, several suppliers: quantity and price per award', async () => {
+    const a = await buyer(`/bids/${guest.id}`, { method: 'PATCH', body: { status: 'awarded', awarded_quantity: 300, awarded_price: 635000, notify: false } })
+    if (a.awarded_quantity !== 300 || a.awarded_price !== 635000) throw new Error(JSON.stringify([a.awarded_quantity, a.awarded_price]))
+    let t = await buyer(`/tenders/${tender.id}`); if (t.award.required !== 1000 || t.award.awarded !== 300 || t.award.balance !== 700 || t.award.suppliers !== 1) throw new Error(JSON.stringify(t.award))
+    await refused(() => buyer(`/bids/${guest.id}`, { method: 'PATCH', body: { awarded_quantity: 500 } }), /offered 400/, 'more than offered')
+    await refused(() => buyer(`/bids/${bid2.id}`, { method: 'PATCH', body: { status: 'awarded', awarded_quantity: 800, notify: false } }), /Only 700 MT/, 'more than the balance')
+    await refused(() => sales(`/bids/${bid2.id}`, { method: 'PATCH', body: { status: 'awarded' } }), /^403/, 'sales awards')
+    await buyer(`/bids/${bid2.id}`, { method: 'PATCH', body: { status: 'awarded', awarded_quantity: 700, awarded_price: 650000, notify: false } })
+    t = await buyer(`/tenders/${tender.id}`); if (t.award.awarded !== 1000 || t.award.balance !== 0 || t.award.suppliers !== 2 || t.award.value !== 300 * 635000 + 700 * 650000) throw new Error(JSON.stringify(t.award))
+    const mine = await pub(`/supplier/bids/${bid2.id}`, { token: sup2.token }); if (mine.awarded_quantity !== 700 || mine.awarded_price !== 650000) throw new Error('supplier does not see the award')
+    const o = await buyer('/purchase-orders', { method: 'POST', body: { bid_id: bid2.id, title: 'e2e-split' } }); if (o.items[0].quantity !== 700 || o.items[0].unit_price !== 650000) throw new Error('the order ignores the award'); await buyer(`/purchase-orders/${o.id}`, { method: 'DELETE' })
+    // back to one full award for the steps below
+    await buyer(`/bids/${bid2.id}`, { method: 'PATCH', body: { status: 'shortlisted', notify: false } })
+    const back = await buyer(`/bids/${guest.id}`, { method: 'PATCH', body: { awarded_quantity: 400, awarded_price: 640000 } }); if (back.awarded_quantity !== 400) throw new Error('award not adjusted')
+    return '300 + 700 of 1,000 MT at their own prices · balance 0 · limits enforced · each order takes its award'
+  })
   await step('awarding a bid marks the opportunity awarded', async () => {
     const b = await buyer(`/bids/${guest.id}`, { method: 'PATCH', body: { status: 'awarded', ...N } }); if (b.status !== 'awarded') throw new Error(b.status)
     const t = await buyer(`/tenders/${tender.id}`); if (t.status !== 'awarded' || t.counts.awarded !== 1) throw new Error(t.status)
@@ -350,10 +398,40 @@ try {
     const seen = await buyer(`/purchase-orders/${order.id}`); if (!seen.viewed_at) throw new Error('not marked viewed')
     const p = await fetch(`${API}/api/po/${order.token}/pdf?download=1`); if (p.status !== 200 || !/pdf/.test(p.headers.get('content-type')) || !/attachment/.test(p.headers.get('content-disposition'))) throw new Error('pdf ' + p.status)
     await (DRY ? Promise.resolve() : admin('/settings', { method: 'PUT', body: { procurement: { notify_bids: false } } }))
-    const a = await pub(`/po/${order.token}/respond`, { method: 'POST', body: { action: 'acknowledge', note: 'e2e loading starts Monday' } }); if (a.status !== 'acknowledged') throw new Error(a.status)
+    await refused(() => pub(`/po/${order.token}/respond`, { method: 'POST', body: { action: 'acknowledge' } }), /6-digit code/, 'acknowledge without a code')
+    let a
+    if (DRY) {
+      const o = await pub(`/po/${order.token}/otp`, { method: 'POST', body: {} }); if (!/\*+@e2e\.invalid$/.test(o.sent_to)) throw new Error(JSON.stringify(o))
+      await refused(() => pub(`/po/${order.token}/respond`, { method: 'POST', body: { action: 'acknowledge', otp: '000000' } }), /not right/, 'wrong code')
+      const code = ((await mailTo(SUP.email, 'Your verification code%'))?.body.match(/\b(\d{6})\b/) || [])[1]; if (!code) throw new Error('no code emailed')
+      a = await pub(`/po/${order.token}/respond`, { method: 'POST', body: { action: 'acknowledge', note: 'e2e loading starts Monday', otp: code } })
+    } else a = await buyer(`/purchase-orders/${order.id}`, { method: 'PATCH', body: { status: 'acknowledged' } })   // the code would be a real email
+    if (a.status !== 'acknowledged') throw new Error(a.status)
     await refused(() => pub(`/po/${order.token}/respond`, { method: 'POST', body: { action: 'decline' } }), /already been answered/, 'second answer')
     if (DRY) { const m = await mailTo('procurement@e2e.invalid', '%acknowledged%'); if (!m || !m.subject.includes(order.number)) throw new Error('team not told') }
     return 'viewed → acknowledged' + (DRY ? ' · team notified' : '')
+  })
+  /* ------------------------------------------------- supplier deliveries --- */
+  await step('the supplier ships against the order, reports, delivers; we confirm', async () => {
+    const base = `/supplier/orders/${order.number}`
+    const o = await pub(base, { token: sup.token }); if (!o.can_ship || o.fulfilment.ordered !== 400 || o.fulfilment.remaining !== 400 || o.internal_notes !== undefined) throw new Error(JSON.stringify(o.fulfilment))
+    await refused(() => pub(base, { token: sup2.token }), /^404/, "someone else's order")
+    await refused(() => pub(`${base}/shipments`, { method: 'POST', token: sup.token, body: { quantity: 250 } }), /truck registration/, 'no truck')
+    const x = await pub(`${base}/shipments`, { method: 'POST', token: sup.token, body: { quantity: 250, truck_number: 'KAN-123-XY', driver_name: 'Sani Bello', driver_phone: '0803', loading_location: 'Kano', loading_date: day(0), eta: day(3), waybill: 'WB-1' } })
+    if (x.number !== 1 || x.status !== 'planned' || x.destination !== 'Ibadan, Oyo State' || x.unit !== 'MT' || !x.product) throw new Error(JSON.stringify(x).slice(0, 300))
+    await refused(() => pub(`${base}/shipments`, { method: 'POST', token: sup.token, body: { quantity: 200, truck_number: 'T', driver_name: 'D' } }), /Only 150 MT/, 'more than the order')
+    const moving = await pub(`/supplier/shipments/${x.id}/report`, { method: 'POST', token: sup.token, body: { location: 'Lokoja, Kogi', note: 'Passed the checkpoint' } }); if (moving.status !== 'in_transit' || moving.current_location !== 'Lokoja, Kogi' || moving.updates.length !== 2) throw new Error(JSON.stringify(moving).slice(0, 200))
+    await refused(() => pub(`/supplier/shipments/${x.id}/report`, { method: 'POST', token: sup2.token, body: { location: 'x' } }), /^404/, "someone else's shipment")
+    await refused(() => pub(`/supplier/shipments/${x.id}/report`, { method: 'POST', token: sup.token, body: { status: 'confirmed' } }), /status must be/, 'supplier confirms their own delivery')
+    const doc = await upload(`/api/supplier/shipments/${x.id}/files`, { token: sup.token }, 'e2e-waybill.pdf', 'application/pdf', PDF); if (doc.name !== 'e2e-waybill.pdf') throw new Error('upload')
+    const seen = await buyer(`/deliveries?po_id=${order.id}`); if (seen.length !== 1 || seen[0].status !== 'in_transit' || seen[0].order?.number !== order.number) throw new Error('panel does not see it')
+    const done = await pub(`/supplier/shipments/${x.id}/report`, { method: 'POST', token: sup.token, body: { status: 'delivered', location: 'Ibadan warehouse' } }); if (done.status !== 'delivered' || !done.delivered_at) throw new Error(done.status)
+    const c = await buyer(`/deliveries/${x.id}/report`, { method: 'POST', body: { status: 'confirmed', received_quantity: 248, notify: DRY } }); if (c.status !== 'confirmed' || c.received_quantity !== 248) throw new Error(JSON.stringify(c).slice(0, 200))
+    const full = await buyer(`/purchase-orders/${order.id}`); if (full.fulfilment.confirmed !== 248 || full.fulfilment.remaining !== 150 || full.shipments.length !== 1) throw new Error(JSON.stringify(full.fulfilment))
+    const mine = await pub(base, { token: sup.token }); if (mine.shipments[0].status !== 'confirmed' || mine.shipments[0].received_quantity !== 248 || mine.shipments[0].documents.length !== 1) throw new Error('supplier view')
+    await refused(() => pub(`/supplier/shipments/${x.id}`, { method: 'PATCH', token: sup.token, body: { quantity: 1 } }), /can no longer be changed/, 'edit after delivery')
+    if (DRY) { const t = await mailTo('procurement@e2e.invalid', '%created shipment%'); if (!t || !/KAN-123-XY/.test(t.body)) throw new Error('team not told') }
+    return '250 of 400 MT: planned → in transit (Lokoja) → delivered → confirmed 248 received · 150 left · limits and ownership enforced'
   })
   await step('an acknowledged order is locked', async () => { await refused(() => buyer(`/purchase-orders/${order.id}`, { method: 'PATCH', body: { discount: 1 } }), /locked/, 'edit'); await refused(() => buyer(`/purchase-orders/${order.id}`, { method: 'DELETE' }), /Cancel it instead/, 'delete'); return (await buyer(`/purchase-orders/${order.id}`, { method: 'PATCH', body: { internal_notes: 'e2e ok', status: 'fulfilled' } })).status })
   await step('the order is in the supplier\'s dashboard and on the bid', async () => {
@@ -453,6 +531,8 @@ try {
   const { data: docs } = await svc.from('documents').select('path').or(`supplier_id.in.(${sids.join(',') || 0}),name.ilike.e2e-%`).then(r => r, () => ({ data: [] }))
   const all = [...new Set([...paths, ...(docs || []).map(d => d.path)])]
   if (all.length) await quiet(svc.storage.from('documents').remove(all))
+  await quiet(svc.from('otp_codes').delete().like('email', '%@e2e.invalid'))
+  if (sids.length) await quiet(svc.from('notifications').delete().eq('audience', 'supplier').in('audience_id', sids))
   await quiet(svc.from('messages').delete().like('to_email', '%@e2e.invalid'))
   await quiet(svc.from('messages').delete().like('from_email', '%@e2e.invalid'))
   await quiet(svc.from('purchase_orders').delete().or('title.ilike.e2e-%,supplier_name.ilike.e2e-%'))

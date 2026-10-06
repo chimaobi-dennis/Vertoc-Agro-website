@@ -10,6 +10,7 @@
  * Admin features require Supabase; there is no SQLite equivalent for auth.
  */
 import { driver } from './store/index.js'
+import { BUILT_IN_ROLES, LEGACY_ROLE, MODULES, actionFor, cleanPermissions, hasUser } from './permissions.js'
 
 let clientPromise = null
 function serviceClient() {
@@ -44,7 +45,8 @@ export async function authenticate(req, res, next) {
     if (!profile) return deny(res, 403, 'No profile for this account. Ask an admin to enable it.')
     if (!profile.active) return deny(res, 403, 'This account has been deactivated.')
 
-    req.user = { id: profile.id, email: profile.email || user.email, name: profile.name, role: profile.role, position: profile.position || '' }
+    const { key, perms, custom } = await effectivePermissions(supabase, profile)
+    req.user = { id: profile.id, email: profile.email || user.email, name: profile.name, role: profile.role, role_key: key, perms, custom_permissions: custom, position: profile.position || '' }
     next()
   } catch (e) {
     console.error('[auth]', e.message)
@@ -52,22 +54,38 @@ export async function authenticate(req, res, next) {
   }
 }
 
-/** Route guard: allow only the listed roles. Always stack after authenticate. */
-export const requireRole = (...roles) => (req, res, next) =>
-  roles.includes(req.user?.role)
-    ? next()
-    : deny(res, 403, `This action requires role: ${roles.join(' or ')}.`)
+/**
+ * A staff member's role key and permissions. Their own set wins over the
+ * role's; a custom role comes from staff_roles; before migration 015 (no
+ * role_key column) the old enum decides.
+ */
+const roleCache = new Map()   // custom role key -> { at, permissions }
+export const forgetRole = key => (key ? roleCache.delete(key) : roleCache.clear())
+export async function effectivePermissions(supabase, profile) {
+  const key = profile.role_key || LEGACY_ROLE[profile.role] || 'editor'
+  if (profile.permissions && typeof profile.permissions === 'object') return { key, perms: cleanPermissions(profile.permissions), custom: true }
+  if (BUILT_IN_ROLES[key]) return { key, perms: BUILT_IN_ROLES[key].permissions, custom: false }
+  const hit = roleCache.get(key)
+  if (hit && Date.now() - hit.at < 30000) return { key, perms: hit.permissions, custom: false }
+  const { data } = await supabase.from('staff_roles').select('permissions').eq('key', key).maybeSingle()
+  const permissions = cleanPermissions(data?.permissions)   // an unknown role can do nothing
+  roleCache.set(key, { at: Date.now(), permissions })
+  return { key, perms: permissions, custom: false }
+}
 
-/** Permission matrix, kept in one place so the frontend can mirror it. */
-export const PERMISSIONS = {
-  products: ['admin', 'editor'],
-  posts:    ['admin', 'editor'],
-  users:    ['admin'],
-  audit:    ['admin'],
-  clients:  ['admin', 'sales'],
-  quotes:   ['admin', 'sales'],
-  email:    ['admin', 'sales'],
-  settings: ['admin'],
-  procurement: ['admin', 'procurement'],   // the sourcing leg: bidding opportunities, bids, suppliers, PO / LPO, supplier messages
-  frontpages: ['admin', 'editor'],   // edit the public pages' content in place (stats, markets, profile, services, gallery, FAQ)
+/**
+ * Route guard: the signed-in staff member needs `action` in `module`.
+ * Without an action it follows the request: reading needs view, POST
+ * create, PUT/PATCH edit, DELETE delete. Always stack after authenticate.
+ */
+export const can = (module, action = null) => (req, res, next) => {
+  const need = action || actionFor(req.method, module)
+  return hasUser(req.user, module, need) ? next() : deny(res, 403, `You don't have permission for this (${MODULES[module]?.label || module}: ${need}).`)
+}
+/** Any one of several modules will do (shared screens such as documents). */
+export const canAny = (...modules) => (req, res, next) =>
+  modules.some(m => hasUser(req.user, m, actionFor(req.method, m))) ? next() : deny(res, 403, "You don't have permission for this.")
+/** Inside a handler: throw 403 unless allowed. */
+export function demand(req, module, action = 'view') {
+  if (!hasUser(req.user, module, action)) throw Object.assign(new Error(`You don't have permission for this (${MODULES[module]?.label || module}: ${action}).`), { expose: true, status: 403 })
 }

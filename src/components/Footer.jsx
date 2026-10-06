@@ -64,12 +64,6 @@ export default function Footer() {
       <Link className="text-sm text-primary-foreground/70 hover:text-accent transition-colors" to="/gallery">Gallery</Link>
       </li>
       <li>
-      <Link className="text-sm text-primary-foreground/70 hover:text-accent transition-colors" to="/bidding">Bidding Opportunities</Link>
-      </li>
-      <li>
-      <Link className="text-sm text-primary-foreground/70 hover:text-accent transition-colors" to="/supplier">Supplier Portal</Link>
-      </li>
-      <li>
       <Link className="text-sm text-primary-foreground/70 hover:text-accent transition-colors" to="/contact">Contact</Link>
       </li>
       </ul>

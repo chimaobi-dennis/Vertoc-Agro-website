@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Plus, Search, Settings2 } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Input, PageHeader, Table, Td } from './ui'
+import { useSort } from '../lib/sort'
 import { Bone } from '../components/Skeleton'
 import { fmtDate, fmtMoney, quoteTone } from './format'
 
@@ -21,6 +22,7 @@ export default function QuotesAdmin() {
     return s ? all.filter(r => [r.number, r.client_name, r.title, r.client_email].some(v => String(v || '').toLowerCase().includes(s))) : all
   }, [rows, q])
 
+  const [sorted, sortControl] = useSort(visible, { name: 'client_name', more: [{ key: 'number', label: 'Invoice number', get: 'number', desc: true }, { key: 'amount', label: 'Amount, highest first', get: r => Number(r.total), desc: true }, { key: 'amount_asc', label: 'Amount, lowest first', get: r => Number(r.total) }, { key: 'status', label: 'Status', get: 'status' }, { key: 'valid', label: 'Valid until, soonest first', get: 'valid_until' }] })
   return (
     <>
       <PageHeader eyebrow="Sales" title="Invoices" description={rows ? `${visible.length} ${status === 'all' ? '' : status} invoice${visible.length === 1 ? '' : 's'}` : ' '}
@@ -45,10 +47,11 @@ export default function QuotesAdmin() {
         </div>
       </div>
 
+      <div className="flex justify-end mb-3">{sortControl}</div>
       <Card>
         <Table head={['Number', 'Client', 'Title', 'Total', 'Status', 'Valid until', '']}>
           {!rows && [0, 1, 2, 3].map(i => <tr key={i}>{[...Array(7)].map((_, j) => <Td key={j}><Bone className="h-4 w-20" /></Td>)}</tr>)}
-          {rows && visible.map(r => (
+          {rows && sorted.map(r => (
             <tr key={r.id} className="hover:bg-muted/40">
               <Td><Link to={`/staff360/quotes/${r.id}`} className="font-medium hover:text-accent">{r.number}</Link></Td>
               <Td>{r.client_id ? <Link to={`/staff360/clients/${r.client_id}?tab=quotes`} className="hover:text-accent">{r.client_name || '—'}</Link> : (r.client_name || '—')}</Td>

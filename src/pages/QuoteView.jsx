@@ -1,5 +1,6 @@
 /* Public invoice page: /q/<token>. The token is the only credential. */
 import { lazy, Suspense, useEffect, useState } from 'react'
+import { OtpField, useOtp } from '../components/OtpStep'
 import { useParams } from 'react-router-dom'
 import { CheckCircle2, Clock, Download, FileText, Plane, Ship, Truck, XCircle } from 'lucide-react'
 import { fetchJson } from '../lib/api'
@@ -23,18 +24,21 @@ export default function QuoteView() {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  const otp = useOtp(`/q/${token}/otp`)   // accepting needs the code we email
 
   useEffect(() => {
     fetchJson(`/q/${token}`).then(d => { setQ(d); setState('ready') }).catch(e => setState(/404/.test(e.message) ? 'missing' : 'error'))
   }, [token])
 
   const respond = async () => {
+    // First press: have the code emailed. Second press: send the answer with it.
+    if (answer === 'accept' && otp.stage === null) { const r = await otp.request(); if (r !== 'skip') return }
     setBusy(true); setErr(null)
     try {
-      const r = await fetch(`${BASE}/api/q/${token}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: answer, note }) })
+      const r = await fetch(`${BASE}/api/q/${token}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: answer, note, ...(answer === 'accept' && otp.stage === 'sent' ? { otp: otp.code } : {}) }) })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d.error || 'Something went wrong. Please try again.')
-      setQ(d); setAnswer(null)
+      setQ(d); setAnswer(null); otp.reset()
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
 
@@ -130,10 +134,12 @@ export default function QuoteView() {
                     <h2 className="font-semibold mb-1">{answer === 'accept' ? 'Accept this invoice?' : 'Decline this invoice?'}</h2>
                     <p className="text-sm text-muted-foreground mb-4">{answer === 'accept' ? 'We will contact you to confirm the order details.' : 'Tell us what would make it work, if you like.'}</p>
                     <textarea rows={3} value={note} onChange={e => setNote(e.target.value)} placeholder="Optional message to our team" className="w-full rounded-xl border border-border bg-card p-3 text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25" />
+                    {answer === 'accept' && otp.stage === null && <p className="text-xs text-muted-foreground mt-3">To confirm it is you, we will email a one-time verification code to the address this invoice was sent to.</p>}
+                    {answer === 'accept' && <OtpField otp={otp} />}
                     {err && <p className="text-sm text-destructive mt-2" role="alert">{err}</p>}
                     <div className="flex flex-wrap gap-3 mt-4">
-                      <button onClick={respond} disabled={busy} className={`${btn} ${answer === 'accept' ? 'bg-accent text-accent-foreground hover:bg-accent/90' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}>{busy ? 'Sending…' : answer === 'accept' ? 'Yes, accept' : 'Yes, decline'}</button>
-                      <button onClick={() => setAnswer(null)} disabled={busy} className={`${btn} text-muted-foreground hover:text-foreground`}>Cancel</button>
+                      <button onClick={respond} disabled={busy || otp.busy || (answer === 'accept' && otp.stage === 'sent' && !otp.ready)} className={`${btn} ${answer === 'accept' ? 'bg-accent text-accent-foreground hover:bg-accent/90' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}>{busy || otp.busy ? 'Sending…' : answer === 'accept' ? (otp.stage === null ? 'Email me the code' : 'Confirm and accept') : 'Yes, decline'}</button>
+                      <button onClick={() => { setAnswer(null); otp.reset(); setErr(null) }} disabled={busy} className={`${btn} text-muted-foreground hover:text-foreground`}>Cancel</button>
                     </div>
                   </div>
                 )}

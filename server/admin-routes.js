@@ -6,7 +6,8 @@
  * and every one of them writes an audit row.
  */
 import express, { Router } from 'express'
-import { authenticate, requireRole, PERMISSIONS } from './auth.js'
+import { authenticate, can, demand, forgetRole } from './auth.js'
+import { ACTIONS, ACTION_LABELS, BUILT_IN_ROLES, MODULES, cleanPermissions, diffPermissions, enumFor, hasUser, menuFlags } from './permissions.js'
 import { audit } from './audit.js'
 import * as content from './content.js'
 import { deliver, sendQuote, inviteUser, sendSetPasswordLink, acknowledgeEnquiry, resolveResendKey, resolveWebhookSecret, dryRun, quoteLink, publicUrl, panelLink } from './messaging.js'
@@ -16,6 +17,7 @@ import { renderQuotePdf } from './quote-pdf.js'
 import { encryptSecret, sha256, newToken } from './secrets.js'
 import { refreshMcpSettings } from './mcp-auth.js'
 import procurementRoutes from './procurement-routes.js'
+import portalAdminRoutes from './portal-admin-routes.js'
 
 const router = Router()
 router.use(authenticate)
@@ -37,10 +39,8 @@ const bad = (message, status = 400) => Object.assign(new Error(message), { expos
 /* ------------------------------------------------------------ session --- */
 
 router.get('/me', h(async (req, res) => {
-  const permissions = Object.fromEntries(
-    Object.entries(PERMISSIONS).map(([k, roles]) => [k, roles.includes(req.user.role)])
-  )
-  res.json({ ...req.user, permissions })
+  // `permissions`: what the menus show. `can`: every action, module by module.
+  res.json({ ...req.user, perms: undefined, permissions: menuFlags(req.user.perms), can: req.user.perms, role_name: BUILT_IN_ROLES[req.user.role_key]?.name || req.user.role_key })
 }))
 
 router.get('/stats', h(async (_req, res) => {
@@ -63,6 +63,9 @@ router.get('/stats', h(async (_req, res) => {
     users: await count('profiles', q => q.eq('active', true)),
     quotesOpen: await count('quotes', q => q.in('status', ['sent', 'viewed'])),
     purchasesPending: await count('purchases', q => q.eq('status', 'pending')),
+    paymentsNew: await count('payments', q => q.eq('status', 'submitted')),
+    investmentsNew: await count('investments', q => q.eq('status', 'pending')),
+    deliveriesMoving: await count('po_shipments', q => q.in('status', ['in_transit', 'delivered'])),
     reviewsPending: await Promise.resolve().then(() => count('reviews', q => q.eq('status', 'pending'))).catch(() => 0),   // 0 until migration 009 exists
     // Procurement has its own inbox: its unread mail is counted apart (zeros until migration 014 exists).
     ...(proc => ({ ...proc, inboundUnread: Math.max(0, unreadAll - proc.procUnread) }))(await content.procurementStats().catch(() => ({ tendersOpen: 0, bidsNew: 0, suppliers: 0, ordersOpen: 0, procUnread: 0 }))),
@@ -72,7 +75,7 @@ router.get('/stats', h(async (_req, res) => {
 /* --------------------------------------------------- products & posts --- */
 
 function mountContent(path, entity, api, roles) {
-  const guard = requireRole(...roles)
+  const guard = can('content')
 
   router.get(`/${path}`, guard, h(async (req, res) => {
     res.json(await api.list({ status: req.query.status || 'all', limit: 500 }))
@@ -116,24 +119,39 @@ const exposing = fn => async (...a) => {
 mountContent('products', 'product', {
   list: content.listProducts, get: k => content.getProduct(k, { status: 'all' }),
   create: exposing(content.createProduct), update: exposing(content.updateProduct), remove: content.deleteProduct,
-}, PERMISSIONS.products)
+})
 
 mountContent('posts', 'post', {
   list: content.listPosts, get: k => content.getPost(k, { status: 'all' }),
   create: exposing(content.createPost), update: exposing(content.updatePost), remove: content.deletePost,
-}, PERMISSIONS.posts)
+})
 
 /* -------------------------------------------------------------- users --- */
 
-const ROLES = ['admin', 'editor', 'sales', 'procurement']
 const isEmail = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || ''))
+const ROLES_HINT = 'Roles and permissions need the database migration 015: run server/migrations/015_portals_permissions.sql in the Supabase SQL editor first.'
+const noRolesTable = e => ['42P01', 'PGRST205', '42703', 'PGRST204'].includes(e?.code) || /role_key|staff_roles|permissions/.test(String(e?.message || ''))
+async function customRoles() {
+  const sb = await supabase()
+  const { data, error } = await sb.from('staff_roles').select('*').order('created_at', { ascending: false })
+  return error ? [] : data
+}
+/** A role key that exists (built-in or custom), or 400. */
+async function roleOr400(key) {
+  if (BUILT_IN_ROLES[key]) return key
+  if ((await customRoles()).some(r => r.key === key)) return key
+  throw bad('That role does not exist.')
+}
+const keyOf = p => p.role_key || ({ admin: 'super_admin' })[p.role] || p.role
+const isSuper = p => (p.permissions ? cleanPermissions(p.permissions).staff?.includes('manage') : ['super_admin', 'admin'].includes(keyOf(p)))
 
-router.get('/users', requireRole('admin'), h(async (_req, res) => {
+router.get('/users', can('staff'), h(async (_req, res) => {
   const sb = await supabase()
   const { data, error } = await sb.from('profiles')
-    .select('*').order('created_at')
+    .select('*').order('created_at', { ascending: false })
   if (error) throw new Error(error.message)
-  res.json(data)
+  const custom = await customRoles()
+  res.json(data.map(p => ({ ...p, role_key: keyOf(p), role_name: BUILT_IN_ROLES[keyOf(p)]?.name || custom.find(r => r.key === keyOf(p))?.name || keyOf(p), custom_permissions: Boolean(p.permissions) })))
 }))
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -155,7 +173,7 @@ async function authDetails(sb, id) {
   }
 }
 
-router.get('/users/:id', requireRole('admin'), h(async (req, res) => {
+router.get('/users/:id', can('staff'), h(async (req, res) => {
   const { id } = req.params
   if (!UUID_RE.test(id)) throw bad('User not found.', 404)
   const sb = await supabase()
@@ -166,12 +184,12 @@ router.get('/users/:id', requireRole('admin'), h(async (req, res) => {
     authDetails(sb, p.id),
     sb.from('audit_log').select('id, action, entity, entity_id, at').eq('actor_id', p.id).order('at', { ascending: false }).limit(20).then(r => r.data || []),
   ])
-  res.json({ ...p, auth, activity })
+  res.json({ ...p, role_key: keyOf(p), auth, activity })
 }))
 
 // A fresh set-password link: the invitation again while it is still
 // unaccepted, a one-time recovery link once the account is confirmed.
-router.post('/users/:id/send-link', requireRole('admin'), h(async (req, res) => {
+router.post('/users/:id/send-link', can('staff', 'edit'), h(async (req, res) => {
   const { id } = req.params
   if (!UUID_RE.test(id)) throw bad('User not found.', 404)
   const sb = await supabase()
@@ -184,60 +202,75 @@ router.post('/users/:id/send-link', requireRole('admin'), h(async (req, res) => 
   res.json({ kind: r.kind, via: r.via, message_id: r.message?.id ?? null, warning: r.warning })
 }))
 
-router.post('/users/invite', requireRole('admin'), h(async (req, res) => {
-  const { email, name = '', role = 'editor' } = req.body || {}
+router.post('/users/invite', can('staff', 'create'), h(async (req, res) => {
+  const { email, name = '' } = req.body || {}
   const position = String(req.body?.position || '').trim().slice(0, 80)
   if (!isEmail(email)) throw bad('Please enter a valid email address.')
-  if (!ROLES.includes(role)) throw bad(`Role must be one of: ${ROLES.join(', ')}.`)
+  const role_key = await roleOr400(req.body?.role || 'editor')
+  // Handing out anything but the plainest role is a permissions decision.
+  if (role_key !== 'editor' || req.body?.permissions) demand(req, 'staff', 'manage')
+  const permissions = req.body?.permissions ? cleanPermissions(req.body.permissions) : null
+  const role = enumFor(role_key)
 
   const sb = await supabase()
   const redirectTo = `${process.env.ADMIN_URL || ''}/staff360/set-password`
-  const { user, via, message, warning } = await inviteUser({ actor: req.user, email, name, role, supabase: sb, redirectTo })
+  const { user, via, message, warning } = await inviteUser({ actor: req.user, email, name, role: BUILT_IN_ROLES[role_key]?.name || role_key, supabase: sb, redirectTo })
 
   // The auth trigger created an INACTIVE profile; this upsert activates it with the chosen role.
-  let { error: pErr } = await sb.from('profiles')
-    .upsert({ id: user.id, email, name, role, active: true, ...(position ? { position } : {}) }, { onConflict: 'id' })
-  let positionWarning = null
+  const base = { id: user.id, email, name, role, active: true }
+  const warnings = [warning]
+  let row = { ...base, role_key, ...(permissions ? { permissions } : {}), ...(position ? { position } : {}) }
+  let { error: pErr } = await sb.from('profiles').upsert(row, { onConflict: 'id' })
+  if (pErr && /role_key|permissions/.test(pErr.message)) {   // migration 015 not applied yet: the old four roles still work
+    if (!['admin', 'editor', 'sales', 'procurement'].includes(req.body?.role || 'editor')) { await sb.auth.admin.deleteUser(user.id).catch(() => {}); throw bad(ROLES_HINT, 409) }
+    row = { ...base, role: req.body?.role || 'editor', ...(position ? { position } : {}) }
+    ;({ error: pErr } = await sb.from('profiles').upsert(row, { onConflict: 'id' }))
+  }
   if (pErr && position && /position/.test(pErr.message)) {   // migration 008 not applied yet: keep the invite, drop the position
-    positionWarning = 'Position not saved: run server/migrations/008_positions.sql in the Supabase SQL editor.'
-    ;({ error: pErr } = await sb.from('profiles').upsert({ id: user.id, email, name, role, active: true }, { onConflict: 'id' }))
+    warnings.push('Position not saved: run server/migrations/008_positions.sql in the Supabase SQL editor.')
+    const { position: _p, ...rest } = row
+    ;({ error: pErr } = await sb.from('profiles').upsert(rest, { onConflict: 'id' }))
   }
   if (pErr) throw new Error(pErr.message)
 
-  await audit({ actor: req.user, action: 'invite', entity: 'user', entityId: user.id, after: { email, name, role, via } })
-  const warn = [warning, positionWarning].filter(Boolean).join(' ')
-  res.status(201).json({ id: user.id, email, name, role, active: true, position: positionWarning ? '' : position, via, message_id: message?.id ?? null, ...(warn ? { warning: warn } : {}) })
+  await audit({ actor: req.user, action: 'invite', entity: 'user', entityId: user.id, after: { email, name, role: role_key, ...(permissions ? { permissions } : {}), via } })
+  const warn = warnings.filter(Boolean).join(' ')
+  res.status(201).json({ id: user.id, email, name, role: row.role, role_key, active: true, position: warnings.length > 1 ? '' : position, via, message_id: message?.id ?? null, ...(warn ? { warning: warn } : {}) })
 }))
 
-router.patch('/users/:id', requireRole('admin'), h(async (req, res) => {
+router.patch('/users/:id', can('staff', 'edit'), h(async (req, res) => {
   const { id } = req.params
+  const b = req.body || {}
   const patch = {}
-  if (req.body.role !== undefined) {
-    if (!ROLES.includes(req.body.role)) throw bad(`Role must be one of: ${ROLES.join(', ')}.`)
-    patch.role = req.body.role
+  if (b.role !== undefined) { patch.role_key = await roleOr400(b.role); patch.role = enumFor(patch.role_key) }
+  // `permissions`: this person's own set (replaces the role's); null hands them back to the role.
+  if (b.permissions !== undefined) patch.permissions = b.permissions === null ? null : cleanPermissions(b.permissions)
+  if (b.active !== undefined) patch.active = Boolean(b.active)
+  if (b.name !== undefined) patch.name = String(b.name).trim().slice(0, 120)
+  if (b.email !== undefined) {
+    if (!isEmail(b.email)) throw bad('Please enter a valid email address.')
+    patch.email = String(b.email).trim().toLowerCase()
   }
-  if (req.body.active !== undefined) patch.active = Boolean(req.body.active)
-  if (req.body.name !== undefined) patch.name = String(req.body.name).trim().slice(0, 120)
-  if (req.body.email !== undefined) {
-    if (!isEmail(req.body.email)) throw bad('Please enter a valid email address.')
-    patch.email = String(req.body.email).trim().toLowerCase()
-  }
-  if (req.body.position !== undefined) patch.position = String(req.body.position || '').trim().slice(0, 80)
+  if (b.position !== undefined) patch.position = String(b.position || '').trim().slice(0, 80)
   if (!Object.keys(patch).length) throw bad('Nothing to update.')
   if (!UUID_RE.test(id)) throw bad('User not found.', 404)
+  // Only someone who manages staff may change what a person can do.
+  if (patch.role_key !== undefined || patch.permissions !== undefined) demand(req, 'staff', 'manage')
 
   const sb = await supabase()
   const { data: before } = await sb.from('profiles').select('*').eq('id', id).maybeSingle()
   if (!before) throw bad('User not found.', 404)
+  // Nobody below a Super Admin edits one.
+  if (isSuper(before) && !hasUser(req.user, 'staff', 'manage')) throw bad('Only a Super Admin can change this account.', 403)
 
   // Lock-out guards: you cannot remove your own admin access, and the last
-  // active admin cannot be demoted or deactivated by anyone.
-  const losesAdmin = before.role === 'admin' && (patch.role && patch.role !== 'admin' || patch.active === false)
+  // active Super Admin cannot be demoted or deactivated by anyone.
+  const after_ = { ...before, ...patch }
+  const losesAdmin = isSuper(before) && (!isSuper(after_) || patch.active === false)
   if (losesAdmin) {
     if (id === req.user.id) throw bad("You can't remove your own admin access.")
-    const { count } = await sb.from('profiles').select('*', { count: 'exact', head: true })
-      .eq('role', 'admin').eq('active', true)
-    if ((count ?? 0) <= 1) throw bad('This is the last active admin; promote someone else first.')
+    const { data: rest } = await sb.from('profiles').select('*').eq('active', true).neq('id', id)
+    if (!(rest || []).some(isSuper)) throw bad('This is the last active admin; promote someone else first.')
   }
 
   // Email and name live in Supabase Auth too (sign-in address, invite greeting).
@@ -247,15 +280,81 @@ router.patch('/users/:id', requireRole('admin'), h(async (req, res) => {
     const { error: aErr } = await sb.auth.admin.updateUserById(id, { ...(emailChanged ? { email: patch.email, email_confirm: true } : {}), ...(nameChanged ? { user_metadata: { name: patch.name } } : {}) })
     if (aErr) throw bad(/already|exists/i.test(aErr.message) ? 'That email already has an account.' : aErr.message)
   }
-  const { data: after, error } = await sb.from('profiles').update(patch).eq('id', id).select().single()
+  let { data: after, error } = await sb.from('profiles').update(patch).eq('id', id).select().single()
+  if (error && /role_key|permissions/.test(error.message)) {   // before migration 015: only the old four roles
+    if (patch.permissions !== undefined || (b.role !== undefined && !['admin', 'editor', 'sales', 'procurement'].includes(b.role))) throw bad(ROLES_HINT, 409)
+    const { role_key: _k, permissions: _p, ...old } = patch
+    if (b.role !== undefined) old.role = b.role
+    ;({ data: after, error } = await sb.from('profiles').update(old).eq('id', id).select().single())
+  }
   if (error) throw /position/.test(error.message) ? bad('Positions need the database migration 008_positions.sql — run it in the Supabase SQL editor first.') : new Error(error.message)
   await audit({ actor: req.user, action: 'update', entity: 'user', entityId: id, before, after })
-  res.json(after)
+  // A change to what someone may do gets its own line in the log.
+  if (patch.role_key !== undefined || patch.permissions !== undefined) {
+    const sbp = async p => (p.permissions ? cleanPermissions(p.permissions) : BUILT_IN_ROLES[keyOf(p)]?.permissions || (await customRoles()).find(r => r.key === keyOf(p))?.permissions || {})
+    await audit({ actor: req.user, action: 'permissions', entity: 'user', entityId: id, before: { role: keyOf(before), custom: Boolean(before.permissions) }, after: { staff: after.name || after.email, role: keyOf(after), custom: Boolean(after.permissions), ...diffPermissions(await sbp(before), await sbp(after)) } })
+  }
+  res.json({ ...after, role_key: keyOf(after) })
+}))
+
+/* roles: the built-in ones, and custom ones a Super Admin defines */
+const roleKey = name => String(name || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40)
+router.get('/roles', can('staff'), h(async (_req, res) => {
+  const sb = await supabase()
+  const [custom, people] = await Promise.all([customRoles(), sb.from('profiles').select('*').then(r => r.data || [])])
+  const count = key => people.filter(p => keyOf(p) === key).length
+  res.json({
+    modules: Object.entries(MODULES).map(([key, m]) => ({ key, ...m })), actions: ACTIONS.map(key => ({ key, label: ACTION_LABELS[key] })),
+    roles: [
+      ...Object.entries(BUILT_IN_ROLES).map(([key, r]) => ({ key, ...r, system: true, staff: count(key) })),
+      ...custom.map(r => ({ key: r.key, name: r.name, description: r.description, permissions: cleanPermissions(r.permissions), system: false, staff: count(r.key), created_at: r.created_at })),
+    ],
+  })
+}))
+router.post('/roles', can('staff', 'manage'), h(async (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 60)
+  if (!name) throw bad('Please name the role.')
+  const key = roleKey(name)
+  if (!key || BUILT_IN_ROLES[key] || (await customRoles()).some(r => r.key === key)) throw bad('A role with that name already exists.')
+  const row = { key, name, description: String(req.body?.description || '').trim().slice(0, 300), permissions: cleanPermissions(req.body?.permissions), created_by: req.user.id }
+  const { data, error } = await (await supabase()).from('staff_roles').insert(row).select().single()
+  if (error) throw (noRolesTable(error) ? bad(ROLES_HINT, 409) : new Error(error.message))
+  await audit({ actor: req.user, action: 'create', entity: 'role', entityId: key, after: { name, permissions: row.permissions } })
+  res.status(201).json({ ...data, system: false, staff: 0 })
+}))
+router.patch('/roles/:key', can('staff', 'manage'), h(async (req, res) => {
+  const key = req.params.key
+  if (BUILT_IN_ROLES[key]) throw bad('Built-in roles cannot be changed. Copy it into a new role instead.')
+  const before = (await customRoles()).find(r => r.key === key)
+  if (!before) throw bad('role not found', 404)
+  const patch = { updated_at: new Date().toISOString() }
+  if (req.body?.name !== undefined) { patch.name = String(req.body.name).trim().slice(0, 60); if (!patch.name) throw bad('Please name the role.') }
+  if (req.body?.description !== undefined) patch.description = String(req.body.description || '').trim().slice(0, 300)
+  if (req.body?.permissions !== undefined) patch.permissions = cleanPermissions(req.body.permissions)
+  const { data, error } = await (await supabase()).from('staff_roles').update(patch).eq('key', key).select().single()
+  if (error) throw new Error(error.message)
+  forgetRole(key)
+  await audit({ actor: req.user, action: 'permissions', entity: 'role', entityId: key, before: { name: before.name }, after: { name: data.name, ...diffPermissions(cleanPermissions(before.permissions), cleanPermissions(data.permissions)) } })
+  res.json({ ...data, system: false })
+}))
+router.delete('/roles/:key', can('staff', 'manage'), h(async (req, res) => {
+  const key = req.params.key
+  if (BUILT_IN_ROLES[key]) throw bad('Built-in roles cannot be deleted.')
+  const sb = await supabase()
+  const { count } = await sb.from('profiles').select('*', { count: 'exact', head: true }).eq('role_key', key)
+  if (count) throw bad(`${count} staff member${count === 1 ? ' has' : 's have'} this role. Give them another role first.`)
+  const { data: before } = await sb.from('staff_roles').select('*').eq('key', key).maybeSingle()
+  if (!before) throw bad('role not found', 404)
+  const { error } = await sb.from('staff_roles').delete().eq('key', key)
+  if (error) throw new Error(error.message)
+  forgetRole(key)
+  await audit({ actor: req.user, action: 'delete', entity: 'role', entityId: key, before: { name: before.name, permissions: before.permissions } })
+  res.json({ deleted: true, key })
 }))
 
 /* -------------------------------------------------------------- audit --- */
 
-router.get('/audit', requireRole('admin'), h(async (req, res) => {
+router.get('/audit', can('audit'), h(async (req, res) => {
   const sb = await supabase()
   const limit = Math.min(Number(req.query.limit) || 100, 500)
   const { data, error } = await sb.from('audit_log').select('*').order('at', { ascending: false }).limit(limit)
@@ -265,7 +364,7 @@ router.get('/audit', requireRole('admin'), h(async (req, res) => {
 
 /* ------------------------------------------------------------ reviews --- */
 // Same roles as the blog: content the public site shows.
-const reviewsPerm = requireRole(...PERMISSIONS.posts)
+const reviewsPerm = can('content')
 router.get('/reviews', reviewsPerm, h(async (req, res) => res.json(await content.listReviews({ status: req.query.status || 'all' }))))
 router.post('/reviews', reviewsPerm, h(async (req, res) => {
   const after = await exposing(content.createReview)(req.body || {}, { status: req.body?.status || 'approved', source: 'admin' })
@@ -295,7 +394,7 @@ router.delete('/reviews/:id', reviewsPerm, h(async (req, res) => {
 const MAX_BYTES = 8 * 1024 * 1024
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'])
 
-router.post('/upload', express.json({ limit: '12mb' }), requireRole(...PERMISSIONS.products), h(async (req, res) => {
+router.post('/upload', express.json({ limit: '12mb' }), can('content'), h(async (req, res) => {
   const { filename = 'upload', contentType, data } = req.body || {}
   if (!IMAGE_TYPES.has(contentType)) throw bad('Only JPEG, PNG, WebP, GIF or AVIF images are allowed.')
   if (!data) throw bad('No file data received.')
@@ -318,8 +417,10 @@ router.post('/upload', express.json({ limit: '12mb' }), requireRole(...PERMISSIO
 
 /* ================================================ PHASE 2: CRM + INBOX ==== */
 
-const crm   = requireRole(...PERMISSIONS.clients)
-const inbox = requireRole(...PERMISSIONS.quotes)
+const crm   = can('clients')
+const inbox = can('invoices')
+const enq   = can('enquiries')
+const ship  = can('shipments')
 
 /* user-defined fields: one mount for client_fields and quote_fields */
 function mountFields(path, entity, api, guard) {
@@ -382,18 +483,18 @@ router.delete('/clients/:id', crm, h(async (req, res) => {
 }))
 
 /* enquiries (quote requests + contact messages) */
-router.get('/enquiries', inbox, h(async (req, res) => {
+router.get('/enquiries', enq, h(async (req, res) => {
   res.json(await content.listEnquiries({ kind: req.query.kind || 'all', status: req.query.status || 'all', limit: 500 }))
 }))
 
-router.get('/enquiries/:id', inbox, h(async (req, res) => {
+router.get('/enquiries/:id', enq, h(async (req, res) => {
   const e = await content.getEnquiry(req.params.id)
   if (!e) throw bad('enquiry not found', 404)
   res.json(e)
 }))
 
 // Send the "Quote request received" confirmation again (or for the first time, if it was off).
-router.post('/enquiries/:id/acknowledge', inbox, h(async (req, res) => {
+router.post('/enquiries/:id/acknowledge', enq, h(async (req, res) => {
   const e = await content.getEnquiry(req.params.id)
   if (!e) throw bad('enquiry not found', 404)
   const settings = await content.getSettings()
@@ -402,7 +503,7 @@ router.post('/enquiries/:id/acknowledge', inbox, h(async (req, res) => {
   await audit({ actor: req.user, action: 'acknowledge', entity: 'enquiry', entityId: e.id, after: { to: e.email, message_id: msg.id } })
   res.json(msg)
 }))
-router.patch('/enquiries/:id', inbox, h(async (req, res) => {
+router.patch('/enquiries/:id', enq, h(async (req, res) => {
   const before = await content.getEnquiry(req.params.id)
   if (!before) throw bad('enquiry not found', 404)
   const after = await exposing(content.updateEnquiry)(req.params.id, req.body)
@@ -412,8 +513,8 @@ router.patch('/enquiries/:id', inbox, h(async (req, res) => {
 
 /* ============== PHASE 3: SETTINGS, DOCUMENTS, QUOTES, EMAIL, PURCHASES ==== */
 
-const mail = requireRole(...PERMISSIONS.email)
-const settingsAdmin = requireRole(...PERMISSIONS.settings)
+const mail = can('messages')
+const settingsAdmin = can('settings', 'edit')
 const idOrNull = v => (v == null || v === '' ? null : Number(v))
 const SECRET_NAMES = { resend_api_key: /^re_[A-Za-z0-9_]{10,}$/, resend_webhook_secret: /^whsec_[A-Za-z0-9+/=_-]{16,}$/ }
 
@@ -428,7 +529,7 @@ router.get('/settings', h(async (req, res) => {
   const { source } = await resolveResendKey()
   const { source: whSource } = await resolveWebhookSecret()
   const out = { ...safeSettings(s), email: { ...s.email, configured: Boolean(source), source, dry_run: dryRun(), inbound_configured: Boolean(whSource), inbound_source: whSource, webhook_url: `${publicUrl()}/api/webhooks/resend` }, public_url: publicUrl() }
-  if (req.user.role === 'admin') {
+  if (hasUser(req.user, 'settings', 'edit')) {
     const secrets = await content.readSecrets()
     out.secrets = Object.fromEntries(Object.entries(secrets).map(([k, v]) => [k, { hint: v.hint, set_at: v.set_at }]))
     out.mcp = { ...out.mcp, endpoint: `${publicUrl()}/mcp`, env_token: Boolean(process.env.VERTOC_MCP_TOKEN) }
@@ -467,33 +568,33 @@ router.delete('/settings/mcp/token', settingsAdmin, h(async (req, res) => {
 
 /* Secrets (API keys) set from the panel: write-only, encrypted at rest. */
 // Public-page content: editable in place on the site by staff with the 'frontpages' permission (admin, editor).
-const frontpages = requireRole(...PERMISSIONS.frontpages)
-router.get('/settings/gallery', frontpages, h(async (_req, res) => res.json({ items: await content.getGallery() })))
+const frontpages = can('content', 'edit')
+router.get('/settings/gallery', can('content', 'view'), h(async (_req, res) => res.json({ items: await content.getGallery() })))
 router.put('/settings/gallery', frontpages, h(async (req, res) => { const items = await exposing(content.setGallery)(req.body?.items); await audit({ actor: req.user, action: 'update', entity: 'gallery', entityId: null, after: { count: items.length } }); res.json({ items }) }))
-router.get('/settings/faq', frontpages, h(async (_req, res) => res.json({ items: await content.getFaq() })))
+router.get('/settings/faq', can('content', 'view'), h(async (_req, res) => res.json({ items: await content.getFaq() })))
 router.put('/settings/faq', frontpages, h(async (req, res) => { const items = await exposing(content.setFaq)(req.body?.items); await audit({ actor: req.user, action: 'update', entity: 'faq', entityId: null, after: { count: items.length } }); res.json({ items }) }))
-router.get('/settings/hero', frontpages, h(async (_req, res) => res.json({ hero: await content.getHero() })))
+router.get('/settings/hero', can('content', 'view'), h(async (_req, res) => res.json({ hero: await content.getHero() })))
 router.put('/settings/hero', frontpages, h(async (req, res) => { const hero = await exposing(content.setHero)(req.body); await audit({ actor: req.user, action: 'update', entity: 'hero', entityId: null, after: hero }); res.json({ hero }) }))
-router.get('/settings/why', frontpages, h(async (_req, res) => res.json({ items: await content.getWhy() })))
+router.get('/settings/why', can('content', 'view'), h(async (_req, res) => res.json({ items: await content.getWhy() })))
 router.put('/settings/why', frontpages, h(async (req, res) => { const items = await exposing(content.setWhy)(req.body?.items); await audit({ actor: req.user, action: 'update', entity: 'why', entityId: null, after: { count: items.length } }); res.json({ items }) }))
-router.get('/settings/sustainability', frontpages, h(async (_req, res) => res.json({ items: await content.getSustainability(), colors: content.POLICY_COLORS })))
+router.get('/settings/sustainability', can('content', 'view'), h(async (_req, res) => res.json({ items: await content.getSustainability(), colors: content.POLICY_COLORS })))
 router.put('/settings/sustainability', frontpages, h(async (req, res) => { const items = await exposing(content.setSustainability)(req.body?.items); await audit({ actor: req.user, action: 'update', entity: 'sustainability', entityId: null, after: { count: items.length } }); res.json({ items, colors: content.POLICY_COLORS }) }))
-router.get('/settings/services', frontpages, h(async (_req, res) => res.json({ items: await content.getServices(), icons: content.STAT_ICON_NAMES })))
+router.get('/settings/services', can('content', 'view'), h(async (_req, res) => res.json({ items: await content.getServices(), icons: content.STAT_ICON_NAMES })))
 router.put('/settings/services', frontpages, h(async (req, res) => { const items = await exposing(content.setServices)(req.body?.items); await audit({ actor: req.user, action: 'update', entity: 'services', entityId: null, after: { count: items.length } }); res.json({ items, icons: content.STAT_ICON_NAMES }) }))
 // Homepage stat tiles (Settings → Site).
-router.get('/settings/stats', frontpages, h(async (_req, res) => res.json({ stats: await content.getHomepageStats(), icons: content.STAT_ICON_NAMES })))
+router.get('/settings/stats', can('content', 'view'), h(async (_req, res) => res.json({ stats: await content.getHomepageStats(), icons: content.STAT_ICON_NAMES })))
 router.put('/settings/stats', frontpages, h(async (req, res) => {
   const stats = await exposing(content.setHomepageStats)(req.body?.stats)
   await audit({ actor: req.user, action: 'update', entity: 'homepage_stats', entityId: null, after: { stats } })
   res.json({ stats, icons: content.STAT_ICON_NAMES })
 }))
-router.get('/settings/about', frontpages, h(async (_req, res) => res.json({ profile: await content.getCompanyProfile(), icons: content.STAT_ICON_NAMES })))
+router.get('/settings/about', can('content', 'view'), h(async (_req, res) => res.json({ profile: await content.getCompanyProfile(), icons: content.STAT_ICON_NAMES })))
 router.put('/settings/about', frontpages, h(async (req, res) => {
   const profile = await exposing(content.setCompanyProfile)(req.body || {})
   await audit({ actor: req.user, action: 'update', entity: 'company_profile', entityId: null, after: { registrations: profile.registrations.length, values: profile.values.length, industries: profile.industries.length } })
   res.json({ profile, icons: content.STAT_ICON_NAMES })
 }))
-router.get('/settings/markets', frontpages, h(async (_req, res) => res.json(await content.getHomepageMarkets())))
+router.get('/settings/markets', can('content', 'view'), h(async (_req, res) => res.json(await content.getHomepageMarkets())))
 router.put('/settings/markets', frontpages, h(async (req, res) => {
   const value = await exposing(content.setHomepageMarkets)(req.body || {})
   await audit({ actor: req.user, action: 'update', entity: 'homepage_markets', entityId: null, after: value })
@@ -527,31 +628,42 @@ router.delete('/settings/secrets/:name', settingsAdmin, h(async (req, res) => {
 /* documents: metadata here, bytes straight to storage via signed URLs.
    A file that hangs off a supplier, a bid or a purchase order belongs to
    procurement; every other file belongs to sales. Each side sees its own. */
-const anyDocs = requireRole(...new Set([...PERMISSIONS.clients, ...PERMISSIONS.procurement]))
-const isProcDoc = d => d?.supplier_id != null || d?.bid_id != null || d?.po_id != null
-const procScope = o => ['supplier_id', 'bid_id', 'po_id'].some(k => o?.[k] != null && o[k] !== '')
-const docGate = (req, procurementSide) => {
-  const roles = procurementSide ? PERMISSIONS.procurement : PERMISSIONS.clients
-  if (!roles.includes(req.user.role)) throw bad(`This action requires role: ${roles.join(' or ')}.`, 403)
+// Which module a file belongs to; a staff member needs that module's permission for it.
+const docModule = d => (d?.investor_id != null || d?.opportunity_id != null || d?.investment_id != null ? 'investments'
+  : d?.po_shipment_id != null ? 'shipments'
+  : d?.po_id != null && d?.supplier_id == null && d?.bid_id == null ? 'purchase_orders'
+  : d?.supplier_id != null || d?.bid_id != null || d?.po_id != null ? 'suppliers'
+  : d?.payment_id != null ? 'payments' : 'clients')
+const scopeModule = o => docModule(Object.fromEntries(['investor_id', 'opportunity_id', 'investment_id', 'po_shipment_id', 'po_id', 'supplier_id', 'bid_id', 'payment_id'].map(k => [k, o?.[k] != null && o[k] !== '' ? o[k] : null])))
+const isProcDoc = d => ['suppliers', 'purchase_orders', 'shipments'].includes(docModule(d))
+const procScope = o => ['suppliers', 'purchase_orders', 'shipments'].includes(scopeModule(o))
+const anyDocs = (_req, _res, next) => next()   // the handlers check the file's own module
+// Files of a bid or an order are also open to whoever works on bidding or orders.
+const DOC_ALSO = { suppliers: ['bidding', 'purchase_orders'], purchase_orders: ['suppliers'], shipments: ['purchase_orders', 'suppliers'], payments: ['clients'], clients: ['invoices', 'payments'] }
+const docGate = (req, module, action = 'view') => {
+  if ([module, ...(DOC_ALSO[module] || [])].some(m => hasUser(req.user, m, action) || (action !== 'view' && m !== module && hasUser(req.user, m, 'edit')))) return
+  throw bad(`You don't have permission for this (${MODULES[module].label}: ${action}).`, 403)
 }
 router.get('/documents', anyDocs, h(async (req, res) => {
-  const side = procScope(req.query); docGate(req, side)
-  const docs = await content.listDocuments({ client_id: idOrNull(req.query.client_id), quote_id: idOrNull(req.query.quote_id), supplier_id: idOrNull(req.query.supplier_id), bid_id: idOrNull(req.query.bid_id), po_id: idOrNull(req.query.po_id) })
-  res.json(docs.filter(d => isProcDoc(d) === side))
+  const module = scopeModule(req.query); docGate(req, module)
+  const q = req.query
+  const docs = await content.listDocuments({ client_id: idOrNull(q.client_id), quote_id: idOrNull(q.quote_id), supplier_id: idOrNull(q.supplier_id), bid_id: idOrNull(q.bid_id), po_id: idOrNull(q.po_id), po_shipment_id: idOrNull(q.po_shipment_id), investor_id: idOrNull(q.investor_id), opportunity_id: idOrNull(q.opportunity_id) })
+  const side = m => (['suppliers', 'purchase_orders', 'shipments'].includes(m) ? 'p' : m === 'investments' ? 'i' : 's')
+  res.json(docs.filter(d => side(docModule(d)) === side(module)))
 }))
 router.post('/documents', anyDocs, h(async (req, res) => {
-  docGate(req, procScope(req.body))
+  docGate(req, scopeModule(req.body), 'create')
   res.status(201).json(await exposing(content.createDocument)(req.body || {}, req.user.id))
 }))
-const docFor = async (req, { any = false } = {}) => {
+const docFor = async (req, { any = false, action = 'view' } = {}) => {
   const d = await content.getDocument(req.params.id, { any })
   if (!d) throw bad('document not found', 404)
-  docGate(req, isProcDoc(d)); return d
+  docGate(req, docModule(d), action); return d
 }
 router.post('/documents/:id/complete', anyDocs, h(async (req, res) => {
-  await docFor(req, { any: true })
+  await docFor(req, { any: true, action: 'create' })
   const doc = await exposing(content.completeDocument)(req.params.id)
-  await audit({ actor: req.user, action: 'upload', entity: 'document', entityId: doc.id, after: { name: doc.name, bytes: doc.bytes, client_id: doc.client_id, quote_id: doc.quote_id, ...(isProcDoc(doc) ? { supplier_id: doc.supplier_id, bid_id: doc.bid_id, po_id: doc.po_id } : {}) } })
+  await audit({ actor: req.user, action: 'upload', entity: 'document', entityId: doc.id, after: { name: doc.name, bytes: doc.bytes, client_id: doc.client_id, quote_id: doc.quote_id, ...(docModule(doc) !== 'clients' ? { supplier_id: doc.supplier_id, bid_id: doc.bid_id, po_id: doc.po_id, module: docModule(doc) } : {}) } })
   res.json(doc)
 }))
 router.get('/documents/:id/url', anyDocs, h(async (req, res) => {
@@ -559,7 +671,7 @@ router.get('/documents/:id/url', anyDocs, h(async (req, res) => {
   res.json(await exposing(content.documentUrl)(req.params.id, { download: req.query.download === '1' }))
 }))
 router.delete('/documents/:id', anyDocs, h(async (req, res) => {
-  const before = await docFor(req, { any: true })
+  const before = await docFor(req, { any: true, action: 'delete' })
   const r = await content.deleteDocument(before.id)
   await audit({ actor: req.user, action: 'delete', entity: 'document', entityId: before.id, before })
   res.json(r)
@@ -603,7 +715,7 @@ router.get('/quotes/:id/pdf', inbox, h(async (req, res) => {
   res.setHeader('Content-Disposition', `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${q.number}.pdf"`)
   res.send(pdf)
 }))
-router.post('/quotes/:id/send', mail, h(async (req, res) => {
+router.post('/quotes/:id/send', can('invoices', 'approve'), h(async (req, res) => {
   const b = req.body || {}
   const r = await sendQuote(req.params.id, { actor: req.user, to: b.to, subject: b.subject, body: b.body, attachmentIds: b.attachment_ids || [], fromId: b.from_id || null })
   res.json({ ...r, link: quoteLink(r.quote) })
@@ -615,50 +727,52 @@ router.post('/quotes/:id/convert', crm, h(async (req, res) => {
 }))
 
 /* shipments: an invoice can leave on several trucks, each a share of it */
-router.get('/quotes/:id/shipments', inbox, h(async (req, res) => {
+router.get('/quotes/:id/shipments', ship, h(async (req, res) => {
   const q = await content.getQuote(req.params.id)
   if (!q) throw bad('quote not found', 404)
   res.json(await content.listShipments(q.id))
 }))
-router.post('/quotes/:id/shipments', inbox, h(async (req, res) => {
+router.post('/quotes/:id/shipments', ship, h(async (req, res) => {
   const q = await content.getQuote(req.params.id)
   if (!q) throw bad('quote not found', 404)
   const after = await exposing(content.createShipment)(q.id, req.body || {}, req.user.id)
   await audit({ actor: req.user, action: 'create', entity: 'shipment', entityId: after.id, after: { quote: q.number, number: after.number, percent: after.percent, items: after.items, mode: after.mode, origin: after.origin?.name, destination: after.destination?.name } })
   res.status(201).json(after)
 }))
-router.get('/shipments/:sid', inbox, h(async (req, res) => {
+router.get('/shipments/:sid', ship, h(async (req, res) => {
   const s = await content.getShipment(req.params.sid)
   if (!s) throw bad('shipment not found', 404)
   res.json(s)
 }))
-router.patch('/shipments/:sid', inbox, h(async (req, res) => {
+router.patch('/shipments/:sid', ship, h(async (req, res) => {
   const before = await content.getShipment(req.params.sid)
   if (!before) throw bad('shipment not found', 404)
   const after = await exposing(content.updateShipment)(before.id, req.body || {}, req.user.id)
   await audit({ actor: req.user, action: 'update', entity: 'shipment', entityId: after.id, before: { status: before.status, percent: before.percent }, after: { status: after.status, percent: after.percent } })
   res.json(after)
 }))
-router.delete('/shipments/:sid', inbox, h(async (req, res) => {
+router.delete('/shipments/:sid', ship, h(async (req, res) => {
   const before = await content.getShipment(req.params.sid)
   if (!before) throw bad('shipment not found', 404)
   const r = await content.deleteShipment(before.id)
   await audit({ actor: req.user, action: 'delete', entity: 'shipment', entityId: before.id, before: { number: before.number, percent: before.percent } })
   res.json(r)
 }))
-router.post('/shipments/:sid/checkpoints', inbox, h(async (req, res) => {
+router.post('/shipments/:sid/checkpoints', ship, h(async (req, res) => {
   const after = await exposing(content.addCheckpoint)(req.params.sid, req.body || {}, req.user.id)
   const c = after.checkpoints[after.checkpoints.length - 1]
+  // The client sees the new position under Notifications in their portal.
+  if (after.quote?.id) { const q = await content.getQuote(after.quote.id); if (q?.client_id) await content.notify('client', q.client_id, { title: `Shipment ${after.number} of ${q.number} is now at ${c?.name || 'a new location'}`, body: c?.note || '', link: `/q/${q.token}` }) }
   await audit({ actor: req.user, action: 'update', entity: 'shipment', entityId: after.id, after: { location: c?.name, status: after.status } })
   res.status(201).json(after)
 }))
-router.patch('/shipments/:sid/checkpoints/:cid', inbox, h(async (req, res) => {
+router.patch('/shipments/:sid/checkpoints/:cid', ship, h(async (req, res) => {
   const after = await exposing(content.updateCheckpoint)(req.params.sid, req.params.cid, req.body || {})
   const c = after.checkpoints.find(x => x.id === Number(req.params.cid))
   await audit({ actor: req.user, action: 'update', entity: 'shipment', entityId: after.id, after: { checkpoint: c?.id, location: c?.name, at: c?.at } })
   res.json(after)
 }))
-router.delete('/shipments/:sid/checkpoints/:cid', inbox, h(async (req, res) => {
+router.delete('/shipments/:sid/checkpoints/:cid', ship, h(async (req, res) => {
   const after = await exposing(content.deleteCheckpoint)(req.params.sid, req.params.cid)
   await audit({ actor: req.user, action: 'update', entity: 'shipment', entityId: after.id, after: { removed_checkpoint: Number(req.params.cid) } })
   res.json(after)
@@ -667,7 +781,7 @@ router.delete('/shipments/:sid/checkpoints/:cid', inbox, h(async (req, res) => {
 /* messages (one-to-one email). Sales and procurement each have their own
    inbox: the same handlers are mounted twice, and a message is only ever
    reachable through the side it belongs to. */
-const procurementOnly = requireRole(...PERMISSIONS.procurement)
+const procurementOnly = can('supplier_messages')
 function mountMessages(prefix, guard, scope) {
   const procurement = scope === 'procurement'
   const own = async id => {
@@ -829,5 +943,7 @@ router.post('/templates/:key/reset', settingsAdmin, h(async (req, res) => {
 
 /* procurement: suppliers, bidding opportunities, bids, purchase orders */
 router.use(procurementRoutes)
+/* payments, investments, supplier deliveries, reports */
+router.use(portalAdminRoutes)
 
 export default router

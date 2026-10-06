@@ -1,11 +1,12 @@
 // Single source of truth for the primary nav, shared by the header and the
 // mobile menu so the two can never drift apart.
+// The portals (bidding, supplier, client, investment) are deliberately not
+// here, nor in the footer: they are reached by their direct links only.
 export const NAV_LINKS = [
   { label: 'Home', to: '/' },
   { label: 'About', to: '/about' },
   { label: 'Services', to: '/services' },
   { label: 'Products', to: '/products' },
-  { label: 'Bidding', to: '/bidding' },
   { label: 'Sustainability', to: '/sustainability' },
   { label: 'Blog', to: '/blog' },
   { label: 'Gallery', to: '/gallery' },

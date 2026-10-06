@@ -13,7 +13,8 @@ import { Bone } from '../components/Skeleton'
 import Composer from './Composer'
 import { fmtDateTime, messageTone, openInNewTab } from './format'
 import { DraftNotice, useDraft } from './useDraft'
-import { PO_KINDS, PO_SHORT, PO_STATUSES, fmtMoment, money, poTone } from '../lib/procurement'
+import { DeliveriesPanel } from './DeliveriesAdmin'
+import { PO_KINDS, PO_SHORT, PO_STATUSES, fmtMoment, money, poTone, qty } from '../lib/procurement'
 
 const round = v => Math.round((Number(v) || 0) * 100) / 100
 const blank = () => ({ description: '', quantity: 1, unit: 'MT', unit_price: '' })
@@ -217,6 +218,22 @@ export default function PurchaseOrderForm() {
             )}
           </div>
         </form>
+      )}
+
+      {editing && order && order.status !== 'draft' && (
+        <section className="mt-8 animate-fade-up">
+          <h2 className="font-semibold mb-1">Shipments against this order</h2>
+          <p className="text-sm text-muted-foreground mb-4">The supplier adds a shipment for each truck and reports where it is; you confirm what arrives.</p>
+          {order.fulfilment && (
+            <Card className="mb-4 overflow-hidden">
+              <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border">
+                {[['Ordered', order.fulfilment.ordered], ['On shipments', order.fulfilment.shipped], ['Received and confirmed', order.fulfilment.confirmed], ['Still to ship', order.fulfilment.remaining]].map(([l, v]) => <div key={l} className="px-5 py-4"><p className="text-xs uppercase tracking-wider text-muted-foreground">{l}</p><p className="text-xl font-bold tabular-nums mt-0.5">{qty(v, order.fulfilment.unit)}</p></div>)}
+              </div>
+              <div className="h-1.5 bg-muted"><div className="h-full bg-accent" style={{ width: `${order.fulfilment.ordered > 0 ? Math.min(100, order.fulfilment.confirmed / order.fulfilment.ordered * 100) : 0}%` }} /></div>
+            </Card>
+          )}
+          <DeliveriesPanel poId={order.id} canAdd={['issued', 'acknowledged'].includes(order.status)} onChanged={() => adminFetch(`/purchase-orders/${id}`).then(o => setOrder(x => ({ ...x, fulfilment: o.fulfilment, shipments: o.shipments }))).catch(() => {})} />
+        </section>
       )}
 
       {editing && order && (

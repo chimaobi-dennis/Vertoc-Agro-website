@@ -43,7 +43,10 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => { await supabase?.auth.signOut(); setMe(null) }, [])
 
-  return <Ctx.Provider value={{ session, me, error, loading, signOut }}>{children}</Ctx.Provider>
+  // What this person may do: can('bidding', 'unlock'). The server enforces it; the panel only hides what would be refused.
+  const can = useCallback((module, action = 'view') => Boolean(me?.can?.[module]?.includes(action)), [me])
+
+  return <Ctx.Provider value={{ session, me, error, loading, signOut, can }}>{children}</Ctx.Provider>
 }
 
 export const useAuth = () => useContext(Ctx)

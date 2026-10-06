@@ -58,3 +58,8 @@ const BY_EXT = {
 }
 export const fileType = file => file.type || BY_EXT[file.name.split('.').pop().toLowerCase()] || 'application/octet-stream'
 export const fileSize = b => (b < 1024 ? `${b} B` : b < 1048576 ? `${Math.round(b / 1024)} KB` : `${(b / 1048576).toFixed(1)} MB`)
+
+/* supplier shipments against an LPO / PO */
+export const DELIVERY_STATUSES = ['planned', 'in_transit', 'delivered', 'confirmed', 'cancelled']
+export const DELIVERY_LABELS = { planned: 'Planned', in_transit: 'In transit', delivered: 'Delivered', confirmed: 'Confirmed', cancelled: 'Cancelled' }
+export const deliveryTone = s => ({ planned: 'muted', in_transit: 'blue', delivered: 'amber', confirmed: 'green', cancelled: 'red' })[s] || 'muted'

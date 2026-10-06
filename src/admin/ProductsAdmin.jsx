@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Button, Card, PageHeader, Table, Td, Badge, Alert, useToast, confirmDelete } from './ui'
+import { useSort } from '../lib/sort'
 import { Bone } from '../components/Skeleton'
 
 export default function ProductsAdmin() {
@@ -18,6 +19,7 @@ export default function ProductsAdmin() {
     catch (e) { toast(e.message, 'error') }
   }
 
+  const [sorted, sortControl] = useSort(rows, { date: r => r.created_at || r.updated_at, name: 'name', more: [{ key: 'updated', label: 'Last updated', get: 'updated_at', desc: true }, { key: 'category', label: 'Category', get: 'category' }, { key: 'status', label: 'Status', get: 'status' }] })
   return (
     <>
       <PageHeader title="Products" description={rows ? `${rows.length} products` : ' '}
@@ -26,12 +28,13 @@ export default function ProductsAdmin() {
         <Link to="/staff360/products/new"><Button><Plus className="w-4 h-4" />New product</Button></Link>
       </div>
       {err && <Alert>{err}</Alert>}
+      <div className="flex justify-end mb-3">{sortControl}</div>
       <Card>
         <Table head={['', 'Name', 'Category', 'Status', 'Updated', '']}>
           {!rows && [0, 1, 2, 3].map(i => (
             <tr key={i}>{[0, 1, 2, 3, 4, 5].map(j => <Td key={j}><Bone className={`h-4 ${j === 0 ? 'w-12 h-9' : 'w-24'}`} /></Td>)}</tr>
           ))}
-          {rows?.map(p => (
+          {sorted?.map(p => (
             <tr key={p.slug} className="hover:bg-muted/40">
               <Td><img src={p.image} alt="" className="h-9 w-12 object-cover rounded-md border border-border" /></Td>
               <Td><span className="font-medium">{p.name}</span>{p.featured && <Badge tone="amber"> HOT</Badge>}<div className="text-xs text-muted-foreground">/{p.slug}</div></Td>

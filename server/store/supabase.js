@@ -335,14 +335,16 @@ const fileRefs = (data, fields) => fields.filter(f => FILE_TYPES.includes(f.type
 /* ------------------------------------------------------------ clients --- */
 
 export async function listClients({ status = 'active', limit = 500, offset = 0 } = {}) {
-  let q = supabase.from('clients').select('*').order('name').range(offset, offset + limit - 1)
+  let q = supabase.from('clients').select('*').order('created_at', { ascending: false }).range(offset, offset + limit - 1)
   if (status !== 'all') q = q.eq('status', status)
-  return unwrap(await q, 'listClients') ?? []
+  return (unwrap(await q, 'listClients') ?? []).map(noTokens)
 }
+// The one-time link of a client account (migration 015) never leaves the store.
+const noTokens = c => { if (!c) return c; const { auth_token_hash, auth_token_kind, auth_token_expires, ...rest } = c; return { ...rest, has_account: Boolean(c.user_id) } }
 
 export async function getClient(id) {
   const rows = unwrap(await supabase.from('clients').select('*').eq('id', Number(id)).limit(1), 'getClient')
-  return rows?.[0] ?? null
+  return noTokens(rows?.[0] ?? null)
 }
 
 export async function createClient(input, actorId = null) {
@@ -518,7 +520,7 @@ const safeName = n => String(n || 'file').replace(/[\\/]+/g, '-').replace(/[^\w.
  * browser a signed upload URL so the bytes go straight to storage (Vercel
  * caps function bodies at 4.5 MB; documents can be 20 MB).
  */
-export async function createDocument({ client_id = null, quote_id = null, supplier_id = null, bid_id = null, po_id = null, label = '', name, content_type, bytes }, actorId = null) {
+export async function createDocument({ client_id = null, quote_id = null, supplier_id = null, bid_id = null, po_id = null, po_shipment_id = null, payment_id = null, investor_id = null, opportunity_id = null, investment_id = null, label = '', name, content_type, bytes }, actorId = null) {
   const ct = String(content_type || '').toLowerCase().split(';')[0].trim()
   if (!DOC_TYPES[ct]) throw new Error('That file type is not allowed. Use images, PDF, Word, Excel, PowerPoint, CSV or text files.')
   const size = Number(bytes) || 0
@@ -533,12 +535,17 @@ export async function createDocument({ client_id = null, quote_id = null, suppli
   if (bid_id != null) supplier_id ??= (await one('bids', bid_id, 'bid')).supplier_id
   if (po_id != null) supplier_id ??= (await one('purchase_orders', po_id, 'order')).supplier_id
   if (supplier_id != null) { const r = unwrap(await supabase.from('suppliers').select('id').eq('id', supplier_id).limit(1), 'createDocument:supplier')?.[0]; if (!r) throw new Error(`no supplier with id ${supplier_id}`) }
+  // Supplier deliveries, payment receipts and the investment section (migration 015).
+  po_shipment_id = idOrNull(po_shipment_id); payment_id = idOrNull(payment_id); investor_id = idOrNull(investor_id); opportunity_id = idOrNull(opportunity_id); investment_id = idOrNull(investment_id)
+  if (po_shipment_id != null) { const r = unwrap(await supabase.from('po_shipments').select('id,po_id,supplier_id').eq('id', po_shipment_id).limit(1), 'createDocument:shipment')?.[0]; if (!r) throw new Error(`no shipment with id ${po_shipment_id}`); po_id ??= r.po_id; supplier_id ??= r.supplier_id }
+  const extra = Object.fromEntries(Object.entries({ po_shipment_id, payment_id, investor_id, opportunity_id, investment_id }).filter(([, v]) => v != null))
   const procurement = supplier_id != null || bid_id != null || po_id != null
   const clean = safeName(name)
-  const folder = client_id ? `clients/${client_id}` : quote_id ? `quotes/${quote_id}` : bid_id ? `bids/${bid_id}` : supplier_id ? `suppliers/${supplier_id}` : po_id ? `orders/${po_id}` : 'shared'
+  const folder = opportunity_id ? `opportunities/${opportunity_id}` : investor_id ? `investors/${investor_id}` : client_id ? `clients/${client_id}` : quote_id ? `quotes/${quote_id}` : po_shipment_id ? `deliveries/${po_shipment_id}` : bid_id ? `bids/${bid_id}` : supplier_id ? `suppliers/${supplier_id}` : po_id ? `orders/${po_id}` : 'shared'
   const path = `${folder}/${Date.now()}-${randomBytes(4).toString('hex')}-${clean.toLowerCase().replace(/[^a-z0-9.]+/g, '-')}`
   const row = { client_id, quote_id, name: clean, path, content_type: ct, bytes: size, kind: ct.startsWith('image/') ? 'image' : 'file', status: 'pending', uploaded_by: actorId,
-    ...(procurement ? { supplier_id, bid_id, po_id, label: String(label || '').replace(/\s+/g, ' ').trim().slice(0, 80) } : {}) }
+    ...(procurement ? { supplier_id, bid_id, po_id } : {}), ...extra,
+    ...(procurement || Object.keys(extra).length || label ? { label: String(label || '').replace(/\s+/g, ' ').trim().slice(0, 80) } : {}) }
   const document = unwrap(await supabase.from('documents').insert(row).select().single(), 'createDocument')
   const signed = unwrap(await supabase.storage.from('documents').createSignedUploadUrl(path), 'createDocument:sign')
   return { document, upload: { path, token: signed.token, signedUrl: signed.signedUrl } }
@@ -565,13 +572,16 @@ export async function getDocument(id, { any = false } = {}) {
   return (unwrap(await q.limit(1), 'getDocument'))?.[0] ?? null
 }
 
-export async function listDocuments({ client_id, quote_id, supplier_id, bid_id, po_id, limit = 200 } = {}) {
+export async function listDocuments({ client_id, quote_id, supplier_id, bid_id, po_id, po_shipment_id, investor_id, opportunity_id, limit = 200 } = {}) {
   let q = supabase.from('documents').select('*').eq('status', 'ready').order('created_at', { ascending: false }).limit(limit)
   if (client_id != null) q = q.eq('client_id', Number(client_id))
   if (quote_id != null) q = q.eq('quote_id', Number(quote_id))
   if (supplier_id != null) q = q.eq('supplier_id', Number(supplier_id))
   if (bid_id != null) q = q.eq('bid_id', Number(bid_id))
   if (po_id != null) q = q.eq('po_id', Number(po_id))
+  if (po_shipment_id != null) q = q.eq('po_shipment_id', Number(po_shipment_id))
+  if (investor_id != null) q = q.eq('investor_id', Number(investor_id))
+  if (opportunity_id != null) q = q.eq('opportunity_id', Number(opportunity_id))
   return unwrap(await q, 'listDocuments') ?? []
 }
 

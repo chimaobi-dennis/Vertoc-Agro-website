@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Archive, ArchiveRestore, ArrowLeft, FileText, FolderOpen, Mail, Plus, ShoppingBag, Trash2, UserRound } from 'lucide-react'
+import { Banknote, Archive, ArchiveRestore, ArrowLeft, FileText, FolderOpen, Mail, Plus, ShoppingBag, Trash2, UserRound } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Field, Input, PageHeader, Table, Tabs, Td, confirmDelete, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
@@ -8,12 +8,14 @@ import DynamicField from './DynamicField'
 import Composer from './Composer'
 import { DraftNotice, useDraft } from './useDraft'
 import { DocumentsPanel, MessagesPanel, PurchasesPanel, QuotesPanel } from './ClientTabs'
+import { PaymentsPanel } from './PaymentsAdmin'
 
 const tone = s => ({ new: 'amber', won: 'green', lost: 'red', archived: 'muted' })[s] || 'blue'
 const TABS = [
   { key: 'profile', label: 'Profile', icon: UserRound },
   { key: 'documents', label: 'Documents', icon: FolderOpen },
   { key: 'quotes', label: 'Invoices', icon: FileText },
+  { key: 'payments', label: 'Payments', icon: Banknote },
   { key: 'messages', label: 'Messages', icon: Mail },
   { key: 'purchases', label: 'Purchases', icon: ShoppingBag },
 ]
@@ -80,6 +82,7 @@ export default function ClientDetail() {
         action={editing && client && (
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={client.status === 'active' ? 'green' : 'muted'}>{client.status}</Badge>
+            {client.has_account && <Badge tone={client.verified_at ? 'blue' : 'amber'} className="whitespace-nowrap">{client.verified_at ? 'portal account' : 'portal account · email not confirmed'}</Badge>}
             <Button variant="outline" onClick={openCompose}><Mail className="w-4 h-4" />Send email</Button>
             <Link to={`/staff360/quotes/new?client=${client.id}`}><Button variant="accent"><Plus className="w-4 h-4" />New invoice</Button></Link>
           </div>
@@ -134,6 +137,7 @@ export default function ClientDetail() {
 
       {editing && client && tab === 'documents' && <DocumentsPanel clientId={client.id} />}
       {editing && client && tab === 'quotes' && <QuotesPanel clientId={client.id} />}
+      {editing && client && tab === 'payments' && <PaymentsPanel clientId={client.id} />}
       {editing && client && tab === 'messages' && <MessagesPanel clientId={client.id} email={email} refreshKey={msgKey} onCompose={openCompose} />}
       {editing && client && tab === 'purchases' && <PurchasesPanel clientId={client.id} />}
 

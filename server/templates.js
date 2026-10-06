@@ -145,6 +145,51 @@ export const DEFAULT_TEMPLATES = {
     subject: '', body: 'Dear {{name}},\n\n\n\nKind regards,', cta_label: '',
     variables: ['name', 'email', 'supplier_name', 'tender_number', 'tender_title', 'company_name', 'staff_name', 'staff_position'],
   },
+  /* ---- codes, portals, payments, investments ---- */
+  otp_code: {
+    name: 'Verification code', description: 'Sent when a client accepts an invoice or a supplier acknowledges an order: the code they must enter to confirm.',
+    subject: 'Your verification code for {{reference}}',
+    body: 'Hello {{name}},\n\nUse this code to {{purpose}} {{reference}}:\n\n{{code}}\n\nIt is valid for {{minutes}} minutes and works once. If you did not ask for it, ignore this email and nothing will change.\n\n{{company_name}}',
+    cta_label: '',
+    variables: ['name', 'code', 'purpose', 'reference', 'minutes', 'company_name'],
+  },
+  account_verify: {
+    name: 'Confirm portal account (client / investor)', description: 'Sent to a client or an investor who registers, to confirm their email address.',
+    subject: 'Confirm your {{site_name}} {{portal}} account',
+    body: 'Hello {{name}},\n\nThank you for registering with {{company_name}}. Please confirm your email address with the button below to activate your {{portal}} account.\n\nThe link works once and expires in 24 hours. If you did not register, you can ignore this email.',
+    cta_label: 'Confirm my email address',
+    variables: ['name', 'email', 'portal', 'link', 'company_name', 'site_name'],
+  },
+  account_reset: {
+    name: 'Portal password reset (client / investor)', description: 'Sent when a client or an investor asks to reset their password.',
+    subject: 'Choose a new password for your {{site_name}} {{portal}} account',
+    body: 'Hello {{name}},\n\nUse the button below to choose a new password for your {{portal}} account. The link works once and expires in 2 hours.\n\nIf you did not ask for this, you can ignore this email; your password stays as it is.',
+    cta_label: 'Choose a new password',
+    variables: ['name', 'email', 'portal', 'link', 'company_name', 'site_name'],
+  },
+  bid_unlocked: {
+    name: 'Bid unlocked (to the supplier)', description: 'Procurement. Sent when the team unlocks a bid after the deadline so the supplier can adjust it.',
+    subject: 'Your bid on {{tender_number}} has been reopened for changes',
+    body: 'Dear {{contact_person}},\n\nWe have reopened your bid for {{tender_title}} ({{tender_number}}) so that you can adjust it.\n\nReason: {{reason}}\n\nSign in to your supplier dashboard, make your changes and resubmit the bid. Until you do, your bid stands as it was.\n\nKind regards,\n{{company_name}} Procurement',
+    cta_label: 'Open my bid',
+    variables: ['supplier_name', 'contact_person', 'tender_number', 'tender_title', 'reason', 'link', 'company_name'],
+  },
+  portal_notice: {
+    name: 'Portal activity (to the team)', description: 'Sent to the team when something arrives from a portal: a payment receipt, a supplier shipment, a resubmitted bid, an investment application.',
+    subject: '{{headline}}',
+    body: '{{headline}}.{{#if details}}\n\n{{details}}{{/if}}',
+    cta_label: 'Open in the panel',
+    variables: ['headline', 'details', 'link'],
+  },
+  portal_update: {
+    name: 'Portal update (to a client, supplier or investor)', description: 'Sent when the team acts on something in a portal: a payment confirmed, a delivery confirmed, an investment approved or paid.',
+    subject: '{{headline}}',
+    body: 'Hello {{name}},\n\n{{headline}}.{{#if details}}\n\n{{details}}{{/if}}\n\nKind regards,\n{{company_name}}',
+    cta_label: 'Open my portal',
+    variables: ['name', 'headline', 'details', 'link', 'company_name'],
+  },
+}
+const quantity = n => { const v = Number(n) || 0; return new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 }).format(v) 
 }
 export const TEMPLATE_KEYS = Object.keys(DEFAULT_TEMPLATES)
 /** Templates the procurement team may pre-fill a composer from. */
@@ -160,7 +205,6 @@ const BID_STATUS_TEXT = {
   not_selected: 'Thank you for taking part. Your bid was not selected this time, and we hope you will bid on our future opportunities.',
   withdrawn: 'Your bid has been withdrawn.',
 }
-const quantity = n => { const v = Number(n) || 0; return new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 }).format(v) }
 const SAMPLE_BID = { supplier_name: 'Kano Grains Ltd', contact_person: 'Musa Abdullahi', email: 'musa@example.com', phone: '+234 803 000 0000', tender_number: 'VB-2026-0004', tender_title: 'Soybeans supply opportunity', commodity: 'Soybeans', quantity: '500 MT', price: 'NGN 640,000.00 per MT', asking_price: 'NGN 650,000.00 per MT', vs_asking: 'NGN 10,000.00 below our asking price', total: 'NGN 320,000,000.00', commodity_location: 'Kano', delivery_date: '15 November 2026', closes_at: '20 October 2026', terms_answer: 'accepts the stated terms', note: '', status: 'Open', status_explained: '', status_note: '' }
 
 const truthy = v => v != null && v !== '' && v !== false && v !== 0
@@ -246,6 +290,10 @@ export async function buildVars(key, ctx = {}) {
       response: o.status === 'acknowledged' ? 'acknowledged' : o.status, note: o.response_note, link: ctx.link || '',
     }
   }
+  if (key === 'otp_code') return { ...base, name: ctx.name || 'there', code: ctx.code, purpose: ctx.purpose, reference: ctx.reference, minutes: String(ctx.minutes || 10) }
+  if (key === 'account_verify' || key === 'account_reset') return { ...base, name: ctx.name || 'there', email: ctx.email || '', portal: ctx.portal || 'portal', link: ctx.link || '' }
+  if (key === 'bid_unlocked') { const b = ctx.bid || {}, t = ctx.tender || {}; return { ...base, supplier_name: b.company_name, contact_person: b.contact_person || b.company_name, tender_number: t.number, tender_title: t.title, reason: ctx.reason || '', link: ctx.link || '' } }
+  if (key === 'portal_notice' || key === 'portal_update') return { ...base, name: ctx.name || 'there', headline: ctx.headline || '', details: ctx.details || '', link: ctx.link || '' }
   if (key === 'supplier_blank') {
     const s = ctx.supplier || {}, b = ctx.bid || {}, t = ctx.tender || {}
     return { ...base, name: s.contact_person || b.contact_person || s.company_name || b.company_name || '', email: s.email || b.email || '', supplier_name: s.company_name || b.company_name || '', tender_number: t.number || '', tender_title: t.title || '' }
@@ -274,6 +322,12 @@ export const SAMPLE_VARS = {
   purchase_order: { supplier_name: 'Kano Grains Ltd', supplier_email: 'musa@example.com', po_kind: 'Local Purchase Order', po_number: 'LPO-2026-0003', po_title: 'Soybeans supply — VB-2026-0004', total: 'NGN 325,000,000.00', currency: 'NGN', delivery_date: '15 November 2026', delivery_location: 'Ibadan, Oyo State', payment_terms: 'Payment on delivery, after quality and quantity confirmation.', link: 'https://vertocagro.com/po/example' },
   po_response: { supplier_name: 'Kano Grains Ltd', response: 'acknowledged', po_kind: 'Local Purchase Order', po_number: 'LPO-2026-0003', po_title: 'Soybeans supply — VB-2026-0004', total: 'NGN 325,000,000.00', note: 'Loading starts Monday.', link: 'https://vertocagro.com/staff360/purchase-orders/3' },
   supplier_blank: { name: 'Musa Abdullahi', email: 'musa@example.com', supplier_name: 'Kano Grains Ltd', tender_number: 'VB-2026-0004', tender_title: 'Soybeans supply opportunity' },
+  otp_code: { name: 'Alessia Loghin', code: '482913', purpose: 'accept invoice', reference: 'VA-2026-0007', minutes: '10' },
+  account_verify: { name: 'Alessia Loghin', email: 'alessia@example.com', portal: 'client', link: 'https://vertocagro.com/client/verify?token=example' },
+  account_reset: { name: 'Alessia Loghin', email: 'alessia@example.com', portal: 'client', link: 'https://vertocagro.com/client/reset?token=example' },
+  bid_unlocked: { ...SAMPLE_BID, reason: 'The price was entered per bag instead of per tonne.', link: 'https://vertocagro.com/supplier/bids/14' },
+  portal_notice: { headline: 'Loghin Foods uploaded a payment receipt for VA-2026-0007', details: 'Amount: USD 25,800.00\nReference: TRF-99812', link: 'https://vertocagro.com/staff360/payments' },
+  portal_update: { name: 'Alessia Loghin', headline: 'Your payment of USD 25,800.00 for VA-2026-0007 has been confirmed', details: '', link: 'https://vertocagro.com/client' },
 }
 
 /** Rendered subject/body/cta for a key in a context. Disabled templates render empty. */

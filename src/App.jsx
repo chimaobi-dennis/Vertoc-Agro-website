@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
 import Home from './pages/Home'
@@ -33,6 +33,11 @@ import PurchaseOrderView from './pages/PurchaseOrderView'
 const AdminApp = lazy(() => import('./admin/AdminApp'))
 // …nor the supplier portal, until they open it.
 const SupplierApp = lazy(() => import('./supplier/SupplierApp'))
+// …nor the client portal and the investment portal.
+const ClientApp = lazy(() => import('./client/ClientApp'))
+const InvestorApp = lazy(() => import('./investor/InvestorApp'))
+const Invest = lazy(() => import('./pages/Invest'))
+const portalFallback = <main className="flex-grow"><div className="min-h-screen bg-background" /></main>
 
 /** Procurement pages know whether a supplier is signed in (to fill in the bid form, to open the portal). */
 const WithSupplier = () => <SupplierProvider><Outlet /></SupplierProvider>
@@ -42,10 +47,21 @@ function LegacyAdminRedirect() {
   return <Navigate to={pathname.replace(/^\/admin/, '/staff360') + search + hash} replace />
 }
 
+// The portals and private links are reached by their address only: keep them out of search engines too.
+function Robots() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    const hidden = /^\/(bidding|supplier|client|investor|invest|staff360|q|po)(\/|$)/.test(pathname)
+    document.querySelector('meta[name="robots"]')?.setAttribute('content', hidden ? 'noindex, nofollow' : 'index, follow')
+  }, [pathname])
+  return null
+}
+
 export default function App() {
   return (
     <SiteProvider>
     <EditingProvider>
+    <Robots />
     <Routes>
       <Route
         path="/staff360/*"
@@ -72,6 +88,9 @@ export default function App() {
           <Route path="/bidding/:number" element={<BiddingDetail />} />
           <Route path="/supplier/*" element={<Suspense fallback={<main className="flex-grow"><div className="min-h-screen bg-background" /></main>}><SupplierApp /></Suspense>} />
         </Route>
+        <Route path="/client/*" element={<Suspense fallback={portalFallback}><ClientApp /></Suspense>} />
+        <Route path="/investor/*" element={<Suspense fallback={portalFallback}><InvestorApp /></Suspense>} />
+        <Route path="/invest" element={<Suspense fallback={portalFallback}><Invest /></Suspense>} />
         <Route path="/testimonials" element={<Testimonials />} />
         <Route path="/industries" element={<Industries />} />
         <Route path="/industries/why-choose-us" element={<WhyChooseUs />} />

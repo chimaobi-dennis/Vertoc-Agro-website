@@ -67,5 +67,19 @@ export const {
   BID_STATUSES, BID_LABELS, BID_DECLARATION, BID_MAX_FILES, createBid, bidForUploadToken, countBidFiles, listBids, getBid, updateBid, deleteBid, closeOutTender,
   askBid, deleteBidRequest, publicBid, listSupplierBids, getSupplierBid, withdrawBid, answerBidRequest,
   PO_KINDS, PO_KIND_LABELS, PO_PREFIX, PO_STATUSES, listPurchaseOrders, getPurchaseOrder, getPurchaseOrderByToken, getPurchaseOrderByNumber,
+  UPGRADE_HINT, awardSummary, unlockBid, lockBid, reviseBid,
+  PO_SHIPMENT_STATUSES, listPoShipments, getPoShipment, fulfilment, createPoShipment, updatePoShipment, reportPoShipment, deletePoShipment, publicPoShipment,
   createPurchaseOrder, updatePurchaseOrder, deletePurchaseOrder, markPurchaseOrderIssued, markPurchaseOrderViewed, respondToPurchaseOrder, publicPurchaseOrder, listSupplierOrders,
 } = procurement
+
+// Email codes, portal notifications, client accounts and payments, investments (migration 015).
+const portals = hasSupabase ? await import('./portals.js') : {}
+export const {
+  PORTALS_HINT, OTP_MINUTES, issueOtp, consumeOtp, maskEmail, notify, listNotifications, readNotifications,
+  issueAccountToken, accountForToken, accountByUser, accountByEmail, markAccountVerified,
+  publicClient, findClientRecordByEmail, createClientAccount, attachClientAccount, detachClientAccount, updateClientAccount,
+  PAYMENT_STATUSES, listPayments, getPayment, createPayment, setPaymentReceipt, updatePayment, deletePayment, paidByQuote, listClientInvoices,
+  OPPORTUNITY_STATUSES, INVESTMENT_STATUSES, INVESTMENT_LABELS, opportunityState, listOpportunities, getOpportunity, createOpportunity, updateOpportunity, deleteOpportunity, publicOpportunity,
+  KYC_STATUSES, safeInvestor, publicInvestor, createInvestor, updateInvestor, getInvestor, deleteInvestor, listInvestors,
+  listInvestments, getInvestment, createInvestment, updateInvestment, setInvestmentProof, deleteInvestment, addPayout, deletePayout, publicInvestment, investmentTotals,
+} = portals

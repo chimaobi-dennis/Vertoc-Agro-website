@@ -5,13 +5,15 @@
  */
 import { useState } from 'react'
 import { Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, LogOut, UserRound } from 'lucide-react'
+import { Bell, LayoutDashboard, LogOut, UserRound } from 'lucide-react'
 import { supplierFetch, useSupplier } from '../lib/supplier'
 import { Bone } from '../components/Skeleton'
 import { SupplierForgot, SupplierLogin, SupplierRegister, SupplierReset, SupplierVerify } from './SupplierAuthPages'
 import SupplierDashboard from './SupplierDashboard'
 import SupplierBid from './SupplierBid'
 import SupplierProfile from './SupplierProfile'
+import SupplierOrder from './SupplierOrder'
+import { Notifications } from '../portal/Shared'
 import { AuthCard, Notice, Page, Problem, outline, primary } from './ui'
 
 function Gate() {
@@ -42,6 +44,7 @@ function Gate() {
 function Shell() {
   const { me, signOut } = useSupplier()
   const nav = useNavigate()
+  const unread = me.counts?.unread || 0
   const tab = ({ isActive }) => `inline-flex items-center gap-2 px-4 h-10 rounded-full text-sm font-semibold transition-colors ${isActive ? 'bg-primary text-primary-foreground' : 'text-foreground/70 hover:bg-muted'}`
   return (
     <main className="flex-grow">
@@ -54,6 +57,7 @@ function Shell() {
             </div>
             <nav className="flex flex-wrap items-center gap-1.5" aria-label="Supplier portal">
               <NavLink to="/supplier" end className={tab}><LayoutDashboard className="w-4 h-4" />Dashboard</NavLink>
+              <NavLink to="/supplier/notifications" className={tab}><Bell className="w-4 h-4" />Notifications{unread > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-accent-foreground text-[10px] font-bold flex items-center justify-center">{unread}</span>}</NavLink>
               <NavLink to="/supplier/profile" className={tab}><UserRound className="w-4 h-4" />Profile</NavLink>
               <button type="button" onClick={() => signOut().then(() => nav('/supplier/login'))} className="inline-flex items-center gap-2 px-4 h-10 rounded-full text-sm font-semibold text-foreground/70 hover:bg-muted"><LogOut className="w-4 h-4" />Sign out</button>
             </nav>
@@ -64,6 +68,8 @@ function Shell() {
     </main>
   )
 }
+
+function SupplierNotes() { const { refresh } = useSupplier(); return <><h1 className="font-semibold text-lg mb-3">Notifications</h1><Notifications api={supplierFetch} path="/supplier/notifications" onRead={refresh} /></> }
 
 const NotHere = () => <Page><div className="text-center py-24"><h1 className="font-serif text-3xl font-bold mb-3">Page not found</h1><p className="text-muted-foreground">Back to your <Link to="/supplier" className="text-accent font-semibold">dashboard</Link>.</p></div></Page>
 
@@ -78,6 +84,8 @@ export default function SupplierApp() {
       <Route element={<Gate />}>
         <Route index element={<SupplierDashboard />} />
         <Route path="bids/:id" element={<SupplierBid />} />
+        <Route path="orders/:number" element={<SupplierOrder />} />
+        <Route path="notifications" element={<SupplierNotes />} />
         <Route path="profile" element={<SupplierProfile />} />
       </Route>
       <Route path="*" element={<NotHere />} />

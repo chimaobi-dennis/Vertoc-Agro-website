@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Plus, Search } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Input, PageHeader, Table, Td } from './ui'
+import { useSort } from '../lib/sort'
 import { Bone } from '../components/Skeleton'
 import { PO_SHORT, fmtDay, money, poTone } from '../lib/procurement'
 
@@ -25,6 +26,7 @@ export default function PurchaseOrdersAdmin() {
   }, [rows, q])
   const param = (k, v) => { const n = new URLSearchParams(sp); v === 'all' ? n.delete(k) : n.set(k, v); setSp(n) }
 
+  const [sorted, sortControl] = useSort(visible, { name: 'supplier_name', more: [{ key: 'number', label: 'Order number', get: 'number', desc: true }, { key: 'amount', label: 'Amount, highest first', get: r => Number(r.total), desc: true }, { key: 'status', label: 'Status', get: 'status' }, { key: 'delivery', label: 'Delivery date, soonest first', get: 'delivery_date' }] })
   return (
     <>
       <PageHeader eyebrow="Procurement" title="Purchase orders" description={rows ? `${visible.length} ${status === 'all' ? '' : status + ' '}order${visible.length === 1 ? '' : 's'}` : ' '}
@@ -42,10 +44,11 @@ export default function PurchaseOrdersAdmin() {
           {FILTERS.map(s => <button key={s} onClick={() => param('status', s)} className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize border transition-colors ${status === s ? 'bg-accent/15 text-accent border-accent/30' : 'border-border text-muted-foreground hover:bg-muted'}`}>{s}</button>)}
         </div>
       </div>
+      <div className="flex justify-end mb-3">{sortControl}</div>
       <Card>
         <Table head={['Number', 'Supplier', 'Title', 'Total', 'Status', 'Deliver by', '']}>
           {!rows && !err && [0, 1, 2, 3].map(i => <tr key={i}>{[...Array(7)].map((_, j) => <Td key={j}><Bone className="h-4 w-20" /></Td>)}</tr>)}
-          {rows && visible.map(r => (
+          {rows && sorted.map(r => (
             <tr key={r.id} className="hover:bg-muted/40">
               <Td><Link to={`/staff360/purchase-orders/${r.id}`} className="font-medium hover:text-accent whitespace-nowrap">{r.number}</Link><span className="block text-xs text-muted-foreground">{PO_SHORT[r.kind]}</span></Td>
               <Td>{r.supplier_id ? <Link to={`/staff360/suppliers/${r.supplier_id}?tab=orders`} className="hover:text-accent">{r.supplier_name || '—'}</Link> : (r.supplier_name || '—')}</Td>

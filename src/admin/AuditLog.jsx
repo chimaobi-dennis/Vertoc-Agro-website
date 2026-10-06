@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { adminFetch } from '../lib/adminApi'
 import { Card, PageHeader, Table, Td, Badge, Alert } from './ui'
+import { useSort } from '../lib/sort'
 import { Bone } from '../components/Skeleton'
 
 const TONE = { create: 'green', update: 'blue', delete: 'red', invite: 'amber', upload: 'muted' }
@@ -9,14 +10,16 @@ export default function AuditLog() {
   const [rows, setRows] = useState(null); const [err, setErr] = useState(null); const [open, setOpen] = useState(null)
   useEffect(() => { adminFetch('/audit?limit=200').then(setRows).catch(e => setErr(e.message)) }, [])
 
+  const [sorted, sortControl] = useSort(rows, { date: 'at', name: r => r.actor_label, more: [{ key: 'action', label: 'Action', get: 'action' }, { key: 'entity', label: 'Entity', get: 'entity' }] })
   return (
     <>
       <PageHeader title="Audit log" description="Every change made through the panel or by Claude via MCP." />
       {err && <Alert>{err}</Alert>}
+      <div className="flex justify-end mb-3">{sortControl}</div>
       <Card>
         <Table head={['When', 'Who', 'Action', 'Entity', '']}>
           {!rows && [0, 1, 2, 3].map(i => <tr key={i}>{[0, 1, 2, 3, 4].map(j => <Td key={j}><Bone className="h-4 w-24" /></Td>)}</tr>)}
-          {rows?.map(r => (
+          {sorted?.map(r => (
             <>
               <tr key={r.id} onClick={() => setOpen(open === r.id ? null : r.id)} className="cursor-pointer hover:bg-muted/40">
                 <Td className="text-xs text-muted-foreground whitespace-nowrap">{new Date(r.at).toLocaleString()}</Td>

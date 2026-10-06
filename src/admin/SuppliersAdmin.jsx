@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { BadgeCheck, Download, Plus, Search } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Input, PageHeader, Table, Td } from './ui'
+import { useSort } from '../lib/sort'
 import { Bone } from '../components/Skeleton'
 import { fmtDay } from '../lib/procurement'
 
@@ -25,6 +26,7 @@ export default function SuppliersAdmin() {
     return () => clearTimeout(t)
   }, [status, q])
 
+  const [sorted, sortControl] = useSort(rows, { name: 'company_name', more: [{ key: 'bids', label: 'Bids, most first', get: 'bids', desc: true }, { key: 'last', label: 'Last bid, latest first', get: 'last_bid_at', desc: true }, { key: 'status', label: 'Status', get: 'status' }] })
   return (
     <>
       <PageHeader eyebrow="Procurement" title="Suppliers" description={rows ? `${rows.length} ${status === 'all' ? '' : status + ' '}supplier${rows.length === 1 ? '' : 's'}` : ' '}
@@ -44,10 +46,11 @@ export default function SuppliersAdmin() {
           {['active', 'blocked', 'archived', 'all'].map(s => <button key={s} onClick={() => { setRows(null); setStatus(s) }} className={`px-3.5 py-2 capitalize ${status === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{s}</button>)}
         </div>
       </div>
+      <div className="flex justify-end mb-3">{sortControl}</div>
       <Card>
         <Table head={['Company', 'Contact', 'Supplies', 'Bids', 'Last bid', 'Account', '']}>
           {!rows && !err && [0, 1, 2, 3].map(i => <tr key={i}>{[...Array(7)].map((_, j) => <Td key={j}><Bone className="h-4 w-24" /></Td>)}</tr>)}
-          {rows?.map(r => (
+          {sorted?.map(r => (
             <tr key={r.id} className="hover:bg-muted/40">
               <Td><Link to={`/staff360/suppliers/${r.id}`} className="font-medium hover:text-accent">{r.company_name}</Link>{r.status !== 'active' && <Badge tone={r.status === 'blocked' ? 'red' : 'muted'} className="ml-2">{r.status}</Badge>}<span className="block text-xs text-muted-foreground">{SOURCE[r.source] || r.source}</span></Td>
               <Td className="text-muted-foreground">{r.contact_person || '—'}<span className="block text-xs break-all">{r.email}</span><span className="block text-xs">{r.phone}</span></Td>

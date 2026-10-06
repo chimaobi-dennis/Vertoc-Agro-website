@@ -4,7 +4,7 @@ import { ArrowRight, Lock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
 import AuthShell from './AuthShell'
-import { Button, Field, IconInput, Alert } from './ui'
+import { Button, Field, PasswordInput, Alert } from './ui'
 import { Bone } from '../components/Skeleton'
 
 /** Landing page for invite links; also the change-password page for anyone signed in. */
@@ -41,10 +41,10 @@ export default function SetPassword() {
           <p className="text-muted-foreground mb-8">Signed in as <b className="text-foreground">{session.user.email}</b>.</p>
           <form onSubmit={submit} className="space-y-5">
             <Field label="New password" hint="At least 10 characters.">
-              <IconInput icon={Lock} type="password" autoComplete="new-password" required value={pw} onChange={e => setPw(e.target.value)} />
+              <PasswordInput icon={Lock} autoComplete="new-password" required value={pw} onChange={e => setPw(e.target.value)} />
             </Field>
             <Field label="Confirm password">
-              <IconInput icon={Lock} type="password" autoComplete="new-password" required value={pw2} onChange={e => setPw2(e.target.value)} />
+              <PasswordInput icon={Lock} autoComplete="new-password" required value={pw2} onChange={e => setPw2(e.target.value)} />
             </Field>
             {err && <Alert>{err}</Alert>}
             <Button type="submit" variant="accent" className="w-full h-12 text-base" disabled={busy}>

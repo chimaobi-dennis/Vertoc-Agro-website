@@ -16,7 +16,7 @@ import * as content from './content.js'
 import { audit } from './audit.js'
 import { verifyTurnstile } from './verify-turnstile.js'
 import { bad, handler, isEmail, clientIp, throttled } from './http.js'
-import { acknowledgeBid, notifyProcurement, sendSupplierLink, panelLink, orderLink } from './messaging.js'
+import { acknowledgeBid, notifyProcurement, noticeTeam, sendOtp, sendSupplierLink, panelLink, orderLink } from './messaging.js'
 import { renderPurchaseOrderPdf } from './quote-pdf.js'
 import { driver } from './store/index.js'
 
@@ -131,8 +131,26 @@ router.get('/po/:token/pdf', h(async (req, res) => {
   res.setHeader('Content-Disposition', `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${o.number}.pdf"`)
   res.send(pdf)
 }))
+// Acknowledging an order needs a one-time code, emailed to the supplier's address on the order.
+const noOtpYet = e => e?.expose && /database migration/.test(e.message)
+router.post('/po/:token/otp', guarded(async (req, res) => {
+  if (throttled('po-otp', clientIp(req), 10)) throw bad('Too many attempts. Please try again later.', 429)
+  const o = await content.getPurchaseOrderByToken(req.params.token)
+  if (!o) throw bad('not found', 404)
+  if (o.status !== 'issued') throw bad(o.status === 'draft' ? 'This order has not been issued yet.' : 'This order has already been answered.', 409)
+  let issued
+  try { issued = await content.issueOtp('po_acknowledge', o.id, o.supplier_email) }
+  catch (e) { if (noOtpYet(e)) return res.json({ skip: true }); if (e.retry_after) return res.status(429).json({ error: e.message, retry_after: e.retry_after }); throw e }
+  try { await sendOtp({ to: o.supplier_email, name: o.supplier_name, code: issued.code, purpose: `acknowledge ${o.kind === 'po' ? 'purchase order' : 'LPO'}`, reference: o.number, minutes: issued.minutes, supplierId: o.supplier_id, poId: o.id }) }
+  catch (e) { console.error('[po-otp]', e.message); throw bad('We could not send the code just now. Please try again in a few minutes.', 503) }
+  res.json({ sent_to: content.maskEmail(o.supplier_email), minutes: issued.minutes })
+}))
 router.post('/po/:token/respond', h(async (req, res) => {
   if (throttled('po', clientIp(req), 10)) throw bad('Too many attempts. Please try again later.', 429)
+  if (req.body?.action === 'acknowledge') {
+    const pending = await content.getPurchaseOrderByToken(req.params.token)
+    if (pending?.status === 'issued') { try { await content.consumeOtp('po_acknowledge', pending.id, req.body?.otp) } catch (e) { if (!noOtpYet(e)) throw e } }
+  }
   const o = await content.respondToPurchaseOrder(req.params.token, req.body?.action, req.body?.note)
   if (!o) throw bad('not found', 404)
   await audit({ actor: SUPPLIER, action: o.status, entity: 'purchase_order', entityId: o.id, after: { number: o.number, note: o.response_note } })
@@ -235,7 +253,9 @@ router.post('/supplier/reset', h(async (req, res) => {
 /* ------------------------------------------------- supplier dashboard --- */
 router.get('/supplier/me', asSupplier(async (_req, res, s) => {
   const [bids, orders] = await Promise.all([content.listSupplierBids(s.id), content.listSupplierOrders(s.id)])
+  const notes = await content.listNotifications('supplier', s.id)
   res.json({ ...mine(s), counts: {
+    unread: notes.filter(n => !n.read_at).length,
     bids: bids.length, live: bids.filter(b => b.can_withdraw).length, awarded: bids.filter(b => b.status === 'awarded').length,
     not_selected: bids.filter(b => b.status === 'not_selected').length, requests_open: bids.reduce((n, b) => n + (b.requests_open || 0), 0),
     orders: orders.length, orders_open: orders.filter(o => o.status === 'issued').length,
@@ -284,6 +304,75 @@ router.delete('/supplier/bids/:id/files/:docId', asSupplier(async (req, res, s) 
   await audit({ actor: SUPPLIER, action: 'delete', entity: 'document', entityId: d.id, before: { name: d.name, bid_id: b.id, supplier_id: s.id } })
   res.json({ deleted: true, id: d.id })
 }))
-router.get('/supplier/orders', asSupplier(async (_req, res, s) => res.json(await content.listSupplierOrders(s.id))))
+// An unlocked bid: the supplier adjusts it and resubmits; the change is kept beside the reason for unlocking.
+router.post('/supplier/bids/:id/revise', asSupplier(async (req, res, s) => {
+  const before = await ownBid(s, req.params.id)
+  const { bid, changes, before: was } = await content.reviseBid(s.id, before.id, req.body || {})
+  await audit({ actor: SUPPLIER, action: 'resubmit', entity: 'bid', entityId: bid.id, before: was, after: { supplier: bid.company_name, tender: before.tender?.number, revision: bid.revision, changes } })
+  const words = { quantity: 'Quantity', price: 'Price', total: 'Total', commodity_location: 'Location', delivery_date: 'Delivery date', accepts_terms: 'Accepts payment terms', terms_note: 'Proposed terms', note: 'Note' }
+  await noticeTeam({ procurement: true, headline: `${bid.company_name} resubmitted their bid on ${before.tender?.number}`, details: changes.length ? changes.map(c => `${words[c.field] || c.field}: ${c.from ?? '—'} → ${c.to ?? '—'}`).join('\n') : 'Resubmitted without changes.', link: panelLink(`/bids/${bid.id}`) })
+  const { _row, ...after } = await ownBid(s, bid.id)
+  res.json(after)
+}))
+router.get('/supplier/notifications', asSupplier(async (_req, res, s) => res.json(await content.listNotifications('supplier', s.id))))
+router.post('/supplier/notifications/read', asSupplier(async (req, res, s) => res.json(await content.readNotifications('supplier', s.id, req.body?.ids || null))))
+
+/* orders and the supplier's deliveries against them */
+router.get('/supplier/orders', asSupplier(async (_req, res, s) => {
+  const [orders, ships] = await Promise.all([content.listSupplierOrders(s.id), content.listPoShipments({ supplier_id: s.id })])
+  res.json(orders.map(o => ({ ...o, shipments: ships.filter(x => x.order?.number === o.number && x.status !== 'cancelled').length })))
+}))
+const ownOrder = async (s, number) => { const o = await content.getPurchaseOrderByNumber(number); if (!o || o.supplier_id !== s.id || o.status === 'draft') throw bad('order not found', 404); return o }
+const SHIP_LABELS = ['Waybill', 'Picture of the goods', 'Picture of the truck', 'Weighbridge ticket', 'Other document']
+router.get('/supplier/orders/:number', asSupplier(async (req, res, s) => {
+  const o = await ownOrder(s, req.params.number)
+  const [ships, docs] = await Promise.all([content.listPoShipments({ po_id: o.id }), content.listDocuments({ po_id: o.id })])
+  res.json({ ...content.publicPurchaseOrder(o, await content.getSettings()), token: o.token, can_ship: ['issued', 'acknowledged'].includes(o.status), fulfilment: content.fulfilment(o, ships),
+    shipments: ships.map(x => content.publicPoShipment(x, docs)), file_labels: SHIP_LABELS })
+}))
+router.post('/supplier/orders/:number/shipments', asSupplier(async (req, res, s) => {
+  const o = await ownOrder(s, req.params.number)
+  const { shipment } = await content.createPoShipment(o.id, req.body || {}, { supplierId: s.id })
+  await audit({ actor: SUPPLIER, action: 'create', entity: 'delivery', entityId: shipment.id, after: { supplier: s.company_name, order: o.number, quantity: shipment.quantity, unit: shipment.unit, truck: shipment.truck_number, driver: shipment.driver_name } })
+  await noticeTeam({ procurement: true, headline: `${s.company_name} created shipment ${shipment.number} on ${o.number}`, details: `${shipment.quantity} ${shipment.unit} of ${shipment.product}\nTruck: ${shipment.truck_number} · Driver: ${shipment.driver_name}${shipment.driver_phone ? ` (${shipment.driver_phone})` : ''}${shipment.eta ? `\nExpected: ${shipment.eta}` : ''}`, link: panelLink(`/purchase-orders/${o.id}`) })
+  res.status(201).json(content.publicPoShipment(shipment))
+}))
+const ownShipment = async (s, id) => { const x = await content.getPoShipment(id); if (!x || x.supplier_id !== s.id) throw bad('shipment not found', 404); return x }
+router.patch('/supplier/shipments/:id', asSupplier(async (req, res, s) => {
+  const before = await ownShipment(s, req.params.id)
+  const after = await content.updatePoShipment(before.id, req.body || {}, { supplierId: s.id })
+  await audit({ actor: SUPPLIER, action: 'update', entity: 'delivery', entityId: after.id, before, after })
+  res.json(content.publicPoShipment(after, await content.listDocuments({ po_shipment_id: after.id })))
+}))
+router.post('/supplier/shipments/:id/report', asSupplier(async (req, res, s) => {
+  const before = await ownShipment(s, req.params.id)
+  const after = await content.reportPoShipment(before.id, req.body || {}, { supplierId: s.id, by: 'supplier' })
+  await audit({ actor: SUPPLIER, action: after.status !== before.status ? after.status : 'update', entity: 'delivery', entityId: after.id, before: { status: before.status, location: before.current_location }, after: { supplier: s.company_name, status: after.status, location: after.current_location } })
+  if (after.status === 'delivered' && before.status !== 'delivered') {
+    const o = await content.getPurchaseOrder(after.po_id)
+    await noticeTeam({ procurement: true, headline: `${s.company_name} reports shipment ${after.number} on ${o?.number} as delivered`, details: `${after.quantity} ${after.unit}. Please confirm what was received.`, link: panelLink(`/purchase-orders/${after.po_id}`) })
+  }
+  res.json(content.publicPoShipment(after, await content.listDocuments({ po_shipment_id: after.id })))
+}))
+router.post('/supplier/shipments/:id/files', asSupplier(async (req, res, s) => {
+  const x = await ownShipment(s, req.params.id)
+  if ((await content.listDocuments({ po_shipment_id: x.id })).length >= 15) throw bad('A shipment can carry up to 15 files.')
+  const label = SHIP_LABELS.includes(req.body?.label) ? req.body.label : clean(req.body?.label, 80)
+  const r = await content.createDocument({ po_shipment_id: x.id, label, name: req.body?.name, content_type: req.body?.content_type, bytes: req.body?.bytes }, null).catch(e => { throw friendly(e) })
+  res.status(201).json({ document: { id: r.document.id, name: r.document.name, label: r.document.label }, upload: r.upload })
+}))
+router.post('/supplier/shipments/:id/files/:docId/complete', asSupplier(async (req, res, s) => {
+  const x = await ownShipment(s, req.params.id)
+  const d = await content.getDocument(req.params.docId, { any: true })
+  if (!d || d.po_shipment_id !== x.id) throw bad('document not found', 404)
+  const doc = await content.completeDocument(d.id).catch(e => { throw friendly(e) })
+  res.json({ id: doc.id, name: doc.name, label: doc.label || '', bytes: doc.bytes, created_at: doc.created_at })
+}))
+router.get('/supplier/shipments/:id/files/:docId/url', asSupplier(async (req, res, s) => {
+  const x = await ownShipment(s, req.params.id)
+  const d = await content.getDocument(req.params.docId)
+  if (!d || d.po_shipment_id !== x.id) throw bad('document not found', 404)
+  const { url } = await content.documentUrl(d.id, { expires: 600 }); res.json({ url })
+}))
 
 export default router

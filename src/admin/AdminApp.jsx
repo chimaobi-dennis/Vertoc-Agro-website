@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AuthProvider, useAuth } from './AuthContext'
 import { AdminThemeProvider } from './AdminTheme'
 import AdminLayout from './AdminLayout'
@@ -36,6 +36,10 @@ import MessagesAdmin from './MessagesAdmin'
 import MessageDetail from './MessageDetail'
 import TemplatesAdmin from './TemplatesAdmin'
 import TemplateEditor from './TemplateEditor'
+import DeliveriesAdmin from './DeliveriesAdmin'
+import PaymentsAdmin from './PaymentsAdmin'
+import { InvestmentsAdmin, OpportunityForm, InvestmentDetail, InvestorsAdmin, InvestorDetail } from './Investments'
+import ReportsAdmin from './ReportsAdmin'
 import { Button, Card, Alert } from './ui'
 
 const Splash = () => (
@@ -71,6 +75,8 @@ function RequireRole({ perm, children }) {
   return me?.permissions?.[perm] ? children : <Alert>Your role doesn't have access to this section.</Alert>
 }
 
+const OldUserLink = () => <Navigate to={`/staff360/staff/${useParams().id}`} replace />
+
 const P = (perm, el) => <RequireRole perm={perm}>{el}</RequireRole>
 
 export default function AdminApp() {
@@ -82,45 +88,55 @@ export default function AdminApp() {
         <Route path="set-password" element={<SetPassword />} />
         <Route element={<RequireAuth><AdminLayout /></RequireAuth>}>
           <Route index element={<Dashboard />} />
-          <Route path="products" element={P('products', <ProductsAdmin />)} />
-          <Route path="products/new" element={P('products', <ProductForm />)} />
-          <Route path="products/:slug" element={P('products', <ProductForm />)} />
-          <Route path="posts" element={P('posts', <PostsAdmin />)} />
-          <Route path="reviews" element={P('posts', <ReviewsAdmin />)} />
-          <Route path="posts/new" element={P('posts', <PostForm />)} />
-          <Route path="posts/:slug" element={P('posts', <PostForm />)} />
-          <Route path="users" element={P('users', <UsersAdmin />)} />
-          <Route path="users/:id" element={P('users', <UserDetail />)} />
+          <Route path="products" element={P('content', <ProductsAdmin />)} />
+          <Route path="products/new" element={P('content', <ProductForm />)} />
+          <Route path="products/:slug" element={P('content', <ProductForm />)} />
+          <Route path="posts" element={P('content', <PostsAdmin />)} />
+          <Route path="reviews" element={P('content', <ReviewsAdmin />)} />
+          <Route path="posts/new" element={P('content', <PostForm />)} />
+          <Route path="posts/:slug" element={P('content', <PostForm />)} />
+          <Route path="staff" element={P('staff', <UsersAdmin />)} />
+          <Route path="staff/:id" element={P('staff', <UserDetail />)} />
+          <Route path="users" element={<Navigate to="/staff360/staff" replace />} />
+          <Route path="users/:id" element={<OldUserLink />} />
           <Route path="clients" element={P('clients', <ClientsAdmin />)} />
           <Route path="clients/new" element={P('clients', <ClientDetail />)} />
           <Route path="clients/fields" element={P('clients', <ClientFieldsAdmin />)} />
           <Route path="clients/:id" element={P('clients', <ClientDetail />)} />
-          <Route path="quotes" element={P('quotes', <QuotesAdmin />)} />
-          <Route path="quotes/new" element={P('quotes', <QuoteForm />)} />
-          <Route path="quotes/fields" element={P('quotes', <QuoteFieldsAdmin />)} />
-          <Route path="quotes/:id" element={P('quotes', <QuoteForm />)} />
-          <Route path="quotes/:id/shipments/:sid" element={P('quotes', <ShipmentDetail />)} />
-          <Route path="messages" element={P('email', <MessagesAdmin />)} />
-          <Route path="messages/:id" element={P('email', <MessageDetail />)} />
+          <Route path="quotes" element={P('invoices', <QuotesAdmin />)} />
+          <Route path="quotes/new" element={P('invoices', <QuoteForm />)} />
+          <Route path="quotes/fields" element={P('invoices', <QuoteFieldsAdmin />)} />
+          <Route path="quotes/:id" element={P('invoices', <QuoteForm />)} />
+          <Route path="quotes/:id/shipments/:sid" element={P('shipments', <ShipmentDetail />)} />
+          <Route path="messages" element={P('messages', <MessagesAdmin />)} />
+          <Route path="messages/:id" element={P('messages', <MessageDetail />)} />
           <Route path="templates" element={P('settings', <TemplatesAdmin />)} />
           <Route path="templates/:key" element={P('settings', <TemplateEditor />)} />
           <Route path="settings" element={P('settings', <SettingsAdmin />)} />
-          <Route path="enquiries" element={P('quotes', <EnquiriesAdmin />)} />
-          <Route path="enquiries/:id" element={P('quotes', <EnquiryDetail />)} />
+          <Route path="enquiries" element={P('enquiries', <EnquiriesAdmin />)} />
+          <Route path="enquiries/:id" element={P('enquiries', <EnquiryDetail />)} />
           {/* procurement: the sourcing leg */}
-          <Route path="tenders" element={P('procurement', <TendersAdmin />)} />
-          <Route path="tenders/new" element={P('procurement', <TenderForm />)} />
-          <Route path="tenders/:id" element={P('procurement', <TenderForm />)} />
-          <Route path="bids" element={P('procurement', <BidsAdmin />)} />
-          <Route path="bids/:id" element={P('procurement', <BidDetail />)} />
-          <Route path="suppliers" element={P('procurement', <SuppliersAdmin />)} />
-          <Route path="suppliers/new" element={P('procurement', <SupplierDetail />)} />
-          <Route path="suppliers/:id" element={P('procurement', <SupplierDetail />)} />
-          <Route path="purchase-orders" element={P('procurement', <PurchaseOrdersAdmin />)} />
-          <Route path="purchase-orders/new" element={P('procurement', <PurchaseOrderForm />)} />
-          <Route path="purchase-orders/:id" element={P('procurement', <PurchaseOrderForm />)} />
-          <Route path="procurement/messages" element={P('procurement', <ProcurementMessages />)} />
-          <Route path="procurement/messages/:id" element={P('procurement', <MessageDetail scope="procurement" />)} />
+          <Route path="tenders" element={P('bidding', <TendersAdmin />)} />
+          <Route path="tenders/new" element={P('bidding', <TenderForm />)} />
+          <Route path="tenders/:id" element={P('bidding', <TenderForm />)} />
+          <Route path="bids" element={P('bidding', <BidsAdmin />)} />
+          <Route path="bids/:id" element={P('bidding', <BidDetail />)} />
+          <Route path="suppliers" element={P('suppliers', <SuppliersAdmin />)} />
+          <Route path="suppliers/new" element={P('suppliers', <SupplierDetail />)} />
+          <Route path="suppliers/:id" element={P('suppliers', <SupplierDetail />)} />
+          <Route path="purchase-orders" element={P('purchase_orders', <PurchaseOrdersAdmin />)} />
+          <Route path="purchase-orders/new" element={P('purchase_orders', <PurchaseOrderForm />)} />
+          <Route path="purchase-orders/:id" element={P('purchase_orders', <PurchaseOrderForm />)} />
+          <Route path="procurement/messages" element={P('supplier_messages', <ProcurementMessages />)} />
+          <Route path="procurement/messages/:id" element={P('supplier_messages', <MessageDetail scope="procurement" />)} />
+          <Route path="deliveries" element={P('shipments', <DeliveriesAdmin />)} />
+          <Route path="payments" element={P('payments', <PaymentsAdmin />)} />
+          <Route path="investments" element={P('investments', <InvestmentsAdmin />)} />
+          <Route path="investments/opportunities/:id" element={P('investments', <OpportunityForm />)} />
+          <Route path="investments/:id" element={P('investments', <InvestmentDetail />)} />
+          <Route path="investors" element={P('investments', <InvestorsAdmin />)} />
+          <Route path="investors/:id" element={P('investments', <InvestorDetail />)} />
+          <Route path="reports" element={P('reports', <ReportsAdmin />)} />
           <Route path="audit" element={P('audit', <AuditLog />)} />
           <Route path="*" element={<Navigate to="/staff360" replace />} />
         </Route>

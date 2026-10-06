@@ -14,6 +14,7 @@
 import { randomBytes, createHash } from 'node:crypto'
 import { supabase, getSettings, normaliseItems, quoteTotals } from './supabase.js'
 
+export const UPGRADE_HINT = 'This needs the database migration 015: run server/migrations/015_portals_permissions.sql in the Supabase SQL editor first.'
 export const PROCUREMENT_MIGRATION_HINT = 'Procurement needs the database migration 014: run server/migrations/014_procurement.sql in the Supabase SQL editor first.'
 const errText = e => `${e?.message || ''} ${e?.details || ''}`
 const missingSchema = e => ['42P01', 'PGRST205', '42703', 'PGRST204'].includes(e?.code)
@@ -58,7 +59,7 @@ async function highest(table, prefix, year) {
   return (rows || []).reduce((max, r) => { const m = re.exec(r.number); return m ? Math.max(max, Number(m[2])) : max }, 0)
 }
 const isDuplicateNumber = e => e?.code === '23505' && /number/i.test(errText(e))
-async function insertNumbered(table, prefix, row, manualInput, what) {
+export async function insertNumbered(table, prefix, row, manualInput, what) {
   const year = new Date().getFullYear()
   const manual = manualInput != null && String(manualInput).trim() !== '' ? parseNumber(manualInput, prefix, year, what) : null
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -92,7 +93,7 @@ function cleanSupplier(input = {}, { partial = false } = {}) {
 const dupEmail = e => e?.code === '23505' && /email/i.test(errText(e))
 
 export async function listSuppliers({ status = 'active', q = '', limit = 1000 } = {}) {
-  let qry = supabase.from('suppliers').select('*').order('company_name', { ascending: true }).limit(limit)
+  let qry = supabase.from('suppliers').select('*').order('created_at', { ascending: false }).limit(limit)
   if (status !== 'all') qry = qry.eq('status', status)
   const term = like(q)
   if (term) qry = qry.or(['company_name', 'contact_person', 'email', 'phone', 'commodities'].map(c => `${c}.ilike.%${term}%`).join(','))
@@ -194,6 +195,7 @@ function cleanTender(input = {}, settings, { partial = false, existing = null } 
   if (!partial || has(input, 'currency')) row.currency = currencyCode(input.currency || p.default_currency)
   if (!partial || has(input, 'payment_terms')) row.payment_terms = has(input, 'payment_terms') ? text(input.payment_terms, 2000) : (p.payment_terms || '')
   if (has(input, 'requirements')) row.requirements = text(input.requirements, 4000)
+  if (has(input, 'required_documents')) row.required_documents = [...new Set((Array.isArray(input.required_documents) ? input.required_documents : []).map(x => tt(x, 80)).filter(Boolean))].slice(0, 10)
   if (has(input, 'opens_at') && input.opens_at) row.opens_at = moment(input.opens_at, 'Bid opening')
   if (!partial || has(input, 'closes_at')) { if (!input.closes_at) throw invalid('Please set the bid closing date.'); row.closes_at = moment(input.closes_at, 'Bid closing') }
   if (has(input, 'status')) { if (!TENDER_STATUSES.includes(input.status)) throw invalid(`status must be one of: ${TENDER_STATUSES.join(', ')}`); row.status = input.status }
@@ -205,6 +207,14 @@ function cleanTender(input = {}, settings, { partial = false, existing = null } 
   return row
 }
 const withState = t => ({ ...t, quantity: Number(t.quantity), asking_price: t.asking_price == null ? null : Number(t.asking_price), state: tenderState(t) })
+/** Total requirement → total awarded → balance, for a tender and its bids. */
+export function awardSummary(tender, bids) {
+  const won = bids.filter(b => b.status === 'awarded')
+  const awarded = qty3(won.reduce((s, b) => s + Number(b.awarded_quantity ?? b.quantity), 0))
+  const value = money(won.reduce((s, b) => s + Number(b.awarded_quantity ?? b.quantity) * Number(b.awarded_price ?? b.price), 0))
+  const required = Number(tender.quantity)
+  return { required, awarded, balance: qty3(Math.max(0, required - awarded)), awarded_pct: required > 0 ? Math.round(awarded / required * 1000) / 10 : 0, suppliers: won.length, value }
+}
 const bidCounts = bids => { const c = { total: 0, open: 0, under_review: 0, shortlisted: 0, awarded: 0, not_selected: 0, withdrawn: 0 }; for (const b of bids) { c.total++; if (c[b.status] !== undefined) c[b.status]++ } return c }
 
 export async function listTenders({ status = 'all', q = '', limit = 500 } = {}) {
@@ -255,6 +265,7 @@ export const publicTender = t => ({
   delivery_location: t.delivery_location, delivery_period: t.delivery_period, delivery_by: t.delivery_by,
   asking_price: t.asking_price == null ? null : Number(t.asking_price), currency: t.currency, payment_terms: t.payment_terms, requirements: t.requirements,
   opens_at: t.opens_at, closes_at: t.closes_at, state: tenderState(t), accepting_bids: tenderState(t) === 'open',
+  required_documents: Array.isArray(t.required_documents) ? t.required_documents : [],
 })
 /** Opportunities for the website: open and upcoming first, then the ones closed in the last 30 days. */
 export async function listPublicTenders() {
@@ -277,7 +288,7 @@ export const BID_DECLARATION = 'I confirm that the information provided is accur
 export const BID_MAX_FILES = 10
 const truthy = v => v === true || v === 'true' || v === 1 || v === '1' || v === 'yes' || v === 'accept'
 const falsy = v => v === false || v === 'false' || v === 0 || v === '0' || v === 'no' || v === 'decline'
-const numeric = b => ({ ...b, quantity: Number(b.quantity), price: Number(b.price), total: Number(b.total) })
+const numeric = b => ({ ...b, quantity: Number(b.quantity), price: Number(b.price), total: Number(b.total), awarded_quantity: b.awarded_quantity == null ? null : Number(b.awarded_quantity), awarded_price: b.awarded_price == null ? null : Number(b.awarded_price) })
 const bidRow = async id => { const r = (unwrap(await supabase.from('bids').select('*').eq('id', Number(id)).limit(1), 'getBid'))?.[0]; return r ? numeric(r) : null }
 /** No upload token, no address of the machine that sent it. */
 const safeBid = b => { if (!b) return b; const { upload_token_hash, upload_token_expires, ip, ...rest } = b; return rest }
@@ -381,9 +392,17 @@ export async function listBids({ tender_id = null, supplier_id = null, status = 
       vs_asking: asking == null ? null : money(b.price - asking), vs_asking_pct: asking ? Math.round((b.price - asking) / asking * 1000) / 10 : null,
       covers_pct: t && Number(t.quantity) > 0 ? Math.round(b.quantity / Number(t.quantity) * 1000) / 10 : null,
       documents: docs.filter(d => d.bid_id === b.id).length,
+      unlocked: Boolean(b.unlocked_at),
       requests_open: reqs.filter(r => r.bid_id === b.id && !r.answered_at).length, requests: reqs.filter(r => r.bid_id === b.id).length,
     }
   })
+  // Among one supplier's bids on one opportunity, the newest that was not withdrawn is the active one.
+  const groups = new Map()
+  for (const b of out) { const k = `${b.tender_id}|${b.supplier_id ?? b.email.toLowerCase()}`; (groups.get(k) || groups.set(k, []).get(k)).push(b) }
+  for (const g of groups.values()) {
+    const active = g.filter(b => b.status !== 'withdrawn').sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
+    for (const b of g) { b.submissions = g.length; b.latest = b === active; b.superseded = b.status === 'withdrawn' && Boolean(active) }
+  }
   const by = { price: b => b.price, quantity: b => b.quantity, total: b => b.total, delivery: b => b.delivery_date || '9999', supplier: b => b.company_name.toLowerCase(), date: b => b.created_at }[sort] || (b => b.created_at)
   const down = (dir || (sort === 'date' || sort === 'quantity' ? 'desc' : 'asc')) === 'desc'
   return out.sort((a, b) => { const x = by(a), y = by(b); return (x < y ? -1 : x > y ? 1 : 0) * (down ? -1 : 1) })
@@ -397,7 +416,10 @@ async function bidExtras(b) {
     supabase.from('bid_requests').select('*').eq('bid_id', b.id).order('asked_at', { ascending: true }).then(r => unwrap(r, 'getBid:requests') ?? []),
     supabase.from('purchase_orders').select('id,kind,number,token,status,total,currency,issued_at,responded_at').eq('bid_id', b.id).order('created_at', { ascending: true }).then(r => unwrap(r, 'getBid:orders') ?? []),
   ])
-  return { tender: tender && withState(tender), supplier: safeSupplier(supplier), documents, requests, orders }
+  const { data: revisions } = await supabase.from('bid_revisions').select('*').eq('bid_id', b.id).order('unlocked_at', { ascending: true })
+  let history = []
+  if (b.supplier_id) history = (unwrap(await supabase.from('bids').select('id,status,quantity,price,total,currency,unit,created_at,withdrawn_at').eq('tender_id', b.tender_id).eq('supplier_id', b.supplier_id).neq('id', b.id).order('created_at', { ascending: false }), 'getBid:history') ?? []).map(numeric)
+  return { tender: tender && withState(tender), supplier: safeSupplier(supplier), documents, requests, orders, revisions: revisions || [], history }
 }
 export async function getBid(id) {
   const b = await bidRow(id); if (!b) return null
@@ -430,10 +452,28 @@ export async function updateBid(id, patch = {}, actor = null) {
     if (cur.status === 'withdrawn') throw invalid('This bid was withdrawn by the supplier.')
     Object.assign(row, { status: patch.status, status_changed_at: new Date().toISOString(), status_changed_by: actor?.id ?? null })
     if (!has(patch, 'status_note')) row.status_note = ''   // a note belongs to the status it was written for
+    if (patch.status !== 'awarded') { row.awarded_quantity = null; row.awarded_price = null }
     changed = true
   }
+  // An award names the quantity and the price (several suppliers can share one opportunity).
+  const awarding = (row.status ?? cur.status) === 'awarded' && (changed || has(patch, 'awarded_quantity') || has(patch, 'awarded_price'))
+  if (awarding) {
+    const q = has(patch, 'awarded_quantity') && patch.awarded_quantity !== '' && patch.awarded_quantity != null ? qty3(patch.awarded_quantity) : (cur.awarded_quantity ?? cur.quantity)
+    const pr = has(patch, 'awarded_price') && patch.awarded_price !== '' && patch.awarded_price != null ? money(patch.awarded_price) : (cur.awarded_price ?? cur.price)
+    if (!(q > 0)) throw invalid('The awarded quantity must be more than zero.')
+    if (q > cur.quantity + 0.0005) throw invalid(`This supplier offered ${cur.quantity} ${cur.unit}; the award cannot be more than that.`)
+    if (!(pr > 0)) throw invalid('The awarded price must be more than zero.')
+    const tender = await tenderRow(cur.tender_id)
+    const others = (unwrap(await supabase.from('bids').select('id,quantity,awarded_quantity').eq('tender_id', cur.tender_id).eq('status', 'awarded').neq('id', cur.id), 'updateBid:awards') ?? [])
+      .reduce((sum, b) => sum + Number(b.awarded_quantity ?? b.quantity), 0)
+    const left = qty3(Number(tender.quantity) - others)
+    if (q > left + 0.0005) throw invalid(left > 0 ? `Only ${left} ${tender.unit} of this opportunity is still unallocated.` : 'This opportunity is fully awarded already.')
+    row.awarded_quantity = q; row.awarded_price = pr
+  }
   if (!Object.keys(row).length) return { bid: safeBid(cur), changed: false, previous: cur.status }
-  const bid = numeric(unwrap(await supabase.from('bids').update(row).eq('id', cur.id).select().single(), 'updateBid'))
+  const { data: saved, error: saveErr } = await supabase.from('bids').update(row).eq('id', cur.id).select().single()
+  if (saveErr) throw (missingSchema(saveErr) ? invalid(UPGRADE_HINT, 409) : fail(saveErr, 'updateBid'))
+  const bid = numeric(saved)
   if (changed && (bid.status === 'awarded' || cur.status === 'awarded')) await syncTenderAward(bid.tender_id)
   return { bid: { ...safeBid(bid), label: BID_LABELS[bid.status] }, changed, previous: cur.status }
 }
@@ -453,6 +493,55 @@ export async function closeOutTender(tenderId, actor = null, note = '') {
   for (const b of live) out.push((await updateBid(b.id, { status: 'not_selected', ...(note ? { status_note: note } : {}) }, actor)).bid)
   if (t.status === 'published') await supabase.from('tenders').update({ status: 'closed' }).eq('id', t.id)
   return out
+}
+
+/* unlock: after the deadline, let one supplier adjust their own bid */
+const BID_EDITABLE = ['quantity', 'price', 'total', 'commodity_location', 'delivery_date', 'accepts_terms', 'terms_note', 'note']
+const snapshot = b => Object.fromEntries(BID_EDITABLE.map(k => [k, b[k]]))
+export async function unlockBid(id, reason, actor = null) {
+  const b = await bidRow(id); if (!b) throw invalid('bid not found', 404)
+  if (b.status === 'withdrawn') throw invalid('This bid was withdrawn by the supplier.')
+  if (b.status === 'awarded') throw invalid('This bid is awarded. Take the award back before unlocking it.')
+  const why = text(reason, 1000); if (why.length < 5) throw invalid('Please give the reason for unlocking this bid.')
+  if (b.unlocked_at) throw invalid('This bid is already unlocked.')
+  if (!b.supplier_id) throw invalid('This bid has no supplier record to hand it back to.')
+  const now = new Date().toISOString()
+  const { error } = await supabase.from('bid_revisions').insert({ bid_id: b.id, reason: why, unlocked_by: actor?.id ?? null, unlocked_by_name: tt(actor?.name || actor?.email || '', 120), unlocked_at: now, before: snapshot(b) })
+  if (error) throw (missingSchema(error) ? invalid(UPGRADE_HINT, 409) : fail(error, 'unlockBid'))
+  const bid = numeric(unwrap(await supabase.from('bids').update({ unlocked_at: now, unlocked_by: actor?.id ?? null, unlock_reason: why }).eq('id', b.id).select().single(), 'unlockBid:update'))
+  return { bid: safeBid(bid), before: snapshot(b) }
+}
+/** Take the unlock back without a change from the supplier. */
+export async function lockBid(id) {
+  const b = await bidRow(id); if (!b) throw invalid('bid not found', 404)
+  if (!b.unlocked_at) return safeBid(b)
+  await supabase.from('bid_revisions').delete().eq('bid_id', b.id).is('resubmitted_at', null)
+  return safeBid(numeric(unwrap(await supabase.from('bids').update({ unlocked_at: null }).eq('id', b.id).select().single(), 'lockBid')))
+}
+/** The supplier resubmits an unlocked bid. Returns { bid, changes, before }. */
+export async function reviseBid(supplierId, bidId, input = {}) {
+  const b = await bidRow(bidId)
+  if (!b || b.supplier_id !== Number(supplierId)) throw invalid('bid not found', 404)
+  if (!b.unlocked_at) throw invalid('This bid is not open for changes.', 409)
+  const tender = await tenderRow(b.tender_id)
+  const quantity = has(input, 'quantity') ? qty3(input.quantity) : b.quantity; if (!(quantity > 0)) throw invalid('Please enter the quantity you can supply.')
+  const price = has(input, 'price') ? money(input.price) : b.price; if (!(price > 0)) throw invalid(`Please enter your proposed price per ${b.unit}.`)
+  const row = {
+    quantity, price, total: money(quantity * price),
+    commodity_location: has(input, 'commodity_location') ? tt(input.commodity_location, 200) : b.commodity_location,
+    delivery_date: has(input, 'delivery_date') && input.delivery_date ? dateOnly(input.delivery_date, 'Expected delivery date') : b.delivery_date,
+    accepts_terms: has(input, 'accepts_terms') ? truthy(input.accepts_terms) : b.accepts_terms,
+    terms_note: has(input, 'terms_note') ? text(input.terms_note, 1000) : b.terms_note,
+    note: has(input, 'note') ? text(input.note, 3000) : b.note,
+  }
+  if (!row.commodity_location) throw invalid('Please say where the commodity is located.')
+  const before = snapshot(b)
+  const same = (a, c) => (typeof a === 'number' || typeof c === 'number' ? Number(a) === Number(c) : String(a ?? '') === String(c ?? ''))
+  const changes = BID_EDITABLE.filter(k => !same(before[k], row[k])).map(k => ({ field: k, from: before[k], to: row[k] }))
+  const now = new Date().toISOString()
+  const bid = numeric(unwrap(await supabase.from('bids').update({ ...row, unlocked_at: null, revision: (b.revision || 0) + 1, revised_at: now }).eq('id', b.id).select().single(), 'reviseBid'))
+  await supabase.from('bid_revisions').update({ after: snapshot(bid), changes, resubmitted_at: now }).eq('bid_id', b.id).is('resubmitted_at', null)
+  return { bid: safeBid(bid), changes, before, tender: tender && withState(tender) }
 }
 
 /* requests for additional information */
@@ -475,7 +564,10 @@ export const publicBid = (b, x = {}) => ({
   commodity: b.commodity, quantity: Number(b.quantity), unit: b.unit, price: Number(b.price), currency: b.currency, total: Number(b.total),
   commodity_location: b.commodity_location, delivery_date: b.delivery_date, accepts_terms: b.accepts_terms, terms_note: b.terms_note, note: b.note,
   // Documents can still be added to an awarded bid (we may ask for more); a bid that is out of the running is closed.
-  can_withdraw: BID_LIVE.includes(b.status), can_attach: !['withdrawn', 'not_selected'].includes(b.status),
+  can_withdraw: BID_LIVE.includes(b.status) && (x.tender ? tenderState(x.tender) === 'open' : true || Boolean(b.unlocked_at)) || (BID_LIVE.includes(b.status) && Boolean(b.unlocked_at)),
+  can_attach: !['withdrawn', 'not_selected'].includes(b.status),
+  can_edit: Boolean(b.unlocked_at) && b.status !== 'withdrawn', unlocked_at: b.unlocked_at || null, unlock_reason: b.unlock_reason || '', revision: b.revision || 0, revised_at: b.revised_at || null, withdrawn_at: b.withdrawn_at || null,
+  awarded_quantity: b.awarded_quantity == null ? null : Number(b.awarded_quantity), awarded_price: b.awarded_price == null ? null : Number(b.awarded_price),
   ...(x.tender ? { tender: publicTender(x.tender) } : {}),
   // `mine`: uploaded by the supplier (no staff member behind it), so theirs to remove.
   ...(x.documents ? { documents: x.documents.map(d => ({ id: d.id, name: d.name, label: d.label || '', bytes: d.bytes, content_type: d.content_type, created_at: d.created_at, mine: d.uploaded_by == null })) } : {}),
@@ -505,7 +597,14 @@ export async function withdrawBid(supplierId, bidId) {
   const b = await bidRow(bidId)
   if (!b || b.supplier_id !== Number(supplierId)) throw invalid('bid not found', 404)
   if (!BID_LIVE.includes(b.status)) throw invalid(`This bid is ${BID_LABELS[b.status].toLowerCase()} and can no longer be withdrawn.`, 409)
-  return numeric(unwrap(await supabase.from('bids').update({ status: 'withdrawn', status_changed_at: new Date().toISOString(), status_changed_by: null }).eq('id', b.id).select().single(), 'withdrawBid'))
+  // After the deadline a bid stands, unless we unlocked it for the supplier.
+  const tender = await tenderRow(b.tender_id)
+  if (tender && tenderState(tender) !== 'open' && !b.unlocked_at) throw invalid('Bidding has closed, so this bid can no longer be withdrawn. Contact our procurement team if it needs to change.', 409)
+  const now = new Date().toISOString()
+  const row = { status: 'withdrawn', status_changed_at: now, status_changed_by: null }
+  let r = await supabase.from('bids').update({ ...row, withdrawn_at: now, unlocked_at: null }).eq('id', b.id).select().single()
+  if (r.error && missingSchema(r.error)) r = await supabase.from('bids').update(row).eq('id', b.id).select().single()   // before migration 015
+  return numeric(unwrap(r, 'withdrawBid'))
 }
 export async function answerBidRequest(supplierId, bidId, requestId, answer) {
   const b = await bidRow(bidId)
@@ -565,7 +664,7 @@ export async function createPurchaseOrder(input = {}, actorId = null) {
   if (!supplier_name) throw invalid('Please choose a supplier, or enter who this order is for.')
   const given = has(input, 'items') && Array.isArray(input.items) && input.items.length
   let items
-  try { items = normaliseItems(given ? input.items : bid ? [{ description: [bid.commodity, tender?.specification ? tender.specification.split('\n')[0].slice(0, 200) : ''].filter(Boolean).join(' — '), quantity: bid.quantity, unit: bid.unit, unit_price: bid.price }] : []) } catch (e) { throw invalid(e.message.replace('a quote', 'an order')) }
+  try { items = normaliseItems(given ? input.items : bid ? [{ description: [bid.commodity, tender?.specification ? tender.specification.split('\n')[0].slice(0, 200) : ''].filter(Boolean).join(' — '), quantity: bid.awarded_quantity ?? bid.quantity, unit: bid.unit, unit_price: bid.awarded_price ?? bid.price }] : []) } catch (e) { throw invalid(e.message.replace('a quote', 'an order')) }
   let totals; try { totals = quoteTotals({ items, discount: input.discount, tax_rate: input.tax_rate }) } catch (e) { throw invalid(e.message) }
   const row = {
     kind, token: randomBytes(24).toString('base64url'),
@@ -667,6 +766,113 @@ export async function listSupplierOrders(supplierId) {
   const rows = unwrap(await supabase.from('purchase_orders').select('*').eq('supplier_id', Number(supplierId)).neq('status', 'draft').order('created_at', { ascending: false }).limit(200), 'listSupplierOrders') ?? []
   return rows.map(o => ({ kind: o.kind, kind_label: PO_KIND_LABELS[o.kind], number: o.number, token: o.token, title: o.title, status: o.status, total: Number(o.total), currency: o.currency, issued_at: o.issued_at, delivery_date: o.delivery_date, responded_at: o.responded_at }))
 }
+
+/* ------------------------------------------------- supplier shipments --- */
+// Deliveries a supplier makes against a purchase order. The supplier
+// creates them and reports where they are; staff see them on the order and
+// confirm what arrived.
+export const PO_SHIPMENT_STATUSES = ['planned', 'in_transit', 'delivered', 'confirmed', 'cancelled']
+const shipNumeric = x => ({ ...x, quantity: Number(x.quantity), received_quantity: x.received_quantity == null ? null : Number(x.received_quantity), updates: Array.isArray(x.updates) ? x.updates : [] })
+const shipFail = (e, ctx) => (missingSchema(e) ? invalid(UPGRADE_HINT, 409) : fail(e, ctx))
+const orderedQuantity = po => qty3((po.items || []).reduce((sum, it) => sum + (Number(it.quantity) || 0), 0))
+export async function listPoShipments({ po_id = null, supplier_id = null, status = 'all', limit = 1000 } = {}) {
+  let qry = supabase.from('po_shipments').select('*').order('created_at', { ascending: false }).limit(limit)
+  if (po_id != null) qry = qry.eq('po_id', Number(po_id))
+  if (supplier_id != null) qry = qry.eq('supplier_id', Number(supplier_id))
+  if (PO_SHIPMENT_STATUSES.includes(status)) qry = qry.eq('status', status)
+  const { data, error } = await qry
+  if (error) { if (missingSchema(error)) return []; throw fail(error, 'listPoShipments') }
+  const rows = (data || []).map(shipNumeric)
+  if (!rows.length) return rows
+  const orders = unwrap(await supabase.from('purchase_orders').select('id,number,kind,supplier_name,token,status').in('id', [...new Set(rows.map(r => r.po_id))]), 'listPoShipments:orders') ?? []
+  return rows.map(r => ({ ...r, order: orders.find(o => o.id === r.po_id) || null }))
+}
+export async function getPoShipment(id) {
+  const { data, error } = await supabase.from('po_shipments').select('*').eq('id', Number(id)).limit(1)
+  if (error) throw shipFail(error, 'getPoShipment')
+  return data?.[0] ? shipNumeric(data[0]) : null
+}
+/** Ordered → on the way → delivered → confirmed, for one order. */
+export function fulfilment(po, shipments) {
+  const live = shipments.filter(x => x.status !== 'cancelled')
+  const sum = list => qty3(list.reduce((n, x) => n + x.quantity, 0))
+  const ordered = orderedQuantity(po)
+  const confirmed = qty3(live.filter(x => x.status === 'confirmed').reduce((n, x) => n + (x.received_quantity ?? x.quantity), 0))
+  return { ordered, shipped: sum(live), in_transit: sum(live.filter(x => x.status === 'in_transit')), delivered: sum(live.filter(x => ['delivered', 'confirmed'].includes(x.status))), confirmed, remaining: qty3(Math.max(0, ordered - sum(live))), unit: po.items?.[0]?.unit || '' }
+}
+function cleanShipment(input, { partial = false } = {}) {
+  const row = {}
+  if (!partial || has(input, 'quantity')) { const q = qty3(input.quantity); if (!(q > 0)) throw invalid('Please enter the quantity on this shipment.'); row.quantity = q }
+  for (const [k, max] of [['product', 200], ['unit', 20], ['truck_number', 40], ['driver_name', 120], ['driver_phone', 60], ['loading_location', 200], ['destination', 200], ['waybill', 80]]) if (has(input, k)) row[k] = tt(input[k], max)
+  if (has(input, 'notes')) row.notes = text(input.notes, 2000)
+  for (const k of ['loading_date', 'eta']) if (has(input, k)) row[k] = input[k] ? dateOnly(input[k], k === 'eta' ? 'Estimated arrival date' : 'Loading date') : null
+  return row
+}
+export async function createPoShipment(poId, input = {}, { supplierId = null } = {}) {
+  const po = await poRow(poId); if (!po) throw invalid('order not found', 404)
+  if (supplierId != null && po.supplier_id !== Number(supplierId)) throw invalid('order not found', 404)
+  if (!['issued', 'acknowledged'].includes(po.status)) throw invalid(po.status === 'draft' ? 'This order has not been issued yet.' : `This order is ${po.status}; no shipment can be added to it.`, 409)
+  const row = cleanShipment(input)
+  if (!row.truck_number) throw invalid('Please enter the truck registration number.')
+  if (!row.driver_name) throw invalid("Please enter the driver's name.")
+  const all = await listPoShipments({ po_id: po.id })
+  const f = fulfilment(po, all)
+  if (f.ordered > 0 && row.quantity > f.remaining + 0.0005) throw invalid(f.remaining > 0 ? `Only ${f.remaining} ${f.unit} of this order is still to be shipped.` : 'The whole order is already covered by shipments.')
+  const now = new Date().toISOString()
+  const full = { product: po.items?.[0]?.description || '', unit: po.items?.[0]?.unit || 'MT', destination: po.delivery_location || '', ...row, po_id: po.id, supplier_id: po.supplier_id, number: all.length + 1, status: 'planned',
+    updates: [{ at: now, status: 'planned', location: row.loading_location || '', note: 'Shipment created', by: supplierId != null ? 'supplier' : 'staff' }] }
+  const { data, error } = await supabase.from('po_shipments').insert(full).select().single()
+  if (error) throw shipFail(error, 'createPoShipment')
+  return { shipment: shipNumeric(data), order: po }
+}
+/** Details can change until the goods are delivered. */
+export async function updatePoShipment(id, patch = {}, { supplierId = null } = {}) {
+  const cur = await getPoShipment(id); if (!cur || (supplierId != null && cur.supplier_id !== Number(supplierId))) throw invalid('shipment not found', 404)
+  if (['delivered', 'confirmed', 'cancelled'].includes(cur.status)) throw invalid(`This shipment is ${cur.status}; its details can no longer be changed.`, 409)
+  const row = cleanShipment(patch, { partial: true })
+  if (!Object.keys(row).length) return cur
+  const { data, error } = await supabase.from('po_shipments').update(row).eq('id', cur.id).select().single()
+  if (error) throw shipFail(error, 'updatePoShipment')
+  return shipNumeric(data)
+}
+/** A location or status report: "left Kano", "at the Lokoja checkpoint", "delivered". */
+export async function reportPoShipment(id, input = {}, { supplierId = null, by = 'staff' } = {}) {
+  const cur = await getPoShipment(id); if (!cur || (supplierId != null && cur.supplier_id !== Number(supplierId))) throw invalid('shipment not found', 404)
+  if (['confirmed', 'cancelled'].includes(cur.status)) throw invalid(`This shipment is ${cur.status}.`, 409)
+  const allowed = supplierId != null ? ['planned', 'in_transit', 'delivered', 'cancelled'] : PO_SHIPMENT_STATUSES
+  const status = has(input, 'status') && input.status ? input.status : (cur.status === 'planned' ? 'in_transit' : cur.status)
+  if (!allowed.includes(status)) throw invalid(`status must be one of: ${allowed.join(', ')}`)
+  if (supplierId != null && status === 'cancelled' && cur.status !== 'planned') throw invalid('A shipment that has left can no longer be cancelled here. Contact our team.', 409)
+  const location = tt(input.location, 200), note = text(input.note, 1000)
+  if (!location && !note && status === cur.status) throw invalid('Please say where the shipment is now.')
+  const now = new Date().toISOString()
+  const row = { status, current_location: location || cur.current_location, updates: [...cur.updates, { at: now, status, location, note, by }].slice(-200),
+    ...(status === 'delivered' && !cur.delivered_at ? { delivered_at: now } : {}) }
+  if (status === 'confirmed') {
+    const r = has(input, 'received_quantity') && input.received_quantity !== '' && input.received_quantity != null ? qty3(input.received_quantity) : cur.quantity
+    if (!(r >= 0)) throw invalid('The received quantity cannot be negative.')
+    Object.assign(row, { confirmed_at: now, confirmed_by: input.actorId ?? null, received_quantity: r, delivered_at: cur.delivered_at || now })
+  }
+  const { data, error } = await supabase.from('po_shipments').update(row).eq('id', cur.id).select().single()
+  if (error) throw shipFail(error, 'reportPoShipment')
+  return shipNumeric(data)
+}
+export async function deletePoShipment(id) {
+  const cur = await getPoShipment(id); if (!cur) throw invalid('shipment not found', 404)
+  const docs = (await supabase.from('documents').select('path').eq('po_shipment_id', cur.id)).data || []
+  if (docs.length) await supabase.storage.from('documents').remove(docs.map(d => d.path)).catch(() => {})
+  const { error } = await supabase.from('po_shipments').delete().eq('id', cur.id)
+  if (error) throw shipFail(error, 'deletePoShipment')
+  return { deleted: true, id: cur.id }
+}
+/** What the supplier sees of a shipment. */
+export const publicPoShipment = (x, docs = []) => ({
+  id: x.id, number: x.number, product: x.product, quantity: x.quantity, unit: x.unit, truck_number: x.truck_number, driver_name: x.driver_name, driver_phone: x.driver_phone,
+  loading_location: x.loading_location, destination: x.destination, loading_date: x.loading_date, eta: x.eta, waybill: x.waybill, notes: x.notes,
+  status: x.status, current_location: x.current_location, updates: x.updates.map(u => ({ at: u.at, status: u.status, location: u.location, note: u.note, by: u.by === 'supplier' ? 'you' : 'Vertoc Agro' })),
+  delivered_at: x.delivered_at, confirmed_at: x.confirmed_at, received_quantity: x.received_quantity, created_at: x.created_at,
+  documents: docs.filter(d => d.po_shipment_id === x.id).map(d => ({ id: d.id, name: d.name, label: d.label || '', bytes: d.bytes, created_at: d.created_at })),
+})
 
 /* -------------------------------------------------------------- stats --- */
 /** Counts for the panel's badges and dashboard; zeros until migration 014 is in. */

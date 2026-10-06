@@ -5,9 +5,10 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, FileSignature, Mail, MessageCircleQuestion, Trash2, XCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, FileSignature, History, Lock, LockOpen, Mail, MessageCircleQuestion, Trash2, XCircle } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
-import { Alert, Badge, Button, Card, Field, Select, Textarea, useToast } from './ui'
+import { Alert, Badge, Button, Card, Field, Modal, Select, Textarea, useToast } from './ui'
+import { useAuth } from './AuthContext'
 import { Bone } from '../components/Skeleton'
 import Composer from './Composer'
 import BidStatusDialog from './BidStatusDialog'
@@ -17,6 +18,9 @@ import { BID_LABELS, BID_PATH, PO_KINDS, PO_SHORT, TENDER_LABELS, bidTone, fmtDa
 
 export default function BidDetail() {
   const { id } = useParams(); const nav = useNavigate()
+  const { can } = useAuth()
+  const [unlocking, setUnlocking] = useState(false)
+  const [reason, setReason] = useState('')
   const [b, setB] = useState(null)
   const [err, setErr] = useState(null)
   const [notes, setNotes] = useState('')
@@ -29,7 +33,7 @@ export default function BidDetail() {
   const [toast, toastEl] = useToast()
 
   // Saves answer without the email list; keep the one already loaded.
-  const take = x => { setB(prev => ({ ...x, messages: x.messages ?? prev?.messages ?? [] })); setNotes(x.internal_notes || '') }
+  const take = x => { setB(prev => ({ ...x, messages: x.messages ?? prev?.messages ?? [], award: x.award ?? prev?.award ?? null })); setNotes(x.internal_notes || '') }
   const load = useCallback(() => adminFetch(`/bids/${id}`).then(take).catch(e => setErr(e.message)), [id])
   useEffect(() => { load() }, [load])
   const run = async (fn, ok) => { setBusy(true); try { const r = await fn(); if (ok) toast(typeof ok === 'function' ? ok(r) : ok); return r } catch (x) { toast(x.message, 'error') } finally { setBusy(false) } }
@@ -37,6 +41,8 @@ export default function BidDetail() {
   const ask = e => { e.preventDefault(); run(async () => { const r = await adminFetch(`/bids/${id}/requests`, { method: 'POST', body: { question, notify: askNotify } }); take(r); setQuestion(''); return r }, r => (r.notified ? 'Request sent to the supplier' : 'Request added')) }
   const unask = r => { if (window.confirm('Remove this request?')) run(async () => take(await adminFetch(`/bids/${id}/requests/${r.id}`, { method: 'DELETE' }))) }
   const raise = () => run(async () => { const o = await adminFetch('/purchase-orders', { method: 'POST', body: { bid_id: b.id, kind } }); nav(`/staff360/purchase-orders/${o.id}`) })
+  const unlock = e => { e.preventDefault(); run(async () => { take(await adminFetch(`/bids/${id}/unlock`, { method: 'POST', body: { reason } })); setUnlocking(false); setReason(''); load() }, 'Bid unlocked — the supplier has been told') }
+  const relock = () => { if (window.confirm('Lock this bid again? The supplier will no longer be able to change it.')) run(async () => { take(await adminFetch(`/bids/${id}/unlock`, { method: 'DELETE' })); load() }, 'Bid locked again') }
   const remove = () => { if (window.confirm(`Delete the bid from ${b.company_name} and its documents? This cannot be undone.`)) run(async () => { await adminFetch(`/bids/${id}`, { method: 'DELETE' }); nav(b.tender ? `/staff360/tenders/${b.tender.id}` : '/staff360/bids') }) }
 
   if (err) return <Alert>{err}</Alert>
@@ -71,7 +77,9 @@ export default function BidDetail() {
             </li>
           ) })}
         </ol>
-        {withdrawn && <p className="mt-3 text-sm text-destructive">The supplier withdrew this bid on {fmtMoment(b.status_changed_at)}.</p>}
+        {withdrawn && <p className="mt-3 text-sm text-destructive">The supplier withdrew this bid on {fmtMoment(b.withdrawn_at || b.status_changed_at)}.</p>}
+        {b.unlocked_at && <p className="mt-3 text-sm text-amber-600 dark:text-amber-400 flex items-center gap-1.5"><LockOpen className="w-4 h-4" />Unlocked {fmtMoment(b.unlocked_at)}: the supplier may change and resubmit it once.</p>}
+        {b.status === 'awarded' && <p className="mt-3 text-sm"><span className="text-muted-foreground">Awarded: </span><b>{qty(b.awarded_quantity ?? b.quantity, b.unit)}</b> at <b>{perUnit(b.awarded_price ?? b.price, b.currency, b.unit)}</b>{t?.quantity > 0 && <span className="text-muted-foreground"> · {Math.round((b.awarded_quantity ?? b.quantity) / t.quantity * 1000) / 10}% of the requirement · {money((b.awarded_quantity ?? b.quantity) * (b.awarded_price ?? b.price), b.currency)}</span>}</p>}
         {b.status_note && <p className="mt-3 text-sm"><span className="text-muted-foreground">Note sent with this status: </span>{b.status_note}</p>}
       </Card>
 
@@ -118,6 +126,31 @@ export default function BidDetail() {
             )}
           </Card>
 
+          {(b.revisions?.length > 0 || b.history?.length > 0) && (
+            <Card className="animate-fade-up" style={{ animationDelay: '110ms' }}>
+              <div className="px-5 py-3.5 border-b border-border"><h2 className="text-sm font-semibold flex items-center gap-2"><History className="w-4 h-4 text-accent" />Audit trail of this bid</h2></div>
+              <ul className="divide-y divide-border">
+                {[...(b.revisions || [])].reverse().map(r => (
+                  <li key={r.id} className="px-5 py-4 text-sm space-y-2">
+                    <p><span className="font-semibold">Unlocked</span> by {r.unlocked_by_name || 'staff'} <span className="text-muted-foreground">· {fmtMoment(r.unlocked_at)}</span></p>
+                    <p className="rounded-xl bg-muted/60 px-3 py-2"><span className="text-xs text-muted-foreground block">Reason</span>{r.reason}</p>
+                    {r.resubmitted_at ? (<>
+                      <p><span className="font-semibold">Resubmitted</span> by {b.company_name} <span className="text-muted-foreground">· {fmtMoment(r.resubmitted_at)}</span></p>
+                      {r.changes?.length ? <table className="w-full text-xs"><thead><tr className="text-left text-muted-foreground"><th className="py-1 font-medium">What changed</th><th className="py-1 font-medium">Previous bid</th><th className="py-1 font-medium">New bid</th></tr></thead><tbody>{r.changes.map(c => <tr key={c.field} className="border-t border-border"><td className="py-1.5 capitalize">{c.field.replace(/_/g, ' ')}</td><td className="py-1.5 tabular-nums line-through text-muted-foreground">{String(c.from ?? '—')}</td><td className="py-1.5 tabular-nums font-medium">{String(c.to ?? '—')}</td></tr>)}</tbody></table> : <p className="text-xs text-muted-foreground">Resubmitted without changes.</p>}
+                    </>) : <p className="text-xs text-amber-600 dark:text-amber-400">Waiting for the supplier to resubmit. Previous bid: {qty(r.before?.quantity, b.unit)} at {perUnit(r.before?.price, b.currency, b.unit)}.</p>}
+                  </li>
+                ))}
+                {b.history?.map(hh => (
+                  <li key={`h${hh.id}`} className="px-5 py-3 text-sm flex flex-wrap items-center gap-3">
+                    <Link to={`/staff360/bids/${hh.id}`} className="font-semibold text-accent">Bid #{hh.id}</Link>
+                    <span className="text-muted-foreground flex-1">{hh.created_at > b.created_at ? 'later' : 'earlier'} submission · {qty(hh.quantity, hh.unit)} at {perUnit(hh.price, hh.currency, hh.unit)} · {fmtMoment(hh.created_at)}{hh.withdrawn_at ? ` · withdrawn ${fmtMoment(hh.withdrawn_at)}` : ''}</span>
+                    <Badge tone={bidTone(hh.status)}>{BID_LABELS[hh.status]}</Badge>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
           <div className="animate-fade-up" style={{ animationDelay: '140ms' }}>
             <h2 className="font-semibold mb-3">Documents</h2>
             <DocumentsPanel scope={{ bid_id: b.id }} note="uploaded by the supplier or by your team; the supplier sees them in their dashboard" />
@@ -128,7 +161,10 @@ export default function BidDetail() {
           <Card className="p-5 space-y-2 animate-fade-up" style={{ animationDelay: '100ms' }}>
             {!withdrawn && <Button variant="accent" className="w-full" onClick={() => setDialog({ bid: b })}>Change status</Button>}
             {!withdrawn && b.status !== 'shortlisted' && b.status !== 'awarded' && <Button variant="outline" className="w-full" onClick={() => setDialog({ bid: b, to: 'shortlisted' })}>Shortlist</Button>}
-            {!withdrawn && b.status !== 'awarded' && <Button variant="outline" className="w-full" onClick={() => setDialog({ bid: b, to: 'awarded' })}>Award</Button>}
+            {!withdrawn && can('bidding', 'award') && <Button variant="outline" className="w-full" onClick={() => setDialog({ bid: b, to: 'awarded' })}>{b.status === 'awarded' ? 'Change the award' : 'Award'}</Button>}
+            {!withdrawn && b.status !== 'awarded' && can('bidding', 'unlock') && (b.unlocked_at
+              ? <Button variant="outline" className="w-full" disabled={busy} onClick={relock}><Lock className="w-4 h-4" />Lock again</Button>
+              : <Button variant="outline" className="w-full" onClick={() => setUnlocking(true)}><LockOpen className="w-4 h-4" />Unlock bid</Button>)}
             {!withdrawn && b.status !== 'not_selected' && <Button variant="ghost" className="w-full text-destructive" onClick={() => setDialog({ bid: b, to: 'not_selected' })}>Not selected</Button>}
             <Button variant="outline" className="w-full" onClick={() => setCompose(true)}><Mail className="w-4 h-4" />Email the supplier</Button>
           </Card>
@@ -178,9 +214,16 @@ export default function BidDetail() {
         </div>
       </div>
 
-      <BidStatusDialog bid={dialog?.bid || null} to={dialog?.to || null} onClose={() => setDialog(null)} onSaved={r => { take(r); load(); toast(`${BID_LABELS[r.status]}${r.notified ? ' — the supplier has been emailed' : ''}`) }} />
+      <BidStatusDialog bid={dialog?.bid || null} to={dialog?.to || null} award={b.award || null} onClose={() => setDialog(null)} onSaved={r => { take(r); load(); toast(`${BID_LABELS[r.status]}${r.notified ? ' — the supplier has been emailed' : ''}`) }} />
       <Composer open={compose} onClose={() => setCompose(false)} title={`Email ${b.company_name}`} to={b.email} scope="procurement" supplierId={b.supplier?.id ?? null} bidId={b.id}
         subject={t ? `Your bid for ${t.title} (${t.number})` : ''} template={{ key: 'supplier_blank', bid_id: b.id }} onSent={() => { toast('Email sent'); load() }} />
+      <Modal open={unlocking} onClose={() => setUnlocking(false)} title="Unlock this bid"
+        footer={<><Button type="button" variant="outline" onClick={() => setUnlocking(false)}>Cancel</Button><Button type="submit" form="bid-unlock" variant="accent" disabled={busy || reason.trim().length < 5}><LockOpen className="w-4 h-4" />{busy ? 'Unlocking…' : 'Confirm and unlock'}</Button></>}>
+        <form id="bid-unlock" onSubmit={unlock} className="space-y-4">
+          <p className="text-sm text-muted-foreground"><b className="text-foreground">{b.company_name}</b> will be able to change this bid and resubmit it once, even though the deadline has passed. They are told by email and in their dashboard. The previous figures, the new ones, your name, the reason and both times are kept in the audit trail.</p>
+          <Field label="Reason for unlocking *" hint="The supplier reads this."><Textarea rows={3} required maxLength={1000} value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. The price was entered per bag instead of per tonne." /></Field>
+        </form>
+      </Modal>
       {toastEl}
     </>
   )

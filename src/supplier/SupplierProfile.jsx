@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { supplierFetch, useSupplier } from '../lib/supplier'
+import { changeSupplierPassword, supplierFetch, useSupplier } from '../lib/supplier'
+import { PasswordChange } from '../portal/Shared'
 import { Label, Notice, Problem, accent, input } from './ui'
 
 /** The supplier's own details, used to fill in every bid. */
@@ -16,6 +17,7 @@ export default function SupplierProfile() {
     try { await supplierFetch('/supplier/me', { method: 'PATCH', body: f }); await refresh(); setOk(true) } catch (x) { setErr(x.message) } finally { setBusy(false) }
   }
   return (
+    <div className="space-y-6">
     <form onSubmit={submit} className="bg-card border border-border rounded-2xl p-6 md:p-8 max-w-3xl space-y-4">
       <div><h1 className="font-semibold text-lg text-foreground">Company details</h1><p className="text-sm text-muted-foreground mt-0.5">These fill in your bids, and our purchase orders are addressed to them.</p></div>
       <Problem>{err}</Problem>
@@ -30,5 +32,7 @@ export default function SupplierProfile() {
       </div>
       <div className="flex justify-end pt-2"><button type="submit" disabled={busy} className={accent}>{busy ? 'Saving…' : 'Save changes'}</button></div>
     </form>
+    <PasswordChange change={changeSupplierPassword} email={me.email} />
+    </div>
   )
 }

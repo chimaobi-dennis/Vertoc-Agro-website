@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Card, PageHeader, Table, Td } from './ui'
+import { useSort } from '../lib/sort'
 import { Bone } from '../components/Skeleton'
 
 export const STAGES = { quote: ['new', 'contacted', 'quoted', 'won', 'lost', 'archived'], contact: ['new', 'replied', 'archived'] }
@@ -18,6 +19,7 @@ export default function EnquiriesAdmin() {
   const set = (k, v) => { const n = new URLSearchParams(sp); n.set(k, v); if (k === 'kind') n.delete('status'); setSp(n) }
   const isQuote = kind === 'quote'
 
+  const [sorted, sortControl] = useSort(rows, { name: 'name', more: [{ key: 'status', label: 'Status', get: 'status' }] })
   return (
     <>
       <PageHeader eyebrow="Inbox" title={isQuote ? 'Quote requests' : 'Messages'} description="Everything that arrives through the website forms." />
@@ -36,10 +38,11 @@ export default function EnquiriesAdmin() {
         </div>
       </div>
 
+      <div className="flex justify-end mb-3">{sortControl}</div>
       <Card>
         <Table head={['Received', 'From', isQuote ? 'Commodity' : 'Subject', isQuote ? 'Quantity' : '', 'Status', '']}>
           {!rows && [0, 1, 2, 3].map(i => <tr key={i}>{[...Array(6)].map((_, j) => <Td key={j}><Bone className="h-4 w-20" /></Td>)}</tr>)}
-          {rows?.map(r => (
+          {sorted?.map(r => (
             <tr key={r.id} className="hover:bg-muted/40">
               <Td className="text-xs text-muted-foreground whitespace-nowrap">{new Date(r.created_at).toLocaleDateString()}</Td>
               <Td><span className="font-medium">{r.name}</span><div className="text-xs text-muted-foreground">{r.email}</div></Td>

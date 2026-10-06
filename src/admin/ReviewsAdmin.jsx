@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Check, EyeOff, Pencil, Plus, RotateCcw, Star, Trash2 } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Empty, Field, Input, Modal, PageHeader, Select, Textarea, confirmDelete, useToast } from './ui'
+import { useSort } from '../lib/sort'
 import { Bone } from '../components/Skeleton'
 import { fmtDateTime } from './format'
 
@@ -47,6 +48,7 @@ export default function ReviewsAdmin() {
     } catch (x) { toast(x.message, 'error') } finally { setBusy(false) }
   }
 
+  const [sorted, sortControl] = useSort(rows, { name: 'name', more: [{ key: 'rating', label: 'Stars, highest first', get: 'rating', desc: true }, { key: 'position', label: 'Order on the website', get: 'position' }] })
   return (
     <>
       <PageHeader eyebrow="Manage" title="Reviews" description="What clients say on the homepage. Reviews submitted on the site wait here for approval; ones that reach you on WhatsApp or by email can be added directly."
@@ -60,10 +62,11 @@ export default function ReviewsAdmin() {
         ))}
       </div>
 
+      <div className="flex justify-end mb-3">{sortControl}</div>
       <Card className="animate-fade-up">
         <ul className="divide-y divide-border">
           {!rows && [0, 1, 2].map(i => <li key={i} className="p-5 space-y-2"><Bone className="h-4 w-3/4" /><Bone className="h-3 w-1/3" /></li>)}
-          {rows?.map(r => (
+          {sorted?.map(r => (
             <li key={r.id} className="p-5 flex flex-col md:flex-row md:items-start gap-4">
               <div className="min-w-0 flex-1">
                 <p className="text-sm leading-relaxed text-foreground">“{r.quote}”</p>

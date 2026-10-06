@@ -149,6 +149,9 @@ The visual language every admin screen follows is documented in
 | `editor` | products and blog posts |
 | `sales` | clients, documents, quotes, purchases and email |
 
+From migration 015 on, these three are part of a larger table of roles and
+permissions; see "Portals, permissions, payments and investments (Phase 7)".
+
 Roles are checked **server-side on every request**, re-read from the profile
 each time — changing someone's role or deactivating them takes effect on their
 very next request, with no re-login. The frontend only hides menus.
@@ -530,6 +533,60 @@ purchase orders (PO / LPO), suppliers and its own inbox. A staff role
 
 Until migration 014 is run, sales works exactly as before, the public list
 is empty, and the panel names the file to run.
+
+### Portals, permissions, payments and investments (Phase 7)
+
+Needs `server/migrations/015_portals_permissions.sql` (run it once in the
+Supabase SQL editor; it can be run again safely). Until it is run everything
+from before keeps working and the new screens say what is missing.
+
+- **Roles and permissions.** `server/permissions.js` holds the table: 16
+  modules (staff, suppliers, clients, bidding, LPO / PO, invoices, shipments,
+  investments, payments, reports, audit log, settings…) × 9 actions (view,
+  create, edit, approve, delete, export, award, unlock, manage). Built-in
+  roles: Super Admin, Admin, Procurement, Sales, Finance, Logistics,
+  Investment, Editor. Custom roles live in `staff_roles`; one person can be
+  given a set of their own (`profiles.permissions`). Staff → *Roles &
+  permissions* edits all of it; only people with *Staff: Manage* can. Every
+  route checks `can(module, action)` on each request, and every change of
+  role or permission writes an audit row (`action: permissions`) with what
+  was added and removed. The menu item is **Staff** (`/staff360/staff`).
+- **One-time codes.** Accepting an invoice (`/q/<token>`) and acknowledging
+  an LPO / PO (`/po/<token>`) need a 6-digit code emailed to the address the
+  document was sent to: 10 minutes, 5 attempts, a new code at most once a
+  minute (`otp_codes`, template `otp_code`).
+- **Password fields** everywhere have a show / hide eye
+  (`src/components/PasswordInput.jsx`).
+- **Bids.** Documents are optional unless the opportunity lists required
+  ones. A supplier may withdraw before the deadline (time recorded) and bid
+  again; every submission is kept and the latest is marked. After the
+  deadline a bid is locked; someone with *Bidding: Unlock* can reopen one
+  with a reason, the supplier edits and resubmits once, and `bid_revisions`
+  keeps the previous and new figures, who unlocked it, why, and both times.
+- **Split awards.** Award each supplier a quantity and a price; the
+  opportunity shows requirement → awarded → balance, and each award gets its
+  own LPO / PO.
+- **Supplier shipments** (`po_shipments`): against an issued order the
+  supplier creates a shipment per truck (driver, registration, loading and
+  arrival dates, waybill, documents), reports its position and marks it
+  delivered; staff confirm what was received (*Shipments: Approve*).
+- **Client portal** (`/client`): self-registration with email confirmation,
+  profile and company documents, invoices, shipment tracking, payments with
+  receipt upload (confirmed or rejected under Payments in the panel),
+  notifications, password.
+- **Investment portal** (`/invest` landing, `/investor`): investor
+  registration with identification and bank details, opportunities (minimum,
+  tenor, expected return, capacity, open / close dates), applications,
+  proof of payment, maturity, payouts, notifications. In the panel:
+  Investments and Investors (approve / reject, KYC, payouts) and Reports.
+- **Hidden portals.** Bidding, supplier, client and investment pages are not
+  in the menu or footer and carry `noindex`; they are reached by their links:
+  `/bidding`, `/supplier`, `/client`, `/invest`.
+- **Lists** open newest first, with a sort control (oldest, A–Z, Z–A and the
+  columns of each list). Sorting only changes what is shown.
+
+`node server/test-portals.mjs` covers roles and permissions everywhere, and
+the two portals where the backend runs with `EMAIL_DRY_RUN=1`.
 
 ### Testing
 

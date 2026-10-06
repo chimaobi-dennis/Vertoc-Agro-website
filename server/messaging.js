@@ -167,6 +167,7 @@ export async function sendQuote(id, { actor, to, subject, body, attachmentIds = 
     clientId: q.client_id, quoteId: q.id, fromId,
   })
   const quote = await content.markQuoteSent(q.id, { to: recipient })
+  if (q.client_id) await content.notify('client', q.client_id, { title: `Invoice ${q.number} is ready`, body: q.title || '', link: `/q/${q.token}` })
   await audit({ actor, action: 'send', entity: 'quote', entityId: q.id, after: { number: q.number, to: recipient, message_id: msg.id } })
   if (q.client_id) {
     // A quote request in the inbox moves to "quoted" once a quote goes out.
@@ -311,6 +312,7 @@ export async function notifyProcurement(key, ctx) {
 export async function notifyBidStatus({ bid, tender, actor = SYSTEM_ACTOR, force = false }) {
   try {
     const { settings, on } = await procEnabled('notify_status')
+    await content.notify('supplier', bid.supplier_id, { title: `Your bid on ${tender?.number || 'the opportunity'}: ${({ open: 'Open', under_review: 'Under review', shortlisted: 'Shortlisted', awarded: 'Awarded', not_selected: 'Not selected' })[bid.status] || bid.status}`, body: bid.status_note || '', link: `/supplier/bids/${bid.id}` })
     if ((!on && !force) || !EMAIL_RE.test(String(bid?.email || ''))) return null
     const tpl = await renderKey('bid_status', { bid, tender, settings, actor, link: supplierLink(`/bids/${bid.id}`) })
     if (!tpl.subject || !tpl.body) return null
@@ -321,6 +323,7 @@ export async function notifyBidStatus({ bid, tender, actor = SYSTEM_ACTOR, force
 /** A request for additional information goes to the supplier by email; they answer in their dashboard. */
 export async function sendBidRequest({ bid, tender, request, actor }) {
   try {
+    await content.notify('supplier', bid.supplier_id, { title: `We need more information about your bid on ${tender?.number || ''}`.trim(), body: request?.question || '', link: `/supplier/bids/${bid.id}` })
     if (!EMAIL_RE.test(String(bid?.email || ''))) return null
     const tpl = await renderKey('bid_request', { bid, tender, request, actor, link: supplierLink(`/bids/${bid.id}`) })
     if (!tpl.subject || !tpl.body) return null
@@ -372,6 +375,7 @@ export async function sendPurchaseOrder(id, { actor, to, subject, body, attachme
     scope: 'procurement', supplierId: o.supplier_id, bidId: o.bid_id, poId: o.id, fromId,
   })
   const order = await content.markPurchaseOrderIssued(o.id)
+  if (o.supplier_id) await content.notify('supplier', o.supplier_id, { title: `${o.kind === 'po' ? 'Purchase order' : 'LPO'} ${o.number} has been issued to you`, body: o.title || '', link: `/po/${o.token}` })
   await audit({ actor, action: 'send', entity: 'purchase_order', entityId: o.id, after: { number: o.number, to: recipient, message_id: msg.id } })
   return { order, message: msg }
 }
@@ -397,5 +401,57 @@ export async function messageBidders({ tender, bids, subject, body, actor, fromI
     } catch (e) { failed.push({ bid_id: b.id, to: b.email, error: e.message }) }
   }
   return { sent, failed }
+}
+
+/* ------------------------------------------ codes, portals, notices --- */
+export const portalLink = (portal, path = '') => `${publicUrl()}/${portal}${path}`
+
+/** The one-time code for accepting an invoice or acknowledging an order. Throws if it cannot be sent. */
+export async function sendOtp({ to, name, code, purpose, reference, minutes, clientId = null, quoteId = null, supplierId = null, poId = null }) {
+  const tpl = await renderKey('otp_code', { name, code, purpose, reference, minutes })
+  const subject = tpl.subject || `Your verification code for ${reference}`
+  const body = tpl.body && tpl.body.includes(code) ? tpl.body : `Use this code to ${purpose} ${reference}:\n\n${code}\n\nIt is valid for ${minutes} minutes.`
+  const procurement = supplierId != null || poId != null
+  return deliver({ actor: SYSTEM_ACTOR, to, toName: name, subject, body, internal: true, auto: true, clientId, quoteId, ...(procurement ? { scope: 'procurement', supplierId, poId } : {}) })
+}
+/** Confirm-email and reset-password links for client and investor accounts. Throws if it cannot be sent. */
+export async function sendAccountLink({ portal, kind, token, email, name, clientId = null }) {
+  const link = portalLink(portal, `/${kind === 'reset' ? 'reset' : 'verify'}?token=${token}`)
+  const tpl = await renderKey(kind === 'reset' ? 'account_reset' : 'account_verify', { name, email, portal, link })
+  const d = DEFAULT_LINK_TEXT[kind === 'reset' ? 'reset' : 'verify']
+  return deliver({ actor: SYSTEM_ACTOR, to: email, toName: name, subject: tpl.subject || d.subject.replace('supplier', portal), body: tpl.body || d.body.replace('supplier', portal), cta: tpl.cta || { label: d.cta, url: link }, internal: true, auto: true, clientId })
+}
+/** Tell the team something arrived from a portal. Best effort. */
+export async function noticeTeam({ headline, details = '', link, procurement = false, flag = 'notify_inbound' }) {
+  try {
+    const settings = await content.getSettings()
+    const to = (procurement ? settings.procurement?.notify_to : '') || settings.email.notify_to || settings.email.reply_to
+    if ((procurement ? settings.procurement?.notify_bids === false : settings.email[flag] === false) || !EMAIL_RE.test(to)) return null
+    const tpl = await renderKey('portal_notice', { headline, details, link, settings })
+    if (!tpl.subject || !tpl.body) return null
+    return await deliver({ actor: SYSTEM_ACTOR, to, subject: tpl.subject, body: tpl.body, cta: tpl.cta, internal: true, ...(procurement ? { scope: 'procurement' } : {}) })
+  } catch (e) { console.error('[notice-team]', e.message); return null }
+}
+/** Tell a client, supplier or investor that the team acted: a line in their portal, and an email. Best effort. */
+export async function tellPortal({ audience, id, email, name, headline, details = '', path = '', actor = SYSTEM_ACTOR, mail = true }) {
+  const portal = { client: 'client', supplier: 'supplier', investor: 'investor' }[audience]
+  await content.notify(audience, id, { title: headline, body: details, link: `/${portal}${path}` })
+  if (!mail || !EMAIL_RE.test(String(email || ''))) return null
+  try {
+    const tpl = await renderKey('portal_update', { name, headline, details, link: portalLink(portal, path) })
+    if (!tpl.subject || !tpl.body) return null
+    return await deliver({ actor, to: email, toName: name, subject: tpl.subject, body: tpl.body, cta: tpl.cta, auto: true, internal: audience === 'investor',
+      ...(audience === 'client' ? { clientId: id } : audience === 'supplier' ? { scope: 'procurement', supplierId: id } : {}) })
+  } catch (e) { console.error('[tell-portal]', e.message); return null }
+}
+/** The supplier is told their bid was reopened. Best effort. */
+export async function notifyBidUnlocked({ bid, tender, reason, actor }) {
+  await content.notify('supplier', bid.supplier_id, { title: `Your bid on ${tender.number} was reopened for changes`, body: reason, link: `/supplier/bids/${bid.id}` })
+  try {
+    if (!EMAIL_RE.test(String(bid.email || ''))) return null
+    const tpl = await renderKey('bid_unlocked', { bid, tender, reason, actor, link: supplierLink(`/bids/${bid.id}`) })
+    if (!tpl.subject || !tpl.body) return null
+    return await deliver({ actor, to: bid.email, toName: bid.contact_person || bid.company_name, subject: tpl.subject, body: tpl.body, cta: tpl.cta, scope: 'procurement', supplierId: bid.supplier_id, bidId: bid.id, auto: true })
+  } catch (e) { console.error('[bid-unlocked]', e.message); return null }
 }
 

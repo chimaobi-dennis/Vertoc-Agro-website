@@ -11,6 +11,7 @@ import { supplierFetch, useSupplier } from '../lib/supplier'
 import { Bone } from '../components/Skeleton'
 import { BID_LABELS, PO_KINDS, fmtDay, fromNow, money, perUnit, qty } from '../lib/procurement'
 import { Pill, accent, outline } from './ui'
+import { useSort } from '../lib/sort'
 
 const TABS = [['open', 'Open opportunities', Megaphone], ['bids', 'My bids', Gavel], ['requests', 'Requests for information', MessageCircleQuestion], ['awarded', 'Awarded', Award], ['orders', 'Purchase orders', FileSignature]]
 const GROUPS = [['all', 'All'], ['progress', 'In progress'], ['won', 'Successful'], ['lost', 'Unsuccessful'], ['withdrawn', 'Withdrawn']]
@@ -91,7 +92,7 @@ export default function SupplierDashboard() {
       {active === 'bids' && (!bids ? <Bone className="h-40 w-full rounded-2xl" /> : !bids.length ? <Empty icon={Gavel} title="You have not submitted a bid yet">Choose an open opportunity and submit your bid; it appears here with its status.</Empty> : (
         <>
           <div className="flex flex-wrap gap-1.5 mb-4">{GROUPS.map(([k, l]) => { const n = bids.filter(b => inGroup(b, k)).length; return <button key={k} type="button" onClick={() => setGroup(k)} className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${group === k ? 'bg-accent/15 text-accent border-accent/30' : 'border-border text-muted-foreground hover:bg-muted'}`}>{l}{n > 0 && k !== 'all' ? ` ${n}` : ''}</button> })}</div>
-          <BidList bids={bids.filter(b => inGroup(b, group))} empty="No bid in this group." />
+          <BidList bids={bids.filter(b => inGroup(b, group))} empty="No bid in this group." sortable />
         </>
       ))}
 
@@ -102,11 +103,11 @@ export default function SupplierDashboard() {
       {active === 'orders' && (!orders ? <Bone className="h-40 w-full rounded-2xl" /> : !orders.length ? <Empty icon={FileSignature} title="No purchase orders yet">When we issue you a PO or LPO it is listed here, with its PDF and the button to acknowledge it.</Empty> : (
         <Card><ul className="divide-y divide-border">
           {orders.map(o => (
-            <li key={o.number}><Link to={`/po/${o.token}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-4 text-sm hover:bg-muted/40">
+            <li key={o.number}><Link to={o.status === 'issued' ? `/po/${o.token}` : `/supplier/orders/${o.number}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-4 text-sm hover:bg-muted/40">
               <span className="min-w-[10rem]"><span className="font-semibold text-foreground">{o.number}</span><span className="block text-xs text-muted-foreground">{PO_KINDS[o.kind]}</span></span>
               <span className="flex-1 min-w-[10rem] text-muted-foreground truncate">{o.title || '—'}</span>
               <span className="font-medium tabular-nums">{money(o.total, o.currency)}</span>
-              <span className="text-xs text-muted-foreground">{o.delivery_date ? `deliver by ${fmtDay(o.delivery_date)}` : `issued ${fmtDay(o.issued_at)}`}</span>
+              <span className="text-xs text-muted-foreground">{o.delivery_date ? `deliver by ${fmtDay(o.delivery_date)}` : `issued ${fmtDay(o.issued_at)}`}{o.shipments > 0 ? ` · ${o.shipments} shipment${o.shipments === 1 ? '' : 's'}` : ''}</span>
               <Pill status={o.status}>{o.status === 'issued' ? 'To acknowledge' : o.status}</Pill>
             </Link></li>
           ))}
@@ -116,11 +117,13 @@ export default function SupplierDashboard() {
   )
 }
 
-function BidList({ bids, empty = 'Nothing here.', showRequests = false, showOrders = false }) {
+function BidList({ bids, empty = 'Nothing here.', showRequests = false, showOrders = false, sortable = false }) {
+  const [sorted, sortControl] = useSort(bids, { name: b => b.tender?.title, more: [{ key: 'price', label: 'Price, highest first', get: 'price', desc: true }, { key: 'qty', label: 'Quantity, largest first', get: 'quantity', desc: true }, { key: 'status', label: 'Status', get: 'status' }] })
   if (!bids.length) return <p className="text-sm text-muted-foreground py-8 text-center">{empty}</p>
   return (
+    <>{sortable && <div className="flex justify-end mb-3">{sortControl}</div>}
     <Card><ul className="divide-y divide-border">
-      {bids.map(b => (
+      {sorted.map(b => (
         <li key={b.id}><Link to={`/supplier/bids/${b.id}`} className="block px-5 py-4 hover:bg-muted/40">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             <span className="flex-1 min-w-[12rem]"><span className="font-semibold text-foreground">{b.tender?.title || `Bid #${b.id}`}</span><span className="block text-xs text-muted-foreground">{b.tender?.number} · submitted {fmtDay(b.created_at)}</span></span>
@@ -128,12 +131,14 @@ function BidList({ bids, empty = 'Nothing here.', showRequests = false, showOrde
             <span className="font-medium tabular-nums">{perUnit(b.price, b.currency, b.unit)}</span>
             <Pill status={b.status}>{BID_LABELS[b.status]}</Pill>
           </div>
+          {b.can_edit && <p className="mt-2 text-xs font-semibold text-amber-600 dark:text-amber-400">Reopened for changes — edit and resubmit</p>}
+          {b.status === 'awarded' && b.awarded_quantity != null && <p className="mt-2 text-xs text-muted-foreground">Awarded {qty(b.awarded_quantity, b.unit)} at {perUnit(b.awarded_price ?? b.price, b.currency, b.unit)}</p>}
           {showRequests && <p className="mt-2 text-xs font-semibold text-accent flex items-center gap-1.5"><MessageCircleQuestion className="w-3.5 h-3.5" />{b.requests_open} request{b.requests_open === 1 ? '' : 's'} waiting for your answer</p>}
           {!showRequests && b.requests_open > 0 && <p className="mt-2 text-xs text-accent flex items-center gap-1.5"><MessageCircleQuestion className="w-3.5 h-3.5" />We asked for more information</p>}
           {b.status_note && <p className="mt-2 text-xs text-muted-foreground">“{b.status_note}”</p>}
           {showOrders && (b.orders?.length ? <p className="mt-2 text-xs text-muted-foreground flex items-center gap-1.5"><FileSignature className="w-3.5 h-3.5" />{b.orders.map(o => `${o.number} (${o.status === 'issued' ? 'to acknowledge' : o.status})`).join(' · ')}</p> : <p className="mt-2 text-xs text-muted-foreground flex items-center gap-1.5"><CalendarClock className="w-3.5 h-3.5" />Our purchase order follows.</p>)}
         </Link></li>
       ))}
-    </ul></Card>
+    </ul></Card></>
   )
 }

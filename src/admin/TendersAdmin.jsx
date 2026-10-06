@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ExternalLink, Plus, Search } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Input, PageHeader, Table, Td } from './ui'
+import { useSort } from '../lib/sort'
 import { Bone } from '../components/Skeleton'
 import { TENDER_LABELS, fmtDay, fromNow, perUnit, qty, tenderTone } from '../lib/procurement'
 
@@ -23,6 +24,7 @@ export default function TendersAdmin() {
   }, [rows, q, state])
   const count = k => (rows || []).filter(t => k === 'all' || t.state === k).length
 
+  const [sorted, sortControl] = useSort(visible, { name: 'title', more: [{ key: 'number', label: 'Reference number', get: 'number', desc: true }, { key: 'closes', label: 'Closing date, soonest first', get: 'closes_at' }, { key: 'closes_desc', label: 'Closing date, latest first', get: 'closes_at', desc: true }, { key: 'quantity', label: 'Quantity, largest first', get: r => Number(r.quantity), desc: true }, { key: 'status', label: 'Status', get: 'state' }] })
   return (
     <>
       <PageHeader eyebrow="Procurement" title="Bidding" description={rows ? `${visible.length} ${state === 'all' ? '' : TENDER_LABELS[state].toLowerCase() + ' '}opportunit${visible.length === 1 ? 'y' : 'ies'}` : ' '}
@@ -47,10 +49,11 @@ export default function TendersAdmin() {
         </div>
       </div>
 
+      <div className="flex justify-end mb-3">{sortControl}</div>
       <Card>
         <Table head={['Number', 'Opportunity', 'Quantity', 'Asking price', 'Bids close', 'Bids', 'Lowest bid', 'Status', '']}>
           {!rows && !err && [0, 1, 2, 3].map(i => <tr key={i}>{[...Array(9)].map((_, j) => <Td key={j}><Bone className="h-4 w-20" /></Td>)}</tr>)}
-          {rows && visible.map(t => (
+          {rows && sorted.map(t => (
             <tr key={t.id} className="hover:bg-muted/40">
               <Td><Link to={`/staff360/tenders/${t.id}`} className="font-medium hover:text-accent whitespace-nowrap">{t.number}</Link></Td>
               <Td><Link to={`/staff360/tenders/${t.id}`} className="hover:text-accent"><span className="font-medium">{t.title}</span><span className="block text-xs text-muted-foreground">{[t.commodity, t.delivery_location].filter(Boolean).join(' · ')}</span></Link></Td>
