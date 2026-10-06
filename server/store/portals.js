@@ -42,10 +42,11 @@ export async function issueOtp(purpose, refId, email) {
 }
 /** Throws unless `code` is the live code; a correct code is used up. */
 export async function consumeOtp(purpose, refId, code) {
-  const c = String(code || '').replace(/\D/g, '')
-  if (c.length !== 6) throw invalid('Enter the 6-digit code we emailed you.')
+  // The table is asked first: before migration 015 there are no codes, and callers skip the step on that error.
   const { data, error } = await supabase.from('otp_codes').select('*').eq('purpose', purpose).eq('ref_id', Number(refId)).is('used_at', null).order('created_at', { ascending: false }).limit(1)
   if (error) throw fail(error, 'consumeOtp')
+  const c = String(code || '').replace(/\D/g, '')
+  if (c.length !== 6) throw invalid('Enter the 6-digit code we emailed you.')
   const row = data?.[0]
   if (!row) throw invalid('Ask for a code first.', 409)
   if (row.expires_at < new Date().toISOString()) throw invalid('That code has expired. Ask for a new one.', 410)

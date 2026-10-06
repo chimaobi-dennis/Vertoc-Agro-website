@@ -240,7 +240,13 @@ export async function getTender(idOrNumber) { const t = await tenderRow(idOrNumb
 export async function createTender(input, actorId = null) {
   const settings = await getSettings()
   const row = { specification: '', delivery_location: '', delivery_period: '', requirements: '', status: 'draft', ...cleanTender(input, settings), created_by: actorId }
-  return withState(await insertNumbered('tenders', TENDER_PREFIX, row, input?.number, 'Opportunity'))
+  const make = r => insertNumbered('tenders', TENDER_PREFIX, r, input?.number, 'Opportunity')
+  try { return withState(await make(row)) }
+  catch (e) {   // before migration 015 there is no list of required documents: save the rest
+    if (!('required_documents' in row) || !/required_documents|database migration/.test(e.message)) throw e
+    const { required_documents: _r, ...rest } = row
+    return withState(await make(rest))
+  }
 }
 export async function updateTender(id, patch) {
   const cur = await tenderRow(id); if (!cur) throw invalid('opportunity not found', 404)
@@ -250,7 +256,13 @@ export async function updateTender(id, patch) {
     if (number !== cur.number) { const clash = await tenderRow(number); if (clash && clash.id !== cur.id) throw invalid(`${number} is already in use`); row.number = number }
   }
   if (!Object.keys(row).length) return withState(cur)
-  return withState(unwrap(await supabase.from('tenders').update(row).eq('id', cur.id).select().single(), 'updateTender'))
+  let saved = await supabase.from('tenders').update(row).eq('id', cur.id).select().single()
+  if (saved.error && missingSchema(saved.error) && 'required_documents' in row) {   // before migration 015: save the rest
+    const { required_documents: _r, ...rest } = row
+    if (!Object.keys(rest).length) return withState(cur)
+    saved = await supabase.from('tenders').update(rest).eq('id', cur.id).select().single()
+  }
+  return withState(unwrap(saved, 'updateTender'))
 }
 export async function deleteTender(id) {
   const cur = await tenderRow(id); if (!cur) throw invalid('opportunity not found', 404)
@@ -464,14 +476,21 @@ export async function updateBid(id, patch = {}, actor = null) {
     if (q > cur.quantity + 0.0005) throw invalid(`This supplier offered ${cur.quantity} ${cur.unit}; the award cannot be more than that.`)
     if (!(pr > 0)) throw invalid('The awarded price must be more than zero.')
     const tender = await tenderRow(cur.tender_id)
-    const others = (unwrap(await supabase.from('bids').select('id,quantity,awarded_quantity').eq('tender_id', cur.tender_id).eq('status', 'awarded').neq('id', cur.id), 'updateBid:awards') ?? [])
-      .reduce((sum, b) => sum + Number(b.awarded_quantity ?? b.quantity), 0)
-    const left = qty3(Number(tender.quantity) - others)
-    if (q > left + 0.0005) throw invalid(left > 0 ? `Only ${left} ${tender.unit} of this opportunity is still unallocated.` : 'This opportunity is fully awarded already.')
-    row.awarded_quantity = q; row.awarded_price = pr
+    const awards = await supabase.from('bids').select('id,quantity,awarded_quantity').eq('tender_id', cur.tender_id).eq('status', 'awarded').neq('id', cur.id)
+    if (!(awards.error && missingSchema(awards.error))) {   // before migration 015 an award is the whole bid, as it always was
+      const others = (unwrap(awards, 'updateBid:awards') ?? []).reduce((sum, b) => sum + Number(b.awarded_quantity ?? b.quantity), 0)
+      const left = qty3(Number(tender.quantity) - others)
+      if (q > left + 0.0005) throw invalid(left > 0 ? `Only ${left} ${tender.unit} of this opportunity is still unallocated.` : 'This opportunity is fully awarded already.')
+      row.awarded_quantity = q; row.awarded_price = pr
+    }
   }
   if (!Object.keys(row).length) return { bid: safeBid(cur), changed: false, previous: cur.status }
-  const { data: saved, error: saveErr } = await supabase.from('bids').update(row).eq('id', cur.id).select().single()
+  let { data: saved, error: saveErr } = await supabase.from('bids').update(row).eq('id', cur.id).select().single()
+  if (saveErr && missingSchema(saveErr) && ('awarded_quantity' in row || 'awarded_price' in row)) {   // before migration 015: statuses work as before
+    const { awarded_quantity: _q, awarded_price: _p, ...rest } = row
+    if (!Object.keys(rest).length) throw invalid(UPGRADE_HINT, 409)
+    ;({ data: saved, error: saveErr } = await supabase.from('bids').update(rest).eq('id', cur.id).select().single())
+  }
   if (saveErr) throw (missingSchema(saveErr) ? invalid(UPGRADE_HINT, 409) : fail(saveErr, 'updateBid'))
   const bid = numeric(saved)
   if (changed && (bid.status === 'awarded' || cur.status === 'awarded')) await syncTenderAward(bid.tender_id)
