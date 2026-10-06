@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Banknote, CheckCircle2, ExternalLink, Megaphone, Plus, Search, Trash2, TrendingUp, XCircle } from 'lucide-react'
+import { UserRound, ArrowLeft, Banknote, CheckCircle2, ExternalLink, Megaphone, Plus, Search, Trash2, TrendingUp, XCircle } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { Alert, Badge, Button, Card, Field, Input, Modal, PageHeader, Select, Table, Tabs, Td, Textarea, confirmDelete, useToast } from './ui'
@@ -14,6 +14,7 @@ import { DocumentsPanel } from './ClientTabs'
 import { openDocument } from './documents'
 import OpportunityFiles, { EMPTY_STAGE, uploadStaged } from './OpportunityFiles'
 import InviteBox from './InviteBox'
+import { ChangeRequestsPanel } from './InvestorChanges'
 import { useSort } from '../lib/sort'
 import { fmtDay, fmtMoment, fromLocalInput, money, toLocalInput } from '../lib/procurement'
 import { INVESTMENT_LABELS, INVESTMENT_STATUSES, KYC_LABELS, OPPORTUNITY_LABELS, investmentTone, kycTone, opportunityTone, tenor } from '../lib/investing'
@@ -25,7 +26,9 @@ const Back = ({ to, children }) => <Link to={to} className="inline-flex items-ce
 export function InvestmentsAdmin() {
   const { can } = useAuth()
   const [sp, setSp] = useSearchParams()
-  const tab = sp.get('tab') === 'opportunities' ? 'opportunities' : 'applications'
+  const tab = ['opportunities', 'changes'].includes(sp.get('tab')) ? sp.get('tab') : 'applications'
+  const [changesN, setChangesN] = useState(null)
+  useEffect(() => { adminFetch('/stats').then(x => setChangesN(x.investorChanges)).catch(() => {}) }, [])
   const status = INVESTMENT_STATUSES.includes(sp.get('status')) ? sp.get('status') : 'all'
   const [data, setData] = useState(null); const [opps, setOpps] = useState(null); const [err, setErr] = useState(null)
   useEffect(() => { setData(null); adminFetch(`/investments?status=${status}`).then(setData).catch(e => setErr(e.message)) }, [status])
@@ -43,9 +46,9 @@ export function InvestmentsAdmin() {
         action={can('investments', 'create') && <Link to="/staff360/investments/opportunities/new"><Button variant="accent"><Plus className="w-4 h-4" />New opportunity</Button></Link>} />
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
       {t && <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6 animate-fade-up"><Stat label="Funds committed" value={money(t.committed, 'NGN')} /><Stat label="Active investments" value={money(t.active, 'NGN')} /><Stat label="Awaiting approval" value={t.pending} /><Stat label="Maturing within 30 days" value={t.maturing_soon} /><Stat label="Investors" value={t.investors} /></div>}
-      <Tabs value={tab} onChange={k => set({ tab: k })} tabs={[{ key: 'applications', label: 'Investments', icon: TrendingUp, count: data?.items.length }, { key: 'opportunities', label: 'Opportunities', icon: Megaphone, count: opps?.length }]} />
+      <Tabs value={tab} onChange={k => set({ tab: k })} tabs={[{ key: 'applications', label: 'Investments', icon: TrendingUp, count: data?.items.length }, { key: 'opportunities', label: 'Opportunities', icon: Megaphone, count: opps?.length }, { key: 'changes', label: 'Profile changes', icon: UserRound, count: changesN }]} />
 
-      {tab === 'applications' ? (<>
+      {tab === 'changes' ? <ChangeRequestsPanel /> : tab === 'applications' ? (<>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <div className="flex flex-wrap rounded-xl border border-border overflow-hidden text-xs font-semibold">{['all', ...INVESTMENT_STATUSES].map(k => <button key={k} onClick={() => set({ status: k })} className={`px-3 py-2 ${status === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{k === 'all' ? 'All' : INVESTMENT_LABELS[k]}</button>)}</div>
           {sortControl}
@@ -353,7 +356,9 @@ export function InvestorDetail() {
       <div className="grid lg:grid-cols-[1fr_320px] gap-6 items-start">
         <div className="space-y-6 min-w-0">
           <Card className="p-6"><dl className="grid grid-cols-2 sm:grid-cols-3 gap-5 text-sm">
-            {row('Phone', x.phone)}{row('Address', x.address)}{row('Identification', [x.id_type, x.id_number].filter(Boolean).join(' · '))}
+            {x.avatar_url && <div><img src={x.avatar_url} alt="" className="w-20 h-20 rounded-full object-cover border border-border" /></div>}
+            {row('Title', x.title)}{row('First name', x.first_name)}{row('Middle name', x.middle_name)}{row('Last name', x.last_name)}{row('Nickname', x.nickname)}{row('Date of birth', x.date_of_birth && fmtDay(x.date_of_birth))}{row('Nationality', x.nationality)}{row('State of origin', x.state_of_origin)}{row('LGA', x.lga)}
+            {row('Phone', x.phone)}{row('Alternative phone', x.alt_phone)}{row('Address', x.address)}{row('Identification', [x.id_type, x.id_number].filter(Boolean).join(' · '))}
             {row('Bank', x.bank_name)}{row('Account name', x.bank_account_name)}{row('Account number', x.bank_account_number)}
           </dl></Card>
           <Card>
@@ -363,6 +368,7 @@ export function InvestorDetail() {
               {!x.investments?.length && <li className="px-5 py-8 text-center text-sm text-muted-foreground">No investments yet.</li>}
             </ul>
           </Card>
+          {x.change_requests?.length > 0 && <div><h2 className="font-semibold mb-3">Profile change requests</h2><ChangeRequestsPanel investorId={x.id} /></div>}
           <div><h2 className="font-semibold mb-3">Identification and other documents</h2><DocumentsPanel scope={{ investor_id: x.id }} note="KYC documents uploaded by the investor or by your team" /></div>
         </div>
         <div className="space-y-5 lg:sticky lg:top-24">

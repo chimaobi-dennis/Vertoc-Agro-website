@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Bell, CheckCircle2, Circle, ExternalLink, FileText, LayoutDashboard, Loader2, Megaphone, Paperclip, ShieldCheck, TrendingUp, Upload, UserRound } from 'lucide-react'
 import { openFile } from '../lib/openFile'
+import Profile from './InvestorProfile'
 import { investorPortal } from '../lib/portal'
 import { Bone } from '../components/Skeleton'
 import { PortalForgot, PortalLogin, PortalRegister, PortalReset, PortalVerify } from '../portal/AuthPages'
@@ -24,11 +25,20 @@ const CFG = {
   registerTitle: 'Register as an investor',
   registerText: 'An account lets you see our investment opportunities, apply to them and follow each investment to maturity. We verify your identity before an investment is approved.',
   registerNote: 'After signing in you can upload your means of identification. Your bank details are used only to pay your returns and principal.',
-  blank: { name: '', phone: '', address: '', id_type: '', id_number: '', bank_name: '', bank_account_name: '', bank_account_number: '' },
+  blank: { title: '', first_name: '', middle_name: '', last_name: '', nickname: '', phone: '', alt_phone: '', address: '', state_of_origin: '', lga: '', date_of_birth: '', nationality: 'Nigerian', id_type: '', id_number: '', bank_name: '', bank_account_name: '', bank_account_number: '' },
   fields: [
-    { key: 'name', label: 'Full name or company name', required: true, wide: true, autoComplete: 'name' },
+    { key: 'title', label: 'Title', kind: 'title' },
+    { key: 'first_name', label: 'First name', required: true, autoComplete: 'given-name' },
+    { key: 'middle_name', label: 'Middle name', autoComplete: 'additional-name' },
+    { key: 'last_name', label: 'Last name', required: true, autoComplete: 'family-name' },
+    { key: 'nickname', label: 'Nickname' },
     { key: 'phone', label: 'Phone number', required: true, type: 'tel', autoComplete: 'tel' },
-    { key: 'address', label: 'Address', required: true, type: 'textarea', autoComplete: 'street-address' },
+    { key: 'alt_phone', label: 'Alternative phone number', type: 'tel' },
+    { key: 'address', label: 'Residential address', required: true, type: 'textarea', wide: true, autoComplete: 'street-address' },
+    { key: 'state_of_origin', label: 'State of origin', required: true },
+    { key: 'lga', label: 'LGA', required: true },
+    { key: 'date_of_birth', label: 'Date of birth', required: true, type: 'date' },
+    { key: 'nationality', label: 'Nationality', required: true },
     { key: 'id_type', label: 'Means of identification', required: true, options: ID_TYPES },
     { key: 'id_number', label: 'Identification number', required: true },
     { key: 'bank_name', label: 'Bank', required: true },
@@ -279,57 +289,6 @@ function Investment() {
         </Card>
       </div>
     </>
-  )
-}
-
-function Profile() {
-  const { me, refresh } = investorPortal.use()
-  const [f, setF] = useState(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState(null); const [ok, setOk] = useState(false)
-  const [docs, , reloadDocs] = useLoad('/investor/documents')
-  const labels = me.kyc_labels || []
-  const [label, setLabel] = useState(''); const [queue, setQueue] = useState([]); const picker = useRef(null)
-  useEffect(() => { setF(Object.fromEntries(['name', 'phone', 'address', 'id_type', 'id_number', 'bank_name', 'bank_account_name', 'bank_account_number'].map(k => [k, me[k] || '']))) }, [me])
-  if (!f) return null
-  const set = k => e => { setF(x => ({ ...x, [k]: e.target.value })); setOk(false) }
-  const save = async e => { e.preventDefault(); setBusy(true); setErr(null); setOk(false); try { await api('/investor/me', { method: 'PATCH', body: f }); await refresh(); setOk(true) } catch (x) { setErr(x.message) } finally { setBusy(false) } }
-  const add = async list => { for (const file of list) { setQueue(q => [...q, { name: file.name }]); try { await upload(file, '/investor/documents', { label: label || labels[0] }); setQueue(q => q.filter(x => x.name !== file.name)); reloadDocs() } catch (x) { setQueue(q => q.map(v => (v.name === file.name ? { ...v, error: x.message } : v))) } } }
-  const open = async d => { try { await openFile(() => api(`/investor/documents/${d.id}/url`).then(r => ({ url: r.url, name: d.name, type: d.content_type }))) } catch (x) { setErr(x.message) } }
-  return (
-    <div className="space-y-6">
-      <form onSubmit={save} className="bg-card border border-border rounded-2xl p-6 md:p-8 max-w-3xl space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="font-semibold text-lg text-foreground">Your details</h1><p className="text-sm text-muted-foreground mt-0.5">Used to verify your identity and to pay your returns.</p></div><Tag tone={kycTone(me.kyc_status)}>{KYC_LABELS[me.kyc_status]}</Tag></div>
-        <Problem>{err}</Problem>{ok && <Notice>Saved.</Notice>}
-        <div className="grid sm:grid-cols-2 gap-4">
-          <label className="block sm:col-span-2"><Label>Full name or company name *</Label><input required maxLength={200} className={input} value={f.name} onChange={set('name')} /></label>
-          <label className="block"><Label hint="(contact us to change it)">Email address</Label><input disabled className={input} value={me.email} /></label>
-          <label className="block"><Label>Phone number</Label><input type="tel" maxLength={60} className={input} value={f.phone} onChange={set('phone')} /></label>
-          <label className="block sm:col-span-2"><Label>Address</Label><textarea rows={2} maxLength={500} className={input} value={f.address} onChange={set('address')} /></label>
-          <label className="block"><Label>Means of identification</Label><select className={input} value={f.id_type} onChange={set('id_type')}><option value="">Choose…</option>{[...new Set([...ID_TYPES, f.id_type].filter(Boolean))].map(o => <option key={o}>{o}</option>)}</select></label>
-          <label className="block"><Label>Identification number</Label><input maxLength={80} className={input} value={f.id_number} onChange={set('id_number')} /></label>
-          <label className="block"><Label>Bank</Label><input maxLength={120} className={input} value={f.bank_name} onChange={set('bank_name')} /></label>
-          <label className="block"><Label>Account name</Label><input maxLength={160} className={input} value={f.bank_account_name} onChange={set('bank_account_name')} /></label>
-          <label className="block"><Label>Account number</Label><input maxLength={40} inputMode="numeric" className={input} value={f.bank_account_number} onChange={set('bank_account_number')} /></label>
-        </div>
-        <div className="flex justify-end pt-2"><button type="submit" disabled={busy} className={accent}>{busy ? 'Saving…' : 'Save changes'}</button></div>
-      </form>
-
-      <Card className="max-w-3xl">
-        <div className="px-6 py-4 border-b border-border"><h2 className="font-semibold">Identification documents (KYC)</h2><p className="text-xs text-muted-foreground mt-0.5">A clear copy of your means of identification, and a proof of address. Only you and our team can see them.</p></div>
-        <ul className="divide-y divide-border">
-          {docs?.map(d => <li key={d.id} className="px-6 py-3 flex items-center gap-3 text-sm"><FileText className="w-4 h-4 text-muted-foreground shrink-0" /><button type="button" onClick={() => open(d)} className="flex-1 min-w-0 text-left hover:text-accent"><span className="font-medium truncate block">{d.name}</span><span className="block text-xs text-muted-foreground">{[d.label, fileSize(d.bytes), fmtDay(d.created_at)].filter(Boolean).join(' · ')}</span></button></li>)}
-          {queue.map(q => <li key={q.name} className="px-6 py-3 text-sm flex items-center gap-3">{!q.error && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}<span className="flex-1 truncate">{q.name}<span className={`block text-xs ${q.error ? 'text-destructive' : 'text-muted-foreground'}`}>{q.error || 'Uploading…'}</span></span></li>)}
-          {docs && !docs.length && !queue.length && <li className="px-6 py-8 text-center text-sm text-muted-foreground">No documents uploaded yet.</li>}
-        </ul>
-        <div className="px-6 py-4 border-t border-border flex flex-wrap items-center gap-3">
-          <select className={`${input} h-11 py-0 max-w-xs`} value={label || labels[0] || ''} onChange={e => setLabel(e.target.value)} aria-label="Kind of document">{labels.map(l => <option key={l}>{l}</option>)}</select>
-          <input ref={picker} type="file" multiple accept={FILE_ACCEPT} className="sr-only" onChange={e => { add([...e.target.files]); e.target.value = '' }} />
-          <button type="button" onClick={() => picker.current?.click()} className={`${outline} h-11`}><Paperclip className="w-4 h-4" />Add a document</button>
-          <span className="text-xs text-muted-foreground">PDF or images · up to 20 MB each</span>
-        </div>
-      </Card>
-
-      <PasswordChange change={investorPortal.changePassword} email={me.email} />
-    </div>
   )
 }
 

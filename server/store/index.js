@@ -81,7 +81,7 @@ export const {
   publicClient, findClientRecordByEmail, createClientAccount, attachClientAccount, detachClientAccount, updateClientAccount,
   PAYMENT_STATUSES, listPayments, getPayment, createPayment, setPaymentReceipt, updatePayment, deletePayment, paidByQuote, listClientInvoices,
   OPPORTUNITY_STATUSES, INVESTMENT_STATUSES, INVESTMENT_LABELS, opportunityState, listOpportunities, getOpportunity, createOpportunity, updateOpportunity, deleteOpportunity, publicOpportunity,
-  KYC_STATUSES, safeInvestor, publicInvestor, createInvestor, updateInvestor, getInvestor, deleteInvestor, listInvestors,
+  KYC_STATUSES, INVESTOR_TITLES, CONTROLLED_FIELDS, safeInvestor, publicInvestor, createInvestor, updateInvestor, attachInvestorAvatar, getInvestor, deleteInvestor, listInvestors,
   listInvestments, getInvestment, createInvestment, updateInvestment, setInvestmentProof, deleteInvestment, addPayout, deletePayout, publicInvestment, investmentTotals,
 } = portals
 
@@ -97,3 +97,9 @@ const inventory = hasSupabase ? await import('./inventory.js') : {}
 export const {
   INVENTORY_HINT, INVENTORY_STATUSES, INVENTORY_LABELS, listExpected, getExpected, receive, deleteReceipt, setClosed, stock, inventoryCounts,
 } = inventory
+
+// Investor profile change requests (migration 019).
+const investorChanges = hasSupabase ? await import('./investor-changes.js') : {}
+export const {
+  CHANGES_HINT, SUPPORT_LABEL, PICTURE_LABEL, REQUEST_STATUSES, REQUEST_LABELS, CHANGE_GROUPS, changeMeta, createRequest, listRequests, getRequest, pendingRequests, cancelRequest, reviewRequest,
+} = investorChanges

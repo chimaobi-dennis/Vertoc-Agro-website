@@ -6,6 +6,7 @@
  */
 import { Router } from 'express'
 import { can, demand } from './auth.js'
+import { hasUser } from './permissions.js'
 import { audit } from './audit.js'
 import * as content from './content.js'
 import { bad, handler, idOrNull } from './http.js'
@@ -114,11 +115,34 @@ router.post('/clients/:id/invite', can('clients'), h(async (req, res) => {
   await requireApproved('client', c.id)
   await invited(req, res, { entity: 'client', row: c, email: String(req.body?.email || '').trim() || c.email || c.data?.email || '', send: inviteClient })
 }))
+/* investor profile change requests: Investment staff recommend, an Admin accepts and applies */
+router.get('/investor-changes', inv, h(async (req, res) => res.json(await content.listRequests({ status: req.query.status || 'all', investor_id: req.query.investor_id ? Number(req.query.investor_id) : null }))))
+router.get('/investor-changes/:id', inv, h(async (req, res) => {
+  const r = await content.getRequest(req.params.id)
+  if (!r) throw bad('request not found', 404)
+  res.json({ ...r, groups: content.CHANGE_GROUPS })
+}))
+router.post('/investor-changes/:id/review', can('investments', 'approve'), h(async (req, res) => {
+  const action = String(req.body?.action || '')
+  const isAdmin = hasUser(req.user, 'staff', 'manage')
+  const before = await content.getRequest(req.params.id)
+  if (!before) throw bad('request not found', 404)
+  const r = await content.reviewRequest(before.id, action, { user: req.user, isAdmin, note: req.body?.note })
+  await audit({ actor: req.user, action: action === 'approve' ? (r.status === 'approved' ? 'approve' : 'recommend') : action === 'start' ? 'review' : action, entity: 'investor_change', entityId: before.id, before: Object.fromEntries(Object.entries(before.changes).map(([k, v]) => [k, v.from])), after: { investor: before.investor?.name, status: r.status, changes: Object.fromEntries(Object.entries(before.changes).map(([k, v]) => [k, v.to])), note: req.body?.note || '' } })
+  if (['approved', 'rejected', 'resubmission_required'].includes(r.status) && before.investor) {
+    const inv0 = await content.getInvestor(before.investor_id)
+    await tellPortal({ audience: 'investor', id: inv0.id, email: inv0.email, name: inv0.name, actor: req.user,
+      headline: r.status === 'approved' ? 'Your profile change was approved and your profile is updated' : r.status === 'rejected' ? 'Your profile change request was not approved' : 'We need more for your profile change request',
+      details: r.status === 'approved' ? '' : r.review_note, path: '/profile' })
+  }
+  res.json(await content.getRequest(before.id))
+}))
 router.get('/investors/:id', inv, h(async (req, res) => {
   const i = await content.getInvestor(req.params.id)
   if (!i) throw bad('investor not found', 404)
   const [investments, documents] = await Promise.all([content.listInvestments({ investor_id: i.id }), content.listDocuments({ investor_id: i.id })])
-  res.json({ ...content.safeInvestor(i), investments, documents })
+  const [changes, avatar] = await Promise.all([content.listRequests({ investor_id: i.id }), i.avatar_document_id ? content.documentUrl(i.avatar_document_id, { expires: 3600 }).then(r => r.url).catch(() => null) : null])
+  res.json({ ...content.safeInvestor(i), avatar_url: avatar, change_requests: changes, investments, documents: documents.filter(d => ![content.SUPPORT_LABEL].includes(d.label)) })
 }))
 router.patch('/investors/:id', inv, h(async (req, res) => {
   const before = await content.getInvestor(req.params.id)

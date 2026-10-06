@@ -25,7 +25,9 @@ const accounts = portalAccounts({
   nameOf: i => i.name,
   blocked: i => (i.status === 'blocked' ? 'This investor account is suspended. Please contact us.' : null),
   async create(b, userId) {
-    need(b.name, 'Please enter your full name or company name.'); need(b.phone, 'Please enter a phone number.'); need(b.address, 'Please enter your address.')
+    if (b.investor_type !== 'company' && (b.first_name || b.last_name || !b.name)) { need(b.first_name, 'Please enter your first name.'); need(b.last_name, 'Please enter your last name.') }
+    else need(b.name, 'Please enter your company name.')
+    need(b.phone, 'Please enter a phone number.'); need(b.address, 'Please enter your address.')
     return { row: await content.createInvestor(b, userId), existing: false }
   },
   async undo(row) { await content.deleteInvestor(row.id) },
@@ -38,10 +40,11 @@ const INVESTOR = accounts.ACTOR
 const KYC_LABELS = ['Means of identification', 'Proof of address', 'Company registration documents', 'Other document']
 const money = (cur, n) => `${cur} ${Number(n).toLocaleString('en-NG')}`
 
+const avatarUrl = async i => (i.avatar_document_id ? (await content.documentUrl(i.avatar_document_id, { expires: 3600 }).catch(() => null))?.url || null : null)
 router.get('/investor/me', mine(async (_req, res, i) => {
   const [mineInv, notes] = await Promise.all([content.listInvestments({ investor_id: i.id }), content.listNotifications('investor', i.id)])
   const live = mineInv.filter(x => ['active', 'matured'].includes(x.status))
-  res.json({ ...content.publicInvestor(i), kyc_labels: KYC_LABELS, counts: {
+  res.json({ ...content.publicInvestor(i), avatar_url: await avatarUrl(i), titles: content.INVESTOR_TITLES, controlled: content.CONTROLLED_FIELDS, change_groups: content.CHANGE_GROUPS, kyc_labels: KYC_LABELS, counts: {
     investments: mineInv.length, pending: mineInv.filter(x => x.status === 'pending').length, active: live.length,
     invested: live.reduce((s, x) => s + x.amount, 0), returns: mineInv.reduce((s, x) => s + x.payouts.filter(p => p.kind === 'return').reduce((n, p) => n + p.amount, 0), 0),
     unread: notes.filter(n => !n.read_at).length,
@@ -53,7 +56,7 @@ router.patch('/investor/me', mine(async (req, res, i) => {
   res.json(content.publicInvestor(after))
 }))
 /* identification and other KYC documents */
-router.get('/investor/documents', mine(async (_req, res, i) => res.json((await content.listDocuments({ investor_id: i.id })).filter(d => d.investment_id == null).map(docView))))
+router.get('/investor/documents', mine(async (_req, res, i) => res.json((await content.listDocuments({ investor_id: i.id })).filter(d => d.investment_id == null && ![content.SUPPORT_LABEL, content.PICTURE_LABEL].includes(d.label)).map(docView))))
 router.post('/investor/documents', mine(async (req, res, i) => {
   const count = (await content.listDocuments({ investor_id: i.id })).length
   const label = KYC_LABELS.includes(req.body?.label) ? req.body.label : String(req.body?.label || '').slice(0, 80)
@@ -71,6 +74,38 @@ router.delete('/investor/documents/:docId', mine(async (req, res, i) => {
   const d = await ownDoc(i, req.params.docId)
   if (d.uploaded_by != null || d.investment_id != null) throw bad('This document cannot be removed here.', 403)
   await content.deleteDocument(d.id); res.json({ deleted: true, id: d.id })
+}))
+
+/* profile picture: the first one is set at once; a replacement is a change request */
+router.post('/investor/avatar', mine(async (req, res, i) => res.status(201).json(await startDoc({ investor_id: i.id, label: content.PICTURE_LABEL }, { ...req.body, content_type: String(req.body?.content_type || '').startsWith('image/') ? req.body.content_type : 'x/invalid' }))))
+router.post('/investor/avatar/:docId/complete', mine(async (req, res, i) => {
+  const d = await finishDoc(req.params.docId, x => x.investor_id === i.id && x.label === content.PICTURE_LABEL)
+  const direct = !i.avatar_document_id
+  if (direct) await content.attachInvestorAvatar(i.id, d.id)
+  await audit({ actor: INVESTOR, action: 'upload', entity: 'investor', entityId: i.id, after: { picture: d.name, applied: direct } })
+  res.json({ ...docView(d._row), direct })
+}))
+
+/* change requests: what is on record changes only through review */
+router.post('/investor/change-docs', mine(async (req, res, i) => {
+  const count = (await content.listDocuments({ investor_id: i.id })).filter(d => d.label === content.SUPPORT_LABEL).length
+  res.status(201).json(await startDoc({ investor_id: i.id, label: content.SUPPORT_LABEL }, req.body, { limit: 40, count }))
+}))
+router.post('/investor/change-docs/:docId/complete', mine(async (req, res, i) => {
+  const d = await finishDoc(req.params.docId, x => x.investor_id === i.id && x.label === content.SUPPORT_LABEL)
+  res.json(docView(d._row))
+}))
+router.get('/investor/change-requests', mine(async (_req, res, i) => res.json(await content.listRequests({ investor_id: i.id }))))
+router.post('/investor/change-requests', mine(async (req, res, i) => {
+  const r = await content.createRequest(i, req.body || {})
+  await audit({ actor: INVESTOR, action: 'create', entity: 'investor_change', entityId: r.id, after: { investor: i.name, fields: Object.keys(r.changes), reason: r.reason } })
+  await noticeTeam({ headline: `${i.name} asked to change ${Object.keys(r.changes).map(f => f.replace(/_/g, ' ')).join(', ')} on their profile`, details: `Reason: ${r.reason}`, link: panelLink('/investments?tab=changes') })
+  res.status(201).json(r)
+}))
+router.post('/investor/change-requests/:id/cancel', mine(async (req, res, i) => {
+  const r = await content.cancelRequest(i, req.params.id)
+  await audit({ actor: INVESTOR, action: 'cancel', entity: 'investor_change', entityId: r.id })
+  res.json(r)
 }))
 
 /* opportunities */

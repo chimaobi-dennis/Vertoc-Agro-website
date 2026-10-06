@@ -63,12 +63,13 @@ router.get('/stats', h(async (req, res) => {
     posts: await count('posts'),
     enquiriesNew: await count('enquiries', q => q.eq('status', 'new')),
     users: await count('profiles', q => q.eq('active', true)),
+    investorChanges: hasUser(req.user, 'investments', 'view') ? await content.pendingRequests().catch(() => 0) : 0,
     inventoryOpen: hasUser(req.user, 'inventory', 'view') ? (await content.inventoryCounts().catch(() => ({ open: 0 }))).open : 0,
     approvalsPending: await Promise.resolve().then(async () => { const t = ['quote', 'purchase_order', 'client', 'supplier'].filter(x => mayApprove(req, x)); if (!t.length) return 0; return (await content.listPending(t)).length + (await content.listAmendments({ status: 'pending' })).filter(a => t.includes(a.entity)).length }).catch(() => 0),
     quotesOpen: await count('quotes', q => q.in('status', ['sent', 'viewed'])),
     purchasesPending: await count('purchases', q => q.eq('status', 'pending')),
     paymentsNew: await count('payments', q => q.eq('status', 'submitted')),
-    investmentsNew: await count('investments', q => q.eq('status', 'pending')),
+    investmentsNew: (await count('investments', q => q.eq('status', 'pending'))) + (hasUser(req.user, 'investments', 'view') ? await content.pendingRequests().catch(() => 0) : 0),
     deliveriesMoving: await count('po_shipments', q => q.in('status', ['in_transit', 'delivered'])),
     reviewsPending: await Promise.resolve().then(() => count('reviews', q => q.eq('status', 'pending'))).catch(() => 0),   // 0 until migration 009 exists
     // Procurement has its own inbox: its unread mail is counted apart (zeros until migration 014 exists).

@@ -330,12 +330,29 @@ export const publicOpportunity = o => ({ number: o.number, title: o.title, summa
 
 /* investors */
 export const KYC_STATUSES = ['pending', 'verified', 'rejected']
-const INVESTOR_KEYS = [['name', 200], ['phone', 60], ['id_type', 60], ['id_number', 80], ['bank_name', 120], ['bank_account_name', 160], ['bank_account_number', 40]]
+const INVESTOR_KEYS = [['name', 200], ['phone', 60], ['id_type', 60], ['id_number', 80], ['bank_name', 120], ['bank_account_name', 160], ['bank_account_number', 40],
+  ['first_name', 80], ['middle_name', 80], ['last_name', 80], ['nickname', 60], ['alt_phone', 60], ['state_of_origin', 80], ['lga', 80], ['nationality', 80]]
+export const INVESTOR_TITLES = ['Mr.', 'Mrs.', 'Miss', 'Ms.', 'Dr.', 'Prof.', 'Chief', 'Alhaji', 'Alhaja', 'Barr.', 'Engr.', 'Rev.', 'Odogwu', 'Pastor']
+/** Values that, once on record, only change through an approved change request (name, contact, identity, bank, picture). */
+export const CONTROLLED_FIELDS = ['name', 'title', 'first_name', 'middle_name', 'last_name', 'phone', 'email', 'address', 'state_of_origin', 'lga', 'date_of_birth', 'nationality', 'id_type', 'id_number', 'bank_name', 'bank_account_name', 'bank_account_number']
 export const safeInvestor = i => { if (!i) return i; const { auth_token_hash, auth_token_kind, auth_token_expires, ...rest } = i; return rest }
 export const publicInvestor = i => { const { notes, status, user_id, ...rest } = safeInvestor(i); return { ...rest, verified: Boolean(i.verified_at) } }
-function cleanInvestor(input, { partial = false } = {}) {
+export function cleanInvestor(input, { partial = false, existing = null } = {}) {
   const row = {}
   for (const [k, max] of INVESTOR_KEYS) if (has(input, k)) row[k] = tt(input[k], max)
+  if (has(input, 'title')) {
+    const t = tt(input.title, 12)
+    if (t && !INVESTOR_TITLES.includes(t) && !/^[A-Za-z.]{1,5}$/.test(t)) throw invalid('Choose a title from the list, or type your own (up to 5 letters).')
+    row.title = t
+  }
+  if (has(input, 'investor_type')) row.investor_type = input.investor_type === 'company' ? 'company' : 'individual'
+  if (has(input, 'date_of_birth')) {
+    if (!input.date_of_birth) row.date_of_birth = null
+    else { const d = String(input.date_of_birth).slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(d)) || d > today() || d < '1900-01-01') throw invalid('Please enter a valid date of birth.'); row.date_of_birth = d }
+  }
+  // An individual's name is made from the parts, unless a name is already on record (changing it takes a change request).
+  const parts = ['first_name', 'middle_name', 'last_name']
+  if (!has(input, 'name') && parts.some(k => has(row, k)) && !(existing?.name)) row.name = [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ')
   if (!partial && !row.name) throw invalid('Please enter your full name or company name.')
   if (has(row, 'name') && !row.name) throw invalid('Please enter your full name or company name.')
   if (has(input, 'address')) row.address = text(input.address, 500)
@@ -348,7 +365,16 @@ export async function createInvestor(input, userId) {
   return data
 }
 export async function updateInvestor(id, patch, { staff = false } = {}) {
-  const row = cleanInvestor(patch, { partial: true })
+  const cur = staff ? null : await getInvestor(id)
+  const row = cleanInvestor(patch, { partial: true, existing: cur })
+  if (!staff) {
+    // What is already on record is official: it changes only through an approved change request.
+    for (const k of CONTROLLED_FIELDS) {
+      if (!has(row, k)) continue
+      const was = cur?.[k] == null ? '' : String(cur[k])
+      if (was !== '' && was !== String(row[k] ?? '')) throw invalid('Some of these details are already on record, so they change only through a change request with a reason and supporting documents.', 409)
+    }
+  }
   if (staff) {
     if (has(patch, 'notes')) row.notes = text(patch.notes, 5000)
     if (has(patch, 'status')) { if (!['active', 'blocked'].includes(patch.status)) throw invalid('status must be active or blocked'); row.status = patch.status }
@@ -357,6 +383,7 @@ export async function updateInvestor(id, patch, { staff = false } = {}) {
   if (!Object.keys(row).length) return getInvestor(id)
   return unwrap(await supabase.from('investors').update(row).eq('id', Number(id)).select().single(), 'updateInvestor')
 }
+export async function attachInvestorAvatar(id, docId) { return unwrap(await supabase.from('investors').update({ avatar_document_id: Number(docId) }).eq('id', Number(id)).select('id').single(), 'attachInvestorAvatar') }
 export async function getInvestor(id) { return (unwrap(await supabase.from('investors').select('*').eq('id', Number(id)).limit(1), 'getInvestor'))?.[0] ?? null }
 export async function deleteInvestor(id) {
   const cur = await getInvestor(id); if (!cur) throw invalid('investor not found', 404)

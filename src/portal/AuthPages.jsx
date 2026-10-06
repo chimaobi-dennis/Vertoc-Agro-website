@@ -9,6 +9,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, Loader2, MailCheck } from 'lucide-react'
 import Turnstile from '../components/Turnstile'
 import PasswordInput from '../components/PasswordInput'
+import { TitleInput } from '../investor/fields'
 import { AuthCard, Label, Notice, Problem, accent, input, outline, primary } from '../supplier/ui'
 
 const safeNext = (n, base) => (n && n.startsWith(`${base}`) && !n.startsWith('//') ? n : base)
@@ -74,7 +75,8 @@ export function PortalRegister({ cfg }) {
   const field = x => (
     <label key={x.key} className={`block ${x.wide ? 'sm:col-span-2' : ''}`}>
       <Label hint={x.required ? '' : '(optional)'}>{x.label}{x.required ? ' *' : ''}</Label>
-      {x.type === 'textarea' ? <textarea rows={2} required={x.required} maxLength={500} className={input} value={f[x.key]} onChange={set(x.key)} autoComplete={x.autoComplete} />
+      {x.kind === 'title' ? <TitleInput required={x.required} value={f[x.key]} onChange={v => setF(o => ({ ...o, [x.key]: v }))} />
+        : x.type === 'textarea' ? <textarea rows={2} required={x.required} maxLength={500} className={input} value={f[x.key]} onChange={set(x.key)} autoComplete={x.autoComplete} />
         : x.options ? <select required={x.required} className={input} value={f[x.key]} onChange={set(x.key)}><option value="">Choose…</option>{x.options.map(o => <option key={o}>{o}</option>)}</select>
         : <input required={x.required} type={x.type || 'text'} maxLength={200} className={input} value={f[x.key]} onChange={set(x.key)} autoComplete={x.autoComplete} placeholder={x.placeholder} />}
       {x.hint && <span className="block text-xs text-muted-foreground mt-1.5">{x.hint}</span>}
