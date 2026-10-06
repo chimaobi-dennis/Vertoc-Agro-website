@@ -60,15 +60,15 @@ router.delete('/suppliers/:id', sup, h(async (req, res) => {
   await audit({ actor: req.user, action: 'delete', entity: 'supplier', entityId: before.id, before })
   res.json(r)
 }))
-// A fresh link for the supplier's account: confirm the address if they never did, else choose a new password.
+// A fresh link for the supplier's account: invite them to create a login when they have none, confirm the address if they never did, else choose a new password.
 router.post('/suppliers/:id/send-link', sup, h(async (req, res) => {
   const s = await content.getSupplier(req.params.id)
   if (!s) throw bad('supplier not found', 404)
-  if (!s.user_id) throw bad('This supplier has not opened an account yet.')
-  const kind = s.verified_at ? 'reset' : 'verify'
-  const token = await content.issueSupplierToken(s.id, kind, kind === 'reset' ? 2 : 24)
+  const kind = !s.user_id ? 'invite' : s.verified_at ? 'reset' : 'verify'
+  if (kind === 'invite' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s.email || '')) throw bad('Add an email address first: the invitation is sent there.')
+  const token = await content.issueSupplierToken(s.id, kind, { invite: 168, reset: 2, verify: 24 }[kind])
   const message = await sendSupplierLink({ supplier: s, kind, token })
-  await audit({ actor: req.user, action: kind === 'reset' ? 'password_link' : 'reinvite', entity: 'supplier', entityId: s.id, after: { email: s.email, message_id: message.id } })
+  await audit({ actor: req.user, action: { invite: 'invite', reset: 'password_link', verify: 'reinvite' }[kind], entity: 'supplier', entityId: s.id, after: { email: s.email, message_id: message.id } })
   res.json({ kind, message_id: message.id })
 }))
 

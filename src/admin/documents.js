@@ -6,7 +6,7 @@
  */
 import { supabase } from '../lib/supabase'
 import { adminFetch } from '../lib/adminApi'
-import { openInNewTab } from './format'
+import { openFile } from '../lib/openFile'
 
 export const ACCEPT = 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt'
 export const ACCEPT_IMAGE = 'image/*'
@@ -33,6 +33,8 @@ export async function uploadDocument(file, scope = {}) {
 export const documentUrl = (id, { download = false } = {}) =>
   adminFetch(`/documents/${id}/url${download ? '?download=1' : ''}`).then(r => r.url)
 
-export const openDocument = (id, { download = false } = {}) => openInNewTab(documentUrl(id, { download }))
+// Files open (or save) from a blob, like the invoice PDFs — never from the long signed storage address.
+export const fileSource = id => () => adminFetch(`/documents/${id}/url`).then(r => ({ url: r.url, name: r.document?.name, type: r.document?.content_type }))
+export const openDocument = (id, { download = false } = {}) => openFile(fileSource(id), { download })
 
 export const isImage = doc => doc?.kind === 'image' || String(doc?.content_type || '').startsWith('image/')

@@ -337,15 +337,17 @@ export async function sendBidRequest({ bid, tender, request, actor }) {
  * the email the account cannot be used, so the caller must know.
  */
 export async function sendSupplierLink({ supplier, kind, token }) {
-  const link = supplierLink(`/${kind === 'reset' ? 'reset' : 'verify'}?token=${token}`)
-  const tpl = await renderKey(kind === 'reset' ? 'supplier_reset' : 'supplier_verify', { supplier, link })
-  const d = DEFAULT_LINK_TEXT[kind === 'reset' ? 'reset' : 'verify']
+  const link = supplierLink(`/${kind === 'verify' ? 'verify' : 'reset'}?token=${token}${kind === 'invite' ? '&invite=1' : ''}`)
+  const toName = supplier.contact_person || supplier.company_name
+  const tpl = kind === 'invite' ? await renderKey('account_invite', { name: toName, email: supplier.email, portal: 'supplier', link }) : await renderKey(kind === 'reset' ? 'supplier_reset' : 'supplier_verify', { supplier, link })
+  const d = DEFAULT_LINK_TEXT[kind]
   return deliver({ actor: SYSTEM_ACTOR, to: supplier.email, toName: supplier.contact_person || supplier.company_name, subject: tpl.subject || d.subject, body: tpl.body || d.body, cta: tpl.cta || { label: d.cta, url: link }, scope: 'procurement', supplierId: supplier.id, internal: true, auto: true })
 }
 // A switched-off template must not lock suppliers out of their accounts.
 const DEFAULT_LINK_TEXT = {
   verify: { subject: 'Confirm your supplier account', body: 'Please confirm your email address with the button below to activate your supplier account. The link works once and expires in 24 hours.', cta: 'Confirm my email address' },
   reset: { subject: 'Choose a new password', body: 'Use the button below to choose a new password for your supplier account. The link works once and expires in 2 hours.', cta: 'Choose a new password' },
+  invite: { subject: 'You are invited to the supplier portal', body: 'We have set up a supplier account for you. Use the button below to choose your password; after that you can sign in with this email address. The link works once and expires in 7 days.', cta: 'Create my login' },
 }
 
 /** Email a PO / LPO: PDF attached, the supplier's link as the button, status -> issued. */
@@ -415,10 +417,11 @@ export async function sendOtp({ to, name, code, purpose, reference, minutes, cli
   return deliver({ actor: SYSTEM_ACTOR, to, toName: name, subject, body, internal: true, auto: true, clientId, quoteId, ...(procurement ? { scope: 'procurement', supplierId, poId } : {}) })
 }
 /** Confirm-email and reset-password links for client and investor accounts. Throws if it cannot be sent. */
-export async function sendAccountLink({ portal, kind, token, email, name, clientId = null }) {
-  const link = portalLink(portal, `/${kind === 'reset' ? 'reset' : 'verify'}?token=${token}`)
-  const tpl = await renderKey(kind === 'reset' ? 'account_reset' : 'account_verify', { name, email, portal, link })
-  const d = DEFAULT_LINK_TEXT[kind === 'reset' ? 'reset' : 'verify']
+export async function sendAccountLink({ portal, kind, token, email, name, clientId = null, supplierId = null }) {
+  const link = portalLink(portal, `/${kind === 'verify' ? 'verify' : 'reset'}?token=${token}${kind === 'invite' ? '&invite=1' : ''}`)
+  const tpl = await renderKey({ reset: 'account_reset', invite: 'account_invite' }[kind] || 'account_verify', { name, email, portal, link })
+  const d = DEFAULT_LINK_TEXT[kind]
+  if (supplierId != null) return deliver({ actor: SYSTEM_ACTOR, to: email, toName: name, subject: tpl.subject || d.subject.replace('supplier', portal), body: tpl.body || d.body.replace('supplier', portal), cta: tpl.cta || { label: d.cta, url: link }, scope: 'procurement', supplierId, internal: true, auto: true })
   return deliver({ actor: SYSTEM_ACTOR, to: email, toName: name, subject: tpl.subject || d.subject.replace('supplier', portal), body: tpl.body || d.body.replace('supplier', portal), cta: tpl.cta || { label: d.cta, url: link }, internal: true, auto: true, clientId })
 }
 /** Tell the team something arrived from a portal. Best effort. */

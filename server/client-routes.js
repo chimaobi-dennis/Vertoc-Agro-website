@@ -33,6 +33,8 @@ const accounts = portalAccounts({
   async undo(row, existing) { if (existing) await content.detachClientAccount(row.id); else await content.deleteClient(row.id) },
 })
 accounts.mount(router, h)
+/** Staff invite a client record to open its portal account (used by the panel). */
+export const inviteClient = (row, email) => accounts.invite(row, email)
 const mine = fn => h(async (req, res) => fn(req, res, await accounts.who(req)))
 const CLIENT = accounts.ACTOR
 

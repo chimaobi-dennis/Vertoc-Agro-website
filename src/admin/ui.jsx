@@ -1,5 +1,6 @@
 /* Shared admin primitives. See DESIGN.md for the language they implement. */
 import { forwardRef, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react'
 import PasswordField from '../components/PasswordInput'
 
@@ -127,7 +128,8 @@ export function Modal({ open, onClose, title, children, footer, wide = false }) 
     window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k)
   }, [open, onClose])
   if (!open) return null
-  return (
+  // Rendered on <body>: inside a card that animates (transform), `fixed` would be relative to that card, not the screen.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
       <div className="absolute inset-0 bg-primary/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
       <Card className={`relative z-10 w-full ${wide ? 'max-w-3xl' : 'max-w-xl'} max-h-[92vh] flex flex-col animate-fade-up rounded-b-none sm:rounded-b-2xl`}>
@@ -138,7 +140,8 @@ export function Modal({ open, onClose, title, children, footer, wide = false }) 
         <div className="p-6 overflow-y-auto">{children}</div>
         {footer && <div className="px-6 py-4 border-t border-border flex flex-wrap items-center justify-end gap-2">{footer}</div>}
       </Card>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

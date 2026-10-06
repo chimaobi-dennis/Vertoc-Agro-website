@@ -10,6 +10,8 @@ import { audit } from './audit.js'
 import * as content from './content.js'
 import { bad, handler, idOrNull } from './http.js'
 import { tellPortal } from './messaging.js'
+import { inviteClient } from './client-routes.js'
+import { inviteInvestor } from './investor-routes.js'
 
 const router = Router()
 const h = handler('admin')
@@ -63,8 +65,10 @@ router.get('/investment-opportunities', inv, h(async (req, res) => res.json(awai
 router.get('/investment-opportunities/:id', inv, h(async (req, res) => {
   const o = await content.getOpportunity(req.params.id)
   if (!o) throw bad('opportunity not found', 404)
-  const [investments, documents] = await Promise.all([content.listInvestments({ opportunity_id: o.id }), content.listDocuments({ opportunity_id: o.id })])
-  res.json({ ...o, investments, documents })
+  const [investments, docs] = await Promise.all([content.listInvestments({ opportunity_id: o.id }), content.listDocuments({ opportunity_id: o.id })])
+  // The cover picture is kept as a document under its own label; the form shows it apart from the terms and fact sheets.
+  const cover = docs.find(d => d.label === content.COVER_LABEL) || null
+  res.json({ ...o, investments, documents: docs.filter(d => d.label !== content.COVER_LABEL), cover: cover && { id: cover.id, name: cover.name } })
 }))
 router.post('/investment-opportunities', inv, h(async (req, res) => {
   const after = await content.createOpportunity(req.body || {}, req.user.id)
@@ -87,6 +91,27 @@ router.delete('/investment-opportunities/:id', inv, h(async (req, res) => {
 }))
 
 router.get('/investors', inv, h(async (req, res) => res.json(await content.listInvestors({ q: req.query.q || '' }))))
+router.post('/investors', inv, h(async (req, res) => {
+  const after = await content.createInvestor(req.body || {}, null)
+  await audit({ actor: req.user, action: 'create', entity: 'investor', entityId: after.id, after: content.safeInvestor(after) })
+  res.status(201).json(content.safeInvestor(after))
+}))
+// Invite by email: a link to choose a password (seven days), or to confirm an account that was never confirmed.
+const invited = async (req, res, { audience, entity, row, email, send }) => {
+  const r = await send(row, email)
+  await audit({ actor: req.user, action: 'invite', entity, entityId: row.id, after: { email: r.email, kind: r.kind } })
+  res.json({ ok: true, email: r.email, kind: r.kind })
+}
+router.post('/investors/:id/invite', inv, h(async (req, res) => {
+  const i = await content.getInvestor(req.params.id)
+  if (!i) throw bad('investor not found', 404)
+  await invited(req, res, { entity: 'investor', row: i, email: String(req.body?.email || '').trim() || i.email, send: inviteInvestor })
+}))
+router.post('/clients/:id/invite', can('clients'), h(async (req, res) => {
+  const c = await content.getClient(req.params.id)
+  if (!c) throw bad('client not found', 404)
+  await invited(req, res, { entity: 'client', row: c, email: String(req.body?.email || '').trim() || c.email || c.data?.email || '', send: inviteClient })
+}))
 router.get('/investors/:id', inv, h(async (req, res) => {
   const i = await content.getInvestor(req.params.id)
   if (!i) throw bad('investor not found', 404)

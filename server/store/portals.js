@@ -90,10 +90,25 @@ export async function issueAccountToken(t, id, kind, hours = 24) {
 }
 export async function accountForToken(t, token, kind, { consume = false } = {}) {
   if (!/^[0-9a-f]{64}$/.test(String(token || ''))) return null
-  const row = (unwrap(await supabase.from(table(t)).select('*').eq('auth_token_hash', sha256(token)).eq('auth_token_kind', kind).limit(1), 'accountForToken'))?.[0]
+  const kinds = [].concat(kind)   // 'reset' and 'invite' links both let the owner choose a password
+  const row = (unwrap(await supabase.from(table(t)).select('*').eq('auth_token_hash', sha256(token)).in('auth_token_kind', kinds).limit(1), 'accountForToken'))?.[0]
   if (!row || !row.auth_token_expires || row.auth_token_expires < new Date().toISOString()) return null
-  if (consume) await supabase.from(t).update({ auth_token_hash: null, auth_token_kind: null, auth_token_expires: null }).eq('id', row.id)
+  if (consume) await clearAccountToken(t, row.id)
   return row
+}
+export async function clearAccountToken(t, id) {
+  await supabase.from(table(t)).update({ auth_token_hash: null, auth_token_kind: null, auth_token_expires: null }).eq('id', Number(id))
+}
+/** An invited person chose a password: the login now exists, so tie it to their record. */
+export async function attachAccountUser(t, id, userId) {
+  return unwrap(await supabase.from(table(t)).update({ user_id: String(userId) }).eq('id', Number(id)).select().single(), 'attachAccountUser')
+}
+/** Staff invite someone: make sure the record carries the address the link goes to. */
+export async function setAccountEmail(t, id, email) {
+  const e = tt(email, 200).toLowerCase(); if (!EMAIL_RE.test(e)) throw invalid('Please enter a valid email address.')
+  const { data, error } = await supabase.from(table(t)).update({ email: e }).eq('id', Number(id)).select().single()
+  if (error) throw (error.code === '23505' ? invalid('Another record already uses this email address.', 409) : fail(error, 'setAccountEmail'))
+  return data
 }
 export async function accountByUser(t, userId) {
   return (unwrap(await supabase.from(table(t)).select('*').eq('user_id', String(userId)).limit(1), 'accountByUser'))?.[0] ?? null
@@ -294,6 +309,19 @@ export async function deleteOpportunity(id) {
   if (used.length) throw invalid('People have applied to this opportunity. Close or cancel it instead of deleting it.')
   unwrap(await supabase.from('investment_opportunities').delete().eq('id', cur.id), 'deleteOpportunity')
   return { deleted: true, id: cur.id, number: cur.number }
+}
+/* The cover picture of an opportunity is an ordinary document under this label (no extra column to migrate). */
+export const COVER_LABEL = 'Cover image'
+export async function opportunityCovers(ids) {
+  if (!ids.length) return {}
+  const { data, error } = await supabase.from('documents').select('id,name,opportunity_id,label,status,content_type,created_at').in('opportunity_id', ids.map(Number)).eq('label', COVER_LABEL).eq('status', 'ready').order('created_at', { ascending: false })
+  if (error) { if (missing(error)) return {}; throw fail(error, 'opportunityCovers') }
+  const out = {}; for (const d of data || []) out[d.opportunity_id] ??= d     // newest wins
+  return out
+}
+export async function setDocumentLabel(id, label) {
+  const l = tt(label, 80)
+  return unwrap(await supabase.from('documents').update({ label: l }).eq('id', Number(id)).select().single(), 'setDocumentLabel')
 }
 /** What an investor sees of an opportunity: no internal fields, no other investors. */
 export const publicOpportunity = o => ({ number: o.number, title: o.title, summary: o.summary, description: o.description, currency: o.currency, min_amount: o.min_amount, tenor_months: o.tenor_months,

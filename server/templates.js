@@ -167,6 +167,13 @@ export const DEFAULT_TEMPLATES = {
     cta_label: 'Choose a new password',
     variables: ['name', 'email', 'portal', 'link', 'company_name', 'site_name'],
   },
+  account_invite: {
+    name: 'Portal invitation (client / supplier / investor)', description: 'Sent when staff create a client, supplier or investor and invite them: the link lets them choose a password and open their account.',
+    subject: 'You are invited to the {{site_name}} {{portal}} portal',
+    body: 'Hello {{name}},\n\n{{company_name}} has set up a {{portal}} account for you. Use the button below to choose your password; after that you can sign in with this email address.\n\nThe link works once and expires in 7 days. If you were not expecting this, you can ignore this email.',
+    cta_label: 'Create my login',
+    variables: ['name', 'email', 'portal', 'link', 'company_name', 'site_name'],
+  },
   bid_unlocked: {
     name: 'Bid unlocked (to the supplier)', description: 'Procurement. Sent when the team unlocks a bid after the deadline so the supplier can adjust it.',
     subject: 'Your bid on {{tender_number}} has been reopened for changes',
@@ -291,7 +298,7 @@ export async function buildVars(key, ctx = {}) {
     }
   }
   if (key === 'otp_code') return { ...base, name: ctx.name || 'there', code: ctx.code, purpose: ctx.purpose, reference: ctx.reference, minutes: String(ctx.minutes || 10) }
-  if (key === 'account_verify' || key === 'account_reset') return { ...base, name: ctx.name || 'there', email: ctx.email || '', portal: ctx.portal || 'portal', link: ctx.link || '' }
+  if (key === 'account_verify' || key === 'account_reset' || key === 'account_invite') return { ...base, name: ctx.name || 'there', email: ctx.email || '', portal: ctx.portal || 'portal', link: ctx.link || '' }
   if (key === 'bid_unlocked') { const b = ctx.bid || {}, t = ctx.tender || {}; return { ...base, supplier_name: b.company_name, contact_person: b.contact_person || b.company_name, tender_number: t.number, tender_title: t.title, reason: ctx.reason || '', link: ctx.link || '' } }
   if (key === 'portal_notice' || key === 'portal_update') return { ...base, name: ctx.name || 'there', headline: ctx.headline || '', details: ctx.details || '', link: ctx.link || '' }
   if (key === 'supplier_blank') {
@@ -325,6 +332,7 @@ export const SAMPLE_VARS = {
   otp_code: { name: 'Alessia Loghin', code: '482913', purpose: 'accept invoice', reference: 'VA-2026-0007', minutes: '10' },
   account_verify: { name: 'Alessia Loghin', email: 'alessia@example.com', portal: 'client', link: 'https://vertocagro.com/client/verify?token=example' },
   account_reset: { name: 'Alessia Loghin', email: 'alessia@example.com', portal: 'client', link: 'https://vertocagro.com/client/reset?token=example' },
+  account_invite: { name: 'Alessia Loghin', email: 'alessia@example.com', portal: 'client', link: 'https://vertocagro.com/client/reset?token=example&invite=1' },
   bid_unlocked: { ...SAMPLE_BID, reason: 'The price was entered per bag instead of per tonne.', link: 'https://vertocagro.com/supplier/bids/14' },
   portal_notice: { headline: 'Loghin Foods uploaded a payment receipt for VA-2026-0007', details: 'Amount: USD 25,800.00\nReference: TRF-99812', link: 'https://vertocagro.com/staff360/payments' },
   portal_update: { name: 'Alessia Loghin', headline: 'Your payment of USD 25,800.00 for VA-2026-0007 has been confirmed', details: '', link: 'https://vertocagro.com/client' },

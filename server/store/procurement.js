@@ -151,7 +151,7 @@ export async function issueSupplierToken(id, kind, hours = 24) {
 /** The supplier a token belongs to, or null. `consume` clears it so the link works once. */
 export async function supplierForToken(token, kind, { consume = false } = {}) {
   if (!/^[0-9a-f]{64}$/.test(String(token || ''))) return null
-  const row = (unwrap(await supabase.from('suppliers').select('*').eq('auth_token_hash', sha256(token)).eq('auth_token_kind', kind).limit(1), 'supplierForToken'))?.[0]
+  const row = (unwrap(await supabase.from('suppliers').select('*').eq('auth_token_hash', sha256(token)).in('auth_token_kind', [].concat(kind)).limit(1), 'supplierForToken'))?.[0]
   if (!row || !row.auth_token_expires || row.auth_token_expires < new Date().toISOString()) return null
   if (consume) await supabase.from('suppliers').update({ auth_token_hash: null, auth_token_kind: null, auth_token_expires: null }).eq('id', row.id)
   return row

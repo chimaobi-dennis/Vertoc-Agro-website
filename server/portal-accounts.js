@@ -52,6 +52,31 @@ export function portalAccounts({ kind, table, create, undo, nameOf, blocked, onV
     return row
   }
 
+  /** Create the Supabase login for a record staff made, with the password the person just chose. */
+  async function createInvitedLogin(sb, row, password) {
+    const { data, error } = await sb.auth.admin.createUser({ email: row.email, password, email_confirm: true, user_metadata: { account_type: kind, name: clean(nameOf(row), 120) } })
+    if (error) {
+      if (/already|registered|exists/i.test(error.message)) throw bad('A login already exists for this email address. Use "Forgot password" on the sign-in page.', 409)
+      if (/password/i.test(error.message)) throw bad(error.message)
+      throw new Error(`invite: ${error.message}`)
+    }
+    await sb.from('profiles').delete().eq('id', data.user.id).eq('active', false).then(() => {}, () => {})   // never a staff profile
+    try { await content.attachAccountUser(table, row.id, data.user.id) } catch (e) { await sb.auth.admin.deleteUser(data.user.id).catch(() => {}); throw e }
+    return data.user.id
+  }
+
+  /** Staff invite the person behind a record: a seven-day link to choose a password. Throws if the email cannot be sent. */
+  async function invite(row, email) {
+    if (row.user_id && row.verified_at) throw bad('This person already has a login. Send a password link instead.', 409)
+    const to = email || row.email
+    const rec = to && to.toLowerCase() !== String(row.email || '').toLowerCase() ? await content.setAccountEmail(table, row.id, to) : row
+    if (!isEmail(rec.email)) throw bad('Add an email address first: the invitation is sent there.')
+    // An unconfirmed self-registration already has a login: let them confirm it; otherwise they choose a password.
+    if (rec.user_id) { await link(rec, 'verify', await content.issueAccountToken(table, rec.id, 'verify', 24)); return { kind: 'verify', email: rec.email } }
+    await link(rec, 'invite', await content.issueAccountToken(table, rec.id, 'invite', 168))
+    return { kind: 'invite', email: rec.email }
+  }
+
   function mount(router, h) {
     const p = `/${kind}`
     router.post(`${p}/register`, h(async (req, res) => {
@@ -115,12 +140,19 @@ export function portalAccounts({ kind, table, create, undo, nameOf, blocked, onV
     router.post(`${p}/reset`, h(async (req, res) => {
       if (throttled(`${kind}-reset`, clientIp(req), 10)) throw bad('Too many attempts. Please try again later.', 429)
       if (!okPassword(req.body?.password)) throw bad(PASSWORD_RULE)
-      const row = await content.accountForToken(table, req.body?.token, 'reset', { consume: true })
-      if (!row || !row.user_id) throw bad('This link is no longer valid. Ask for a new one from the sign-in page.', 410)
-      const { error } = await (await supabase()).auth.admin.updateUserById(row.user_id, { password: req.body.password, email_confirm: true })
-      if (error) throw (/password/i.test(error.message) ? bad(error.message) : new Error(`reset: ${error.message}`))
+      // 'invite' links come from staff who made the record: the login does not exist until the person chooses a password.
+      const row = await content.accountForToken(table, req.body?.token, ['reset', 'invite'])
+      if (!row || (!row.user_id && row.auth_token_kind !== 'invite')) throw bad('This link is no longer valid. Ask for a new one from the sign-in page.', 410)
+      const sb = await supabase()
+      let userId = row.user_id
+      if (!userId) userId = await createInvitedLogin(sb, row, req.body.password)
+      else {
+        const { error } = await sb.auth.admin.updateUserById(userId, { password: req.body.password, email_confirm: true })
+        if (error) throw (/password/i.test(error.message) ? bad(error.message) : new Error(`reset: ${error.message}`))
+      }
+      await content.clearAccountToken(table, row.id)
       if (!row.verified_at) { await content.markAccountVerified(table, row.id); await onVerified?.(row) }
-      await audit({ actor: ACTOR, action: 'password_reset', entity: kind, entityId: row.id, after: { email: row.email } })
+      await audit({ actor: ACTOR, action: row.user_id ? 'password_reset' : 'accept_invite', entity: kind, entityId: row.id, after: { email: row.email } })
       res.json({ ok: true, email: row.email })
     }))
     // Change the password while signed in: the current one is asked again.
@@ -140,7 +172,7 @@ export function portalAccounts({ kind, table, create, undo, nameOf, blocked, onV
     router.get(`${p}/notifications`, h(async (req, res) => res.json(await content.listNotifications(kind, (await who(req)).id))))
     router.post(`${p}/notifications/read`, h(async (req, res) => res.json(await content.readNotifications(kind, (await who(req)).id, req.body?.ids || null))))
   }
-  return { who, mount, ACTOR }
+  return { who, mount, invite, ACTOR }
 }
 
 /** Start and finish a file upload for a portal user: metadata here, bytes straight to storage. */

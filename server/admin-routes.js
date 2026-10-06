@@ -670,6 +670,13 @@ router.get('/documents/:id/url', anyDocs, h(async (req, res) => {
   await docFor(req)
   res.json(await exposing(content.documentUrl)(req.params.id, { download: req.query.download === '1' }))
 }))
+// The label says what a file is (Terms and conditions, Fact sheet …); only the label can change.
+router.patch('/documents/:id', anyDocs, h(async (req, res) => {
+  const before = await docFor(req, { any: true, action: 'edit' })
+  const after = await content.setDocumentLabel(before.id, req.body?.label)
+  await audit({ actor: req.user, action: 'update', entity: 'document', entityId: before.id, before: { label: before.label }, after: { label: after.label } })
+  res.json(after)
+}))
 router.delete('/documents/:id', anyDocs, h(async (req, res) => {
   const before = await docFor(req, { any: true, action: 'delete' })
   const r = await content.deleteDocument(before.id)

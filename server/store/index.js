@@ -76,7 +76,8 @@ export const {
 const portals = hasSupabase ? await import('./portals.js') : {}
 export const {
   PORTALS_HINT, OTP_MINUTES, issueOtp, consumeOtp, maskEmail, notify, listNotifications, readNotifications,
-  issueAccountToken, accountForToken, accountByUser, accountByEmail, markAccountVerified,
+  issueAccountToken, accountForToken, clearAccountToken, attachAccountUser, setAccountEmail, accountByUser, accountByEmail, markAccountVerified,
+  COVER_LABEL, opportunityCovers, setDocumentLabel,
   publicClient, findClientRecordByEmail, createClientAccount, attachClientAccount, detachClientAccount, updateClientAccount,
   PAYMENT_STATUSES, listPayments, getPayment, createPayment, setPaymentReceipt, updatePayment, deletePayment, paidByQuote, listClientInvoices,
   OPPORTUNITY_STATUSES, INVESTMENT_STATUSES, INVESTMENT_LABELS, opportunityState, listOpportunities, getOpportunity, createOpportunity, updateOpportunity, deleteOpportunity, publicOpportunity,

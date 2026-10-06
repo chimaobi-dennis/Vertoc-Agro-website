@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, FileText, Loader2, MapPin, Paperclip, Plus, Truck } from 'lucide-react'
+import { openFile } from '../lib/openFile'
 import { supplierFetch, uploadSupplierFile } from '../lib/supplier'
 import { Bone } from '../components/Skeleton'
 import { DELIVERY_LABELS, FILE_ACCEPT, PO_KINDS, fileSize, fmtDay, fmtMoment, qty } from '../lib/procurement'
@@ -89,7 +90,7 @@ function Shipment({ s, labels, run, busy }) {
   const moving = ['planned', 'in_transit'].includes(s.status)
   const report = (body, ok) => run(async () => { await supplierFetch(`/supplier/shipments/${s.id}/report`, { method: 'POST', body }); setR({ location: '', note: '' }) }, ok)
   const add = async list => { for (const file of list) { setQueue(q => [...q, { name: file.name }]); try { await uploadSupplierFile(file, `/supplier/shipments/${s.id}/files`, { label }); setQueue(q => q.filter(x => x.name !== file.name)); await run(async () => {}) } catch (e) { setQueue(q => q.map(x => (x.name === file.name ? { ...x, error: e.message } : x))) } } }
-  const view = async d => { try { const { url } = await supplierFetch(`/supplier/shipments/${s.id}/files/${d.id}/url`); window.open(url, '_blank', 'noopener') } catch { /* shown by the next action */ } }
+  const view = async d => { try { await openFile(() => supplierFetch(`/supplier/shipments/${s.id}/files/${d.id}/url`).then(r => ({ url: r.url, name: d.name }))) } catch { /* shown by the next action */ } }
   const cell = (l, v) => <div><dt className="text-xs text-muted-foreground">{l}</dt><dd className="font-medium break-words">{v || '—'}</dd></div>
   return (
     <Card>

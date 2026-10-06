@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, FileText, Plus, Search, Trash2, XCircle } from 'lucide-react'
+import { openFile } from '../lib/openFile'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { Alert, Badge, Button, Card, Field, Input, Modal, PageHeader, Select, Table, Td, Textarea, useToast } from './ui'
@@ -32,7 +33,7 @@ export function PaymentsPanel({ clientId = null, quoteId = null, status = 'all',
     { key: 'paid', label: 'Payment date, latest first', get: 'paid_on', desc: true }, { key: 'paid_asc', label: 'Payment date, earliest first', get: 'paid_on' },
     { key: 'amount', label: 'Amount, highest first', get: 'amount', desc: true }, { key: 'status', label: 'Status', get: r => FILTERS.indexOf(r.status) }, { key: 'invoice', label: 'Invoice number', get: r => r.quote?.number },
   ] })
-  const receipt = async p => { try { const r = await adminFetch(`/payments/${p.id}/receipt`); window.open(r.url, '_blank', 'noopener') } catch (e) { toast(e.message, 'error') } }
+  const receipt = async p => { try { await openFile(() => adminFetch(`/payments/${p.id}/receipt`).then(r => ({ url: r.url, name: r.document?.name, type: r.document?.content_type }))) } catch (e) { toast(e.message, 'error') } }
   const remove = async p => { if (!window.confirm('Delete this payment record? This cannot be undone.')) return; try { await adminFetch(`/payments/${p.id}`, { method: 'DELETE' }); toast('Payment deleted'); load() } catch (e) { toast(e.message, 'error') } }
   const wide = !clientId && !quoteId
 

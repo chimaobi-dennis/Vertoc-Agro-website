@@ -31,6 +31,8 @@ const accounts = portalAccounts({
   async undo(row) { await content.deleteInvestor(row.id) },
 })
 accounts.mount(router, h)
+/** Staff invite an investor record to open its portal account (used by the panel). */
+export const inviteInvestor = (row, email) => accounts.invite(row, email)
 const mine = fn => h(async (req, res) => fn(req, res, await accounts.who(req)))
 const INVESTOR = accounts.ACTOR
 const KYC_LABELS = ['Means of identification', 'Proof of address', 'Company registration documents', 'Other document']
@@ -60,6 +62,7 @@ router.post('/investor/documents', mine(async (req, res, i) => {
 router.post('/investor/documents/:docId/complete', mine(async (req, res, i) => {
   const d = await finishDoc(req.params.docId, x => x.investor_id === i.id)
   await audit({ actor: INVESTOR, action: 'upload', entity: 'document', entityId: d.id, after: { name: d.name, investor_id: i.id } })
+  await noticeTeam({ headline: `${i.name} uploaded ${d.label ? d.label.toLowerCase() : 'a document'} for identity checking`, details: `File: ${d.name}`, link: panelLink(`/investors/${i.id}`) })
   res.json(docView(d._row))
 }))
 const ownDoc = async (i, id) => { const d = await content.getDocument(id, { any: true }); if (!d || d.investor_id !== i.id) throw bad('document not found', 404); return d }
@@ -71,16 +74,20 @@ router.delete('/investor/documents/:docId', mine(async (req, res, i) => {
 }))
 
 /* opportunities */
+// The cover picture is signed for an hour: the page shows it in an <img>.
+const withCover = async (o, cover) => ({ ...content.publicOpportunity(o), image_url: cover ? (await content.documentUrl(cover.id, { expires: 3600 }).catch(() => null))?.url || null : null })
 router.get('/investor/opportunities', mine(async (_req, res) => {
   const all = (await content.listOpportunities({})).filter(o => ['published', 'closed'].includes(o.status))
+  const covers = await content.opportunityCovers(all.map(o => o.id))
   const rank = { open: 0, upcoming: 1, closed: 2 }
-  res.json(all.map(content.publicOpportunity).sort((a, b) => (rank[a.state] ?? 3) - (rank[b.state] ?? 3)))
+  res.json((await Promise.all(all.map(o => withCover(o, covers[o.id])))).sort((a, b) => (rank[a.state] ?? 3) - (rank[b.state] ?? 3)))
 }))
 const liveOpp = async number => { const o = await content.getOpportunity(number); if (!o || !['published', 'closed'].includes(o.status)) throw bad('not found', 404); return o }
 router.get('/investor/opportunities/:number', mine(async (req, res) => {
   const o = await liveOpp(req.params.number)
-  const docs = await content.listDocuments({ opportunity_id: o.id })
-  res.json({ ...content.publicOpportunity(o), documents: docs.map(docView) })
+  const docs = (await content.listDocuments({ opportunity_id: o.id })).filter(d => d.label !== content.COVER_LABEL)
+  const cover = (await content.opportunityCovers([o.id]))[o.id]
+  res.json({ ...(await withCover(o, cover)), documents: docs.map(docView) })
 }))
 router.get('/investor/opportunities/:number/documents/:docId/url', mine(async (req, res) => {
   const o = await liveOpp(req.params.number)

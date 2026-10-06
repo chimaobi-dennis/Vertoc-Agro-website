@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useSearchParams } from 'react-router-dom'
 import { ArrowRight, Banknote, Bell, FileText, LayoutDashboard, Loader2, MapPin, Paperclip, Truck, Upload, UserRound } from 'lucide-react'
+import { openFile } from '../lib/openFile'
 import { clientPortal } from '../lib/portal'
 import { Bone } from '../components/Skeleton'
 import { PortalForgot, PortalLogin, PortalRegister, PortalReset, PortalVerify } from '../portal/AuthPages'
@@ -161,7 +162,7 @@ function Payments() {
       setF({ quote_id: '', amount: '', paid_on: today, method: 'Bank transfer', reference: '', note: '' }); setFile(null); if (sp.get('invoice')) setSp({}, { replace: true }); reload()
     } catch (x) { setProblem(x.message) } finally { setBusy(false) }
   }
-  const openReceipt = async p => { try { const { url } = await api(`/client/payments/${p.id}/receipt/url`); window.open(url, '_blank', 'noopener') } catch (x) { setProblem(x.message) } }
+  const openReceipt = async p => { try { await openFile(() => api(`/client/payments/${p.id}/receipt/url`).then(r => ({ url: r.url, name: p.receipt_name }))) } catch (x) { setProblem(x.message) } }
   const addReceipt = async (p, picked) => { if (!picked) return; setBusy(true); setProblem(null); try { await upload(picked, `/client/payments/${p.id}/receipt`); setOk('Receipt added.'); reload() } catch (x) { setProblem(x.message) } finally { setBusy(false) } }
   return (
     <div className="space-y-8">
@@ -220,7 +221,7 @@ function Account() {
   const set = k => e => { setF(x => ({ ...x, [k]: e.target.value })); setOk(false) }
   const save = async e => { e.preventDefault(); setBusy(true); setErr(null); setOk(false); try { await api('/client/me', { method: 'PATCH', body: f }); await refresh(); setOk(true) } catch (x) { setErr(x.message) } finally { setBusy(false) } }
   const add = async list => { for (const file of list) { setQueue(q => [...q, { name: file.name }]); try { await upload(file, '/client/documents', { label: label || docs?.labels?.[0] }); setQueue(q => q.filter(x => x.name !== file.name)); reloadDocs() } catch (x) { setQueue(q => q.map(v => (v.name === file.name ? { ...v, error: x.message } : v))) } } }
-  const open = async d => { try { const { url } = await api(`/client/documents/${d.id}/url`); window.open(url, '_blank', 'noopener') } catch (x) { setErr(x.message) } }
+  const open = async d => { try { await openFile(() => api(`/client/documents/${d.id}/url`).then(r => ({ url: r.url, name: d.name, type: d.content_type }))) } catch (x) { setErr(x.message) } }
   return (
     <div className="space-y-6">
       <form onSubmit={save} className="bg-card border border-border rounded-2xl p-6 md:p-8 max-w-3xl space-y-4">

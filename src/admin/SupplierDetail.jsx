@@ -2,7 +2,7 @@
    orders, documents and conversation. */
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Archive, ArchiveRestore, ArrowLeft, BadgeCheck, Ban, FileSignature, FolderOpen, Gavel, KeyRound, Mail, Plus, Trash2, UserRound } from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowLeft, BadgeCheck, Ban, FileSignature, FolderOpen, Gavel, KeyRound, Mail, Plus, Send, Trash2, UserRound } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Empty, Field, Input, PageHeader, Table, Tabs, Td, Textarea, confirmDelete, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
@@ -28,7 +28,7 @@ export default function SupplierDetail() {
   const nav = useNavigate()
   const [sp, setSp] = useSearchParams()
   const tab = editing && TABS.some(t => t.key === sp.get('tab')) ? sp.get('tab') : 'profile'
-  const { prefill } = useLocation().state || {}
+  const { prefill, flash } = useLocation().state || {}
   const [s, setS] = useState(null)
   const [draft, setDraft, draftInfo] = useDraft('supplier:new', null, { enabled: !editing && !prefill })
   const [form, setForm] = useState(() => ({ ...EMPTY, ...(prefill || (!editing && draft) || {}) }))
@@ -38,6 +38,8 @@ export default function SupplierDetail() {
   const [compose, setCompose] = useState(false)
   const [msgKey, setMsgKey] = useState(0)
   const [toast, toastEl] = useToast()
+  const [inviteNow, setInviteNow] = useState(true)
+  useEffect(() => { if (flash) toast(flash) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const take = x => { setS(prev => ({ ...prev, ...x })); setForm(Object.fromEntries(Object.keys(EMPTY).map(k => [k, x[k] ?? '']))) }
   useEffect(() => { if (editing) adminFetch(`/suppliers/${id}`).then(take).catch(e => setErr(e.message)) }, [id, editing])
@@ -48,14 +50,19 @@ export default function SupplierDetail() {
     e.preventDefault(); setErr(null); setBusy(true)
     try {
       if (editing) { const { email, ...rest } = form; take(await adminFetch(`/suppliers/${id}`, { method: 'PATCH', body: s.has_account ? rest : form })); toast('Saved') }
-      else { const c = await adminFetch('/suppliers', { method: 'POST', body: form }); draftInfo.clear(); nav(`/staff360/suppliers/${c.id}`, { replace: true }) }
+      else {
+        const c = await adminFetch('/suppliers', { method: 'POST', body: form })
+        let flash = null
+        if (inviteNow && form.email) { try { await adminFetch(`/suppliers/${c.id}/send-link`, { method: 'POST' }); flash = `Supplier created. Invitation sent to ${form.email}.` } catch (x) { flash = `Supplier created, but the invitation was not sent: ${x.message}` } }
+        draftInfo.clear(); nav(`/staff360/suppliers/${c.id}`, { replace: true, state: { flash } })
+      }
     } catch (x) { setErr(x.message) } finally { setBusy(false) }
   }
   const setStatus = async (status, ask) => {
     if (ask && !window.confirm(ask)) return
     try { take(await adminFetch(`/suppliers/${id}`, { method: 'PATCH', body: { status } })); toast(status === 'active' ? 'Supplier restored' : `Supplier ${status}`) } catch (x) { toast(x.message, 'error') }
   }
-  const sendLink = async () => { try { const r = await adminFetch(`/suppliers/${id}/send-link`, { method: 'POST' }); toast(r.kind === 'reset' ? 'Password link sent' : 'Confirmation link sent') } catch (x) { toast(x.message, 'error') } }
+  const sendLink = async () => { try { const r = await adminFetch(`/suppliers/${id}/send-link`, { method: 'POST' }); toast(r.kind === 'reset' ? 'Password link sent' : r.kind === 'invite' ? 'Invitation sent' : 'Confirmation link sent') } catch (x) { toast(x.message, 'error') } }
   const remove = async () => {
     if (!confirmDelete(s.company_name)) return
     try { await adminFetch(`/suppliers/${id}`, { method: 'DELETE' }); nav('/staff360/suppliers') } catch (x) { toast(x.message, 'error') }
@@ -93,6 +100,7 @@ export default function SupplierDetail() {
               <Field label="Internal notes" hint="Only your team sees these." className="md:col-span-2"><Textarea rows={3} {...bind('notes')} /></Field>
             </Card>
             <div className="flex flex-wrap gap-3">
+              {!editing && <label className="w-full flex items-center gap-2 text-sm"><input type="checkbox" checked={inviteNow} onChange={e => setInviteNow(e.target.checked)} />Email an invitation to create a login for the supplier portal <span className="text-muted-foreground">(needs an email address above)</span></label>}
               <Button type="submit" variant="accent" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Create supplier'}</Button>
               {editing && s && s.status !== 'archived' && <Button type="button" variant="outline" onClick={() => setStatus('archived')}><Archive className="w-4 h-4" />Archive</Button>}
               {editing && s && s.status !== 'active' && <Button type="button" variant="outline" onClick={() => setStatus('active')}><ArchiveRestore className="w-4 h-4" />Restore</Button>}
@@ -113,7 +121,12 @@ export default function SupplierDetail() {
                   </dl>
                   <Button type="button" variant="outline" className="w-full mt-4 h-9" onClick={sendLink}><KeyRound className="w-4 h-4" />{s.verified_at ? 'Send a password link' : 'Send the confirmation again'}</Button>
                 </>
-              ) : <p className="text-muted-foreground">No account yet. When they register on the website with <b className="text-foreground break-all">{s.email || 'their email address'}</b>, the account is attached to this record, with every bid made from that address.</p>}
+              ) : (
+                <>
+                  <p className="text-muted-foreground">No login yet. {s.email ? <>Invite them: <b className="text-foreground break-all">{s.email}</b> gets a link to create a password. Or they can register on the website with that address; the account is attached to this record, with every bid made from it.</> : 'Add an email address, save, then invite them to create a login.'}</p>
+                  {s.email && <Button type="button" variant="outline" className="w-full mt-4 h-9" onClick={sendLink}><Send className="w-4 h-4" />Send invitation</Button>}
+                </>
+              )}
             </Card>
           )}
         </div>

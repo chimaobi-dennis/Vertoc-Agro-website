@@ -5,6 +5,7 @@ import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Field, Input, PageHeader, Table, Tabs, Td, confirmDelete, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import DynamicField from './DynamicField'
+import InviteBox from './InviteBox'
 import Composer from './Composer'
 import { DraftNotice, useDraft } from './useDraft'
 import { DocumentsPanel, MessagesPanel, PurchasesPanel, QuotesPanel } from './ClientTabs'
@@ -26,7 +27,7 @@ export default function ClientDetail() {
   const nav = useNavigate()
   const [sp, setSp] = useSearchParams()
   const tab = editing && TABS.some(t => t.key === sp.get('tab')) ? sp.get('tab') : 'profile'
-  const { prefill, linkEnquiry } = useLocation().state || {}
+  const { prefill, linkEnquiry, flash } = useLocation().state || {}
   const [fields, setFields] = useState(null)
   const [client, setClient] = useState(null)
   const [enqs, setEnqs] = useState([])
@@ -36,10 +37,12 @@ export default function ClientDetail() {
   const [data, setData] = useState(prefill?.data || (!editing && draft?.data) || {})
   useEffect(() => { if (!editing && !prefill) setDraft({ name, data }) }, [name, data, editing]) // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false)
+  const [inviteNow, setInviteNow] = useState(true)
   const [err, setErr] = useState(null)
   const [compose, setCompose] = useState(null)   // { to, subject, body }
   const [msgKey, setMsgKey] = useState(0)
   const [toast, toastEl] = useToast()
+  useEffect(() => { if (flash) toast(flash) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     adminFetch('/client-fields').then(setFields).catch(e => setErr(e.message))
@@ -57,7 +60,9 @@ export default function ClientDetail() {
       else {
         const c = await adminFetch('/clients', { method: 'POST', body: { name, data } })
         if (linkEnquiry) await adminFetch(`/enquiries/${linkEnquiry}`, { method: 'PATCH', body: { client_id: c.id } }).catch(() => {})
-        draftInfo.clear(); nav(`/staff360/clients/${c.id}`, { replace: true }); return
+        let flash = null
+        if (inviteNow && data.email) { try { const r = await adminFetch(`/clients/${c.id}/invite`, { method: 'POST', body: { email: data.email } }); flash = `Client created. Invitation sent to ${r.email}.` } catch (x) { flash = `Client created, but the invitation was not sent: ${x.message}` } }
+        draftInfo.clear(); nav(`/staff360/clients/${c.id}`, { replace: true, state: { flash } }); return
       }
     } catch (x) { setErr(x.message) } finally { setBusy(false) }
   }
@@ -107,6 +112,7 @@ export default function ClientDetail() {
               )}
             </Card>
             <div className="flex flex-wrap gap-3">
+              {!editing && <label className="w-full flex items-center gap-2 text-sm"><input type="checkbox" checked={inviteNow} onChange={e => setInviteNow(e.target.checked)} />Email an invitation to create a login for the client portal <span className="text-muted-foreground">(needs an email address above)</span></label>}
               <Button type="submit" variant="accent" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Create client'}</Button>
               {editing && client && (client.status === 'active'
                 ? <Button type="button" variant="outline" onClick={() => setStatus('archived')}><Archive className="w-4 h-4" />Archive</Button>
@@ -115,6 +121,12 @@ export default function ClientDetail() {
             </div>
           </form>
 
+          {editing && client && client.status === 'active' && (
+            <div className="mt-8 max-w-4xl">
+              <InviteBox who="This client" state={client.has_account ? (client.verified_at ? 'active' : 'unconfirmed') : 'none'} email={client.email || email} endpoint={`/clients/${client.id}/invite`}
+                onDone={() => adminFetch(`/clients/${id}`).then(c => setClient(x => ({ ...x, ...c }))).catch(() => {})} />
+            </div>
+          )}
           {editing && client && (
             <Card className="mt-8 max-w-4xl animate-fade-up" style={{ animationDelay: '120ms' }}>
               <div className="px-5 py-4 border-b border-border"><h2 className="font-semibold">Enquiries from this client</h2></div>

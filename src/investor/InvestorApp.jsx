@@ -6,7 +6,8 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Bell, Download, FileText, LayoutDashboard, Loader2, Megaphone, Paperclip, ShieldCheck, TrendingUp, UserRound } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Bell, CheckCircle2, Circle, ExternalLink, FileText, LayoutDashboard, Loader2, Megaphone, Paperclip, ShieldCheck, TrendingUp, Upload, UserRound } from 'lucide-react'
+import { openFile } from '../lib/openFile'
 import { investorPortal } from '../lib/portal'
 import { Bone } from '../components/Skeleton'
 import { PortalForgot, PortalLogin, PortalRegister, PortalReset, PortalVerify } from '../portal/AuthPages'
@@ -51,6 +52,7 @@ function Shell() {
 function OppCard({ o }) {
   return (
     <Card className="p-6 h-full flex flex-col">
+      {o.image_url && <img src={o.image_url} alt="" loading="lazy" className="-mx-6 -mt-6 mb-5 w-[calc(100%+3rem)] max-w-none h-40 object-cover rounded-t-2xl" />}
       <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-semibold tracking-widest text-muted-foreground">{o.number}</p><h2 className="font-semibold text-lg text-foreground mt-0.5">{o.title}</h2></div><Tag tone={opportunityTone(o.state)}>{o.accepting || o.state !== 'open' ? OPPORTUNITY_LABELS[o.state] : 'Fully subscribed'}</Tag></div>
       {o.summary && <p className="text-sm text-muted-foreground mt-2">{o.summary}</p>}
       <dl className="mt-4 grid grid-cols-2 gap-3 text-sm flex-1">
@@ -62,6 +64,51 @@ function OppCard({ o }) {
       {o.filled_pct != null && <div className="mt-4"><div className="h-1.5 rounded-full bg-muted overflow-hidden"><div className="h-full bg-accent" style={{ width: `${o.filled_pct}%` }} /></div><p className="text-xs text-muted-foreground mt-1.5">{o.filled_pct}% subscribed{o.available != null ? ` · ${money(o.available, o.currency)} still available` : ''}</p></div>}
       <Link to={`/investor/opportunities/${o.number}`} className={`${o.accepting ? accent : outline} mt-5`}>{o.accepting ? 'View and invest' : 'View details'}<ArrowRight className="w-4 h-4" /></Link>
     </Card>
+  )
+}
+
+const docName = d => d.label || String(d.name || '').replace(/\.[^.]+$/, '')
+const sentence = names => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`)
+
+const KYC_DETAILS = ['phone', 'address', 'id_type', 'id_number', 'bank_name', 'bank_account_name', 'bank_account_number']
+/** Where an investor stands on the identity check, step by step, with the next action in reach. */
+function KycProgress() {
+  const { me, refresh } = investorPortal.use()
+  const [docs, , reloadDocs] = useLoad('/investor/documents')
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState(null)
+  const picker = useRef(null)
+  if (me.kyc_status === 'verified') return <div className="mb-6 rounded-2xl border border-emerald-300 dark:border-emerald-500/40 bg-emerald-50 dark:bg-emerald-500/10 px-5 py-3 text-sm flex items-center gap-3"><ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" /><span>Your identity is verified. Your applications can be approved.</span></div>
+  const rejected = me.kyc_status === 'rejected'
+  const detailsDone = KYC_DETAILS.every(k => String(me[k] || '').trim())
+  const idDone = Boolean(docs?.some(d => d.label === 'Means of identification'))
+  const inReview = detailsDone && idDone && !rejected
+  const steps = [
+    { label: 'Account created', note: 'Your email address is confirmed.', done: true },
+    { label: 'Details completed', note: detailsDone ? 'Name, address, identification number and bank details are in.' : 'Add your identification number and bank details.', done: detailsDone, action: !detailsDone && <Link to="/investor/profile" className="font-semibold text-accent">Complete my details</Link> },
+    { label: 'Identification uploaded', note: idDone ? 'We have your means of identification.' : 'Upload a clear copy of your passport, national ID, driver’s licence or voter’s card.', done: idDone,
+      action: !idDone && docs && <><input ref={picker} type="file" accept={FILE_ACCEPT} className="sr-only" onChange={async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; setBusy(true); setErr(null); try { await upload(f, '/investor/documents', { label: 'Means of identification' }); await reloadDocs(); refresh() } catch (x) { setErr(x.message) } finally { setBusy(false) } }} /><button type="button" disabled={busy} onClick={() => picker.current?.click()} className="inline-flex items-center gap-1.5 font-semibold text-accent">{busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}Upload identification</button></> },
+    { label: 'Checked by our team', note: rejected ? 'We could not verify your identification. Check your details and documents, then upload again.' : inReview ? 'Pending KYC: we are checking your documents. You will be told by email.' : 'Starts once the steps above are done.', done: false, current: inReview, bad: rejected },
+    { label: 'Verified', note: 'Your investments can then be approved.', done: false },
+  ]
+  const done = steps.filter(x => x.done).length
+  return (
+    <div className="mb-6 rounded-2xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-5 py-5 text-sm">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <ShieldCheck className="w-5 h-5 text-amber-600 shrink-0" />
+        <div className="flex-1 min-w-[14rem]"><p className="font-semibold text-foreground">{rejected ? 'Your identification was not verified' : 'Your identity is not verified yet'}</p><p className="text-muted-foreground">Upload your means of identification so that we can approve your investments.{(me.counts?.pending || 0) > 0 && ` ${me.counts.pending} application${me.counts.pending === 1 ? ' is' : 's are'} waiting for this.`}</p></div>
+        <span className="text-xs font-semibold text-muted-foreground tabular-nums">{done} of {steps.length} steps</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-amber-200/70 dark:bg-amber-500/20 overflow-hidden mb-4"><div className="h-full bg-accent transition-all" style={{ width: `${Math.round(done / steps.length * 100)}%` }} /></div>
+      <Problem>{err}</Problem>
+      <ol className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {steps.map((x, i) => (
+          <li key={x.label} className="flex gap-2.5">
+            {x.done ? <CheckCircle2 className="w-5 h-5 text-accent shrink-0 mt-0.5" /> : <Circle className={`w-5 h-5 shrink-0 mt-0.5 ${x.bad ? 'text-destructive' : x.current ? 'text-accent' : 'text-muted-foreground/50'}`} />}
+            <div className="min-w-0"><p className={`font-semibold ${x.done || x.current ? 'text-foreground' : 'text-foreground/70'}`}>{i + 1}. {x.label}</p><p className={`text-xs mt-0.5 ${x.bad ? 'text-destructive' : 'text-muted-foreground'}`}>{x.note}</p>{x.action && <p className="text-xs mt-1.5">{x.action}</p>}</div>
+          </li>
+        ))}
+      </ol>
+    </div>
   )
 }
 
@@ -77,7 +124,7 @@ function Dashboard() {
   const next = (mine || []).filter(i => i.status === 'active' && i.maturity_date).sort((a, b) => a.maturity_date.localeCompare(b.maturity_date))[0]
   return (
     <>
-      {me.kyc_status !== 'verified' && <div className="mb-6 rounded-2xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-5 py-4 text-sm flex flex-wrap items-center gap-3"><ShieldCheck className="w-5 h-5 text-amber-600 shrink-0" /><span className="flex-1 min-w-[14rem]">{me.kyc_status === 'rejected' ? 'We could not verify your identification. Please check your details and documents.' : 'Your identity is not verified yet. Upload your means of identification so that we can approve your investments.'}</span><Link to="/investor/profile" className={`${outline} h-9 px-4 text-xs`}>Go to my profile</Link></div>}
+      <KycProgress />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {[['Invested (active)', money(c.invested || 0, 'NGN'), '/investor/investments'], ['Returns received', money(c.returns || 0, 'NGN'), '/investor/investments'], ['Active investments', c.active ?? 0, '/investor/investments'], ['Awaiting approval', c.pending ?? 0, '/investor/investments']].map(([label, n, to]) => (
           <Link key={label} to={to} className="text-left bg-card border border-border rounded-2xl px-5 py-4 hover:shadow-card transition-shadow"><p className="text-2xl font-bold tabular-nums text-foreground">{n}</p><p className="text-xs text-muted-foreground mt-0.5">{label}</p></Link>
@@ -99,6 +146,18 @@ function Opportunities() {
   return <><div className="flex items-center justify-between gap-3 mb-3"><h1 className="font-semibold text-lg">Investment opportunities</h1>{sortControl}</div><ul className="grid md:grid-cols-2 gap-5">{sorted.map(o => <li key={o.number}><OppCard o={o} /></li>)}</ul><p className="text-xs text-muted-foreground mt-6 max-w-3xl">{RISK}</p></>
 }
 
+/** The papers of an opportunity, by their names. Each opens from a blob in a new tab, like the invoices. */
+function DocLinks({ docs, read, title }) {
+  return (
+    <div>
+      <p className="text-sm font-medium mb-2">{title}</p>
+      <ul className="space-y-1.5">
+        {docs.map(d => <li key={d.id}><button type="button" onClick={() => read(d)} className="w-full flex items-center gap-2.5 rounded-xl border border-border bg-background px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors"><FileText className="w-4 h-4 text-accent shrink-0" /><span className="flex-1 min-w-0 truncate font-medium">{docName(d)}<span className="block text-xs font-normal text-muted-foreground truncate">{[d.label ? d.name : '', fileSize(d.bytes)].filter(Boolean).join(' · ')}</span></span><ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" /></button></li>)}
+      </ul>
+    </div>
+  )
+}
+
 function Opportunity() {
   const { number } = useParams(); const nav = useNavigate()
   const { me } = investorPortal.use()
@@ -112,13 +171,16 @@ function Opportunity() {
     e.preventDefault(); setProblem(null); setBusy(true)
     try { const r = await api(`/investor/opportunities/${number}/invest`, { method: 'POST', body: f }); nav(`/investor/investments/${r.id}?new=1`) } catch (x) { setProblem(x.message) } finally { setBusy(false) }
   }
-  const download = async d => { try { const { url } = await api(`/investor/opportunities/${number}/documents/${d.id}/url`); window.open(url, '_blank', 'noopener') } catch (x) { setProblem(x.message) } }
+  const docs = o.documents || []
+  const agreed = docs.length ? `I have read the ${sentence(docs.map(docName))} and accept these terms. I understand that returns are expected, not guaranteed.` : 'I have read the terms of this opportunity and understand that returns are expected, not guaranteed.'
+  const read = async d => { try { await openFile(() => api(`/investor/opportunities/${number}/documents/${d.id}/url`).then(r => ({ url: r.url, name: d.name, type: d.content_type }))) } catch (x) { setProblem(x.message) } }
   return (
     <>
       <Back to="/investor/opportunities">Opportunities</Back>
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6"><div className="min-w-0"><p className="text-xs font-semibold tracking-widest text-muted-foreground">{o.number}</p><h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground mt-1">{o.title}</h1></div><Tag tone={opportunityTone(o.state)}>{OPPORTUNITY_LABELS[o.state]}</Tag></div>
       <div className="grid lg:grid-cols-[1fr_360px] gap-6 items-start">
         <div className="space-y-6 min-w-0">
+          {o.image_url && <img src={o.image_url} alt="" className="w-full max-h-80 object-cover rounded-2xl border border-border" />}
           <Card className="p-6">
             <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
               <div><dt className="text-xs text-muted-foreground">Minimum investment</dt><dd className="font-semibold tabular-nums mt-0.5">{money(o.min_amount, o.currency)}</dd></div>
@@ -130,17 +192,17 @@ function Opportunity() {
             {o.return_note && <p className="mt-5 rounded-xl bg-secondary/60 border border-border px-4 py-3 text-sm whitespace-pre-line">{o.return_note}</p>}
           </Card>
           {(o.summary || o.description) && <Card className="p-6"><h2 className="font-semibold mb-3">About this opportunity</h2>{o.summary && <p className="text-sm font-medium mb-3">{o.summary}</p>}<p className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">{o.description}</p></Card>}
-          {o.documents?.length > 0 && <Card><div className="px-6 py-4 border-b border-border"><h2 className="font-semibold">Documents</h2></div><ul className="divide-y divide-border">{o.documents.map(d => <li key={d.id} className="px-6 py-3 flex items-center gap-3 text-sm"><FileText className="w-4 h-4 text-muted-foreground shrink-0" /><span className="flex-1 min-w-0 truncate font-medium">{d.name}<span className="block text-xs font-normal text-muted-foreground">{fileSize(d.bytes)}</span></span><button type="button" onClick={() => download(d)} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted" aria-label={`Download ${d.name}`}><Download className="w-4 h-4" /></button></li>)}</ul></Card>}
         </div>
         <Card className="p-6 lg:sticky lg:top-28">
           <h2 className="font-semibold mb-1">Invest in this opportunity</h2>
-          {!o.accepting ? <p className="text-sm text-muted-foreground mt-2">{o.state === 'upcoming' ? `This opportunity opens on ${fmtDay(o.opens_at)}.` : o.state === 'open' ? 'This opportunity is fully subscribed.' : 'This opportunity is closed to new investments.'}</p> : (
+          {!o.accepting ? <><p className="text-sm text-muted-foreground mt-2">{o.state === 'upcoming' ? `This opportunity opens on ${fmtDay(o.opens_at)}.` : o.state === 'open' ? 'This opportunity is fully subscribed.' : 'This opportunity is closed to new investments.'}</p>{docs.length > 0 && <div className="mt-4"><DocLinks docs={docs} read={read} title="Documents" /></div>}</> : (
             <form onSubmit={invest} className="space-y-4 mt-3">
               <Problem>{problem}</Problem>
               {me.kyc_status !== 'verified' && <p className="text-xs rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-3 py-2">Your identity is not verified yet. You can apply now; we approve the investment once your <Link to="/investor/profile" className="font-semibold text-accent">identification</Link> has been checked.</p>}
               <label className="block"><Label>Amount to invest ({o.currency}) *</Label><input required type="number" min={o.min_amount || 0.01} max={o.available ?? undefined} step="0.01" inputMode="decimal" className={input} value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} /><span className="block text-xs text-muted-foreground mt-1.5">Minimum {money(o.min_amount, o.currency)}{o.available != null ? ` · up to ${money(o.available, o.currency)}` : ''}.{expected != null ? ` Expected return: ${money(expected, o.currency)} after ${tenor(o.tenor_months)}.` : ''}</span></label>
               <label className="block"><Label hint="(optional)">Note to our team</Label><textarea rows={2} maxLength={2000} className={input} value={f.note} onChange={e => setF({ ...f, note: e.target.value })} /></label>
-              <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={f.confirmed} onChange={e => setF({ ...f, confirmed: e.target.checked })} /><span>I have read the terms of this opportunity and understand that returns are expected, not guaranteed.</span></label>
+              {docs.length > 0 && <DocLinks docs={docs} read={read} title="Read before you apply" />}
+              <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={f.confirmed} onChange={e => setF({ ...f, confirmed: e.target.checked })} /><span>{agreed}</span></label>
               <button type="submit" disabled={busy || !f.confirmed} className={`${accent} w-full`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />}{busy ? 'Sending…' : 'Apply to invest'}</button>
               <p className="text-xs text-muted-foreground">Your application goes to our team for approval. We then send you the payment details; the investment starts once your payment is confirmed.</p>
             </form>
@@ -231,7 +293,7 @@ function Profile() {
   const set = k => e => { setF(x => ({ ...x, [k]: e.target.value })); setOk(false) }
   const save = async e => { e.preventDefault(); setBusy(true); setErr(null); setOk(false); try { await api('/investor/me', { method: 'PATCH', body: f }); await refresh(); setOk(true) } catch (x) { setErr(x.message) } finally { setBusy(false) } }
   const add = async list => { for (const file of list) { setQueue(q => [...q, { name: file.name }]); try { await upload(file, '/investor/documents', { label: label || labels[0] }); setQueue(q => q.filter(x => x.name !== file.name)); reloadDocs() } catch (x) { setQueue(q => q.map(v => (v.name === file.name ? { ...v, error: x.message } : v))) } } }
-  const open = async d => { try { const { url } = await api(`/investor/documents/${d.id}/url`); window.open(url, '_blank', 'noopener') } catch (x) { setErr(x.message) } }
+  const open = async d => { try { await openFile(() => api(`/investor/documents/${d.id}/url`).then(r => ({ url: r.url, name: d.name, type: d.content_type }))) } catch (x) { setErr(x.message) } }
   return (
     <div className="space-y-6">
       <form onSubmit={save} className="bg-card border border-border rounded-2xl p-6 md:p-8 max-w-3xl space-y-4">

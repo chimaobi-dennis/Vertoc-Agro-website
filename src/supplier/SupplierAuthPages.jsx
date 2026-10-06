@@ -31,7 +31,7 @@ export function SupplierLogin() {
     <AuthCard title="Supplier sign-in" text="Follow your bids, answer our questions and see the orders we have sent you.">
       <form onSubmit={submit} className="space-y-4">
         {sp.get('confirmed') && <Notice>Your email address is confirmed. Sign in to continue.</Notice>}
-        {sp.get('reset') && <Notice>Your new password is set. Sign in with it.</Notice>}
+        {sp.get('reset') && <Notice>{sp.get('invited') ? 'Your login is ready. Sign in with the password you just chose.' : 'Your new password is set. Sign in with it.'}</Notice>}
         <Problem>{err}</Problem>
         {unverified && !sent && <button type="button" onClick={resend} className="text-sm font-semibold text-accent">Send the confirmation email again</button>}
         {sent && <Notice>If that address has an account waiting for confirmation, a new link is on its way.</Notice>}
@@ -168,16 +168,16 @@ export function SupplierReset() {
     if (f.password.length < 8) return setErr('Choose a password of at least 8 characters.')
     if (f.password !== f.again) return setErr('The two passwords are not the same.')
     setBusy(true)
-    try { const r = await supplierFetch('/supplier/reset', { method: 'POST', auth: false, body: { token: sp.get('token') || '', password: f.password } }); nav(`/supplier/login?reset=1${r.email ? `&email=${encodeURIComponent(r.email)}` : ''}`, { replace: true }) }
+    try { const r = await supplierFetch('/supplier/reset', { method: 'POST', auth: false, body: { token: sp.get('token') || '', password: f.password } }); nav(`/supplier/login?reset=1${sp.get('invite') ? '&invited=1' : ''}${r.email ? `&email=${encodeURIComponent(r.email)}` : ''}`, { replace: true }) }
     catch (x) { setErr(x.message) } finally { setBusy(false) }
   }
   return (
-    <AuthCard title="Choose a new password">
+    <AuthCard title={sp.get('invite') ? 'Create your password' : 'Choose a new password'} text={sp.get('invite') ? 'You have been invited. Choose a password to open your account.' : undefined}>
       <form onSubmit={submit} className="space-y-4">
         <Problem>{err}</Problem>
         <label className="block"><Label>New password</Label><PasswordInput required minLength={8} maxLength={72} autoComplete="new-password" className={input} value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /><span className="block text-xs text-muted-foreground mt-1.5">At least 8 characters.</span></label>
         <label className="block"><Label>New password again</Label><PasswordInput required minLength={8} maxLength={72} autoComplete="new-password" className={input} value={f.again} onChange={e => setF({ ...f, again: e.target.value })} /></label>
-        <button type="submit" disabled={busy} className={`${primary} w-full`}>{busy ? 'Saving…' : 'Save my new password'}</button>
+        <button type="submit" disabled={busy} className={`${primary} w-full`}>{busy ? 'Saving…' : sp.get('invite') ? 'Create my login' : 'Save my new password'}</button>
         <p className="text-sm text-center"><Link to="/supplier/forgot" className="font-semibold text-accent">Ask for a new link</Link></p>
       </form>
     </AuthCard>

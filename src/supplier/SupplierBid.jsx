@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, Download, FileSignature, FileText, Loader2, LockOpen, MessageCircleQuestion, Paperclip, Trash2, Truck, XCircle } from 'lucide-react'
+import { openFile } from '../lib/openFile'
 import { supplierFetch, uploadBidFile } from '../lib/supplier'
 import { Bone } from '../components/Skeleton'
 import { BID_EXPLAINED, BID_LABELS, FILE_ACCEPT, FILE_LABELS, PO_KINDS, fileSize, fmtDay, fmtMoment, money, perUnit, qty } from '../lib/procurement'
@@ -36,7 +37,7 @@ export default function SupplierBid() {
       catch (e) { setQueue(q => q.map(x => (x.name === file.name ? { ...x, error: e.message } : x))) }
     }
   }
-  const openFile = async (d, download = false) => { try { const { url } = await supplierFetch(`/supplier/bids/${id}/files/${d.id}/url${download ? '?download=1' : ''}`); window.open(url, '_blank', 'noopener') } catch (e) { setErr(e.message) } }
+  const openFile = async (d, download = false) => { try { await openFile(() => supplierFetch(`/supplier/bids/${id}/files/${d.id}/url`).then(r => ({ url: r.url, name: d.name })), { download }) } catch (e) { setErr(e.message) } }
   const removeFile = d => { if (window.confirm(`Remove "${d.name}" from this bid?`)) run(async () => { await supplierFetch(`/supplier/bids/${id}/files/${d.id}`, { method: 'DELETE' }); await load() }) }
 
   if (err && !b) return <><Link to="/supplier?tab=bids" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6"><ArrowLeft className="w-4 h-4" />My bids</Link><Problem>{err}</Problem></>

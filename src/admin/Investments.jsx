@@ -4,13 +4,16 @@
  * payouts) and the investors themselves (details, KYC, documents).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Banknote, CheckCircle2, ExternalLink, Megaphone, Plus, Search, Trash2, TrendingUp, XCircle } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { Alert, Badge, Button, Card, Field, Input, Modal, PageHeader, Select, Table, Tabs, Td, Textarea, confirmDelete, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import { DocumentsPanel } from './ClientTabs'
+import { openDocument } from './documents'
+import OpportunityFiles, { EMPTY_STAGE, uploadStaged } from './OpportunityFiles'
+import InviteBox from './InviteBox'
 import { useSort } from '../lib/sort'
 import { fmtDay, fmtMoment, fromLocalInput, money, toLocalInput } from '../lib/procurement'
 import { INVESTMENT_LABELS, INVESTMENT_STATUSES, KYC_LABELS, OPPORTUNITY_LABELS, investmentTone, kycTone, opportunityTone, tenor } from '../lib/investing'
@@ -97,6 +100,9 @@ export function OpportunityForm() {
   const nav = useNavigate(); const { can } = useAuth()
   const [o, setO] = useState(null); const [f, setF] = useState(BLANK)
   const [busy, setBusy] = useState(false); const [err, setErr] = useState(null); const [toast, toastEl] = useToast()
+  const [stage, setStage] = useState(EMPTY_STAGE)      // files chosen before the opportunity exists
+  const flash = useLocation().state?.flash
+  useEffect(() => { if (flash) toast(flash, flash.includes('could not') ? 'error' : undefined) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const fill = x => setF({ title: x.title, summary: x.summary, description: x.description, currency: x.currency, min_amount: x.min_amount, capacity: x.capacity ?? '', tenor_months: x.tenor_months, expected_return_pct: x.expected_return_pct ?? '', return_note: x.return_note, opens_at: toLocalInput(x.opens_at), closes_at: toLocalInput(x.closes_at) })
   const load = useCallback(() => adminFetch(`/investment-opportunities/${id}`).then(x => { setO(x); fill(x) }).catch(e => setErr(e.message)), [id])
   useEffect(() => { if (editing) load() }, [editing, load])
@@ -106,9 +112,14 @@ export function OpportunityForm() {
     const body = { ...f, capacity: f.capacity === '' ? null : f.capacity, expected_return_pct: f.expected_return_pct === '' ? null : f.expected_return_pct, opens_at: fromLocalInput(f.opens_at), closes_at: fromLocalInput(f.closes_at), ...extra }
     try {
       if (editing) { const x = await adminFetch(`/investment-opportunities/${id}`, { method: 'PATCH', body }); setO(p => ({ ...p, ...x })); fill(x); toast(extra.status ? OPPORTUNITY_LABELS[x.state] : 'Saved') }
-      else { const x = await adminFetch('/investment-opportunities', { method: 'POST', body }); nav(`/staff360/investments/opportunities/${x.id}`, { replace: true }) }
+      else {
+        const x = await adminFetch('/investment-opportunities', { method: 'POST', body })
+        const failed = await uploadStaged(x.id, stage)
+        nav(`/staff360/investments/opportunities/${x.id}`, { replace: true, state: failed.length ? { flash: `Saved, but these files could not be uploaded: ${failed.join('; ')}` } : undefined })
+      }
     } catch (x) { setErr(x.message) } finally { setBusy(false) }
   }
+  const reloadFiles = () => adminFetch(`/investment-opportunities/${id}`).then(x => setO(p => ({ ...p, documents: x.documents, cover: x.cover }))).catch(e => toast(e.message, 'error'))
   const remove = async () => { if (!confirmDelete(o.number)) return; try { await adminFetch(`/investment-opportunities/${id}`, { method: 'DELETE' }); nav('/staff360/investments?tab=opportunities') } catch (x) { toast(x.message, 'error') } }
   const edit = can('investments', editing ? 'edit' : 'create')
   if (editing && !o) return err ? <Alert>{err}</Alert> : <Card className="p-6 space-y-4">{[...Array(6)].map((_, i) => <Bone key={i} className="h-11 w-full" />)}</Card>
@@ -143,8 +154,8 @@ export function OpportunityForm() {
                 {!o.investments?.length && <li className="px-5 py-8 text-center text-sm text-muted-foreground">Nobody has applied yet.</li>}
               </ul>
             </Card>
-            <div><h2 className="font-semibold mb-3">Documents for investors</h2><DocumentsPanel scope={{ opportunity_id: o.id }} note="investors with an account can download these" /></div>
           </>)}
+          <OpportunityFiles oppId={editing ? o.id : null} cover={o?.cover} documents={o?.documents || []} onChanged={reloadFiles} stage={stage} setStage={setStage} disabled={!edit} />
         </div>
         <Card className="p-5 space-y-3 lg:sticky lg:top-24">
           {edit && <Button type="submit" variant={editing && state !== 'draft' ? 'accent' : 'outline'} className="w-full" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Save as draft'}</Button>}
@@ -179,7 +190,7 @@ export function InvestmentDetail() {
   const apply = async e => { e.preventDefault(); const body = { status: move, status_note: m.note, notify: m.notify, ...(move === 'active' ? { start_date: m.start_date, ...(m.maturity_date ? { maturity_date: m.maturity_date } : {}), ...(m.expected_return !== '' ? { expected_return: m.expected_return } : {}) } : {}) }; if (await run(() => adminFetch(`/investments/${id}`, { method: 'PATCH', body }), INVESTMENT_LABELS[move])) setMove(null) }
   const payout = async e => { e.preventDefault(); if (await run(() => adminFetch(`/investments/${id}/payouts`, { method: 'POST', body: pay }), 'Payout recorded — the investor has been told')) setPay(null) }
   const unpay = p => { if (window.confirm('Remove this payout record?')) run(() => adminFetch(`/investments/${id}/payouts/${p.id}`, { method: 'DELETE' }), 'Payout removed') }
-  const proof = async () => { const d = x.documents?.find(v => v.id === x.proof_document_id); if (!d) return; try { const r = await adminFetch(`/documents/${d.id}/url`); window.open(r.url, '_blank', 'noopener') } catch (e) { toast(e.message, 'error') } }
+  const proof = async () => { const d = x.documents?.find(v => v.id === x.proof_document_id); if (!d) return; try { await openDocument(d.id) } catch (e) { toast(e.message, 'error') } }
   const remove = async () => { if (!confirmDelete(x.number)) return; try { await adminFetch(`/investments/${id}`, { method: 'DELETE' }); nav('/staff360/investments') } catch (e) { toast(e.message, 'error') } }
 
   if (err) return <Alert>{err}</Alert>
@@ -266,13 +277,25 @@ export function InvestmentDetail() {
 
 /* ----------------------------------------------------------- investors --- */
 export function InvestorsAdmin() {
+  const { can } = useAuth(); const nav = useNavigate()
   const [rows, setRows] = useState(null); const [err, setErr] = useState(null); const [q, setQ] = useState('')
+  const [make, setMake] = useState(null); const [busy, setBusy] = useState(false); const [formErr, setFormErr] = useState(null)   // the "New investor" dialog
+  const create = async e => {
+    e.preventDefault(); setBusy(true); setFormErr(null)
+    try {
+      const { invite, ...body } = make
+      const i = await adminFetch('/investors', { method: 'POST', body })
+      let flash = 'Investor created.'
+      if (invite) { try { const r = await adminFetch(`/investors/${i.id}/invite`, { method: 'POST', body: { email: body.email } }); flash = `Investor created. Invitation sent to ${r.email}.` } catch (x) { flash = `Investor created, but the invitation was not sent: ${x.message}` } }
+      nav(`/staff360/investors/${i.id}`, { state: { flash } })
+    } catch (x) { setFormErr(x.message) } finally { setBusy(false) }
+  }
   useEffect(() => { adminFetch('/investors').then(setRows).catch(e => setErr(e.message)) }, [])
   const visible = useMemo(() => { const s = q.trim().toLowerCase(); return s && rows ? rows.filter(r => [r.name, r.email, r.phone].some(v => String(v || '').toLowerCase().includes(s))) : rows }, [rows, q])
   const [sorted, sortControl] = useSort(visible, { name: 'name', more: [{ key: 'invested', label: 'Invested, highest first', get: 'invested', desc: true }, { key: 'kyc', label: 'KYC status', get: 'kyc_status' }] })
   return (
     <>
-      <PageHeader eyebrow="Investment" title="Investors" description="People and companies who registered in the investment portal." />
+      <PageHeader eyebrow="Investment" title="Investors" description="People and companies who registered in the investment portal, or whom you added." action={can('investments', 'create') && <Button variant="accent" onClick={() => { setFormErr(null); setMake({ name: '', email: '', phone: '', invite: true }) }}><Plus className="w-4 h-4" />New investor</Button>} />
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="relative flex-1 min-w-[220px] max-w-md"><Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" /><Input className="pl-10" placeholder="Search name, email or phone…" value={q} onChange={e => setQ(e.target.value)} /></div>
@@ -292,9 +315,19 @@ export function InvestorsAdmin() {
               <Td className="text-xs text-muted-foreground whitespace-nowrap">{fmtMoment(r.created_at)}</Td>
             </tr>
           ))}
-          {rows?.length === 0 && <tr><Td colSpan={7} className="text-center py-12 text-muted-foreground">No investors yet. They register themselves at /investor/register.</Td></tr>}
+          {rows?.length === 0 && <tr><Td colSpan={7} className="text-center py-12 text-muted-foreground">No investors yet. Add one here, or they register themselves at /investor/register.</Td></tr>}
         </Table>
       </Card>
+      <Modal open={Boolean(make)} onClose={() => setMake(null)} title="New investor"
+        footer={<><Button type="button" variant="outline" onClick={() => setMake(null)}>Cancel</Button><Button type="submit" form="new-investor" variant="accent" disabled={busy}>{busy ? 'Saving…' : make?.invite ? 'Create and invite' : 'Create investor'}</Button></>}>
+        {make && <form id="new-investor" onSubmit={create} className="space-y-4">
+          {formErr && <Alert>{formErr}</Alert>}
+          <Field label="Full name or company name *"><Input required value={make.name} onChange={e => setMake({ ...make, name: e.target.value })} /></Field>
+          <Field label="Email address *" hint="They sign in with it, and the invitation goes there."><Input required type="email" value={make.email} onChange={e => setMake({ ...make, email: e.target.value })} /></Field>
+          <Field label="Phone"><Input value={make.phone} onChange={e => setMake({ ...make, phone: e.target.value })} /></Field>
+          <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={make.invite} onChange={e => setMake({ ...make, invite: e.target.checked })} /><span>Email an invitation now, so they can create a login and password. They add their identification and bank details themselves after signing in.</span></label>
+        </form>}
+      </Modal>
     </>
   )
 }
@@ -303,6 +336,8 @@ export function InvestorDetail() {
   const { id } = useParams(); const nav = useNavigate(); const { can } = useAuth()
   const [x, setX] = useState(null); const [err, setErr] = useState(null); const [notes, setNotes] = useState(''); const [busy, setBusy] = useState(false)
   const [toast, toastEl] = useToast()
+  const flash = useLocation().state?.flash
+  useEffect(() => { if (flash) toast(flash, flash.includes('not sent') ? 'error' : undefined) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const load = useCallback(() => adminFetch(`/investors/${id}`).then(d => { setX(d); setNotes(d.notes || '') }).catch(e => setErr(e.message)), [id])
   useEffect(() => { load() }, [load])
   const patch = async (body, ok) => { setBusy(true); try { await adminFetch(`/investors/${id}`, { method: 'PATCH', body }); toast(ok); load() } catch (e) { toast(e.message, 'error') } finally { setBusy(false) } }
@@ -337,6 +372,7 @@ export function InvestorDetail() {
             {x.kyc_status !== 'rejected' && <Button variant="outline" className="w-full text-destructive" disabled={busy} onClick={() => window.confirm('Reject this identification? The investor is told to check their details.') && patch({ kyc_status: 'rejected' }, 'KYC rejected')}><XCircle className="w-4 h-4" />Reject</Button>}
             {x.kyc_status !== 'pending' && <Button variant="ghost" className="w-full" disabled={busy} onClick={() => patch({ kyc_status: 'pending' }, 'KYC back to pending')}>Back to pending</Button>}
           </Card>}
+          {edit && <InviteBox who="This investor" state={x.user_id ? (x.verified_at ? 'active' : 'unconfirmed') : 'none'} email={x.email} endpoint={`/investors/${x.id}/invite`} onDone={load} />}
           {edit && <Card className="p-5">
             <Field label="Internal notes" hint="Only your team sees these."><Textarea rows={4} value={notes} onChange={e => setNotes(e.target.value)} /></Field>
             <Button variant="outline" className="mt-3 h-9 w-full" disabled={busy || notes === (x.notes || '')} onClick={() => patch({ notes }, 'Notes saved')}>Save notes</Button>

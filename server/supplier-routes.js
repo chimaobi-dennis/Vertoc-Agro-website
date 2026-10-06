@@ -240,13 +240,28 @@ router.post('/supplier/forgot', quietly(async s => {
 router.post('/supplier/reset', h(async (req, res) => {
   if (throttled('reset', clientIp(req), 10)) throw bad('Too many attempts. Please try again later.', 429)
   if (!okPassword(req.body?.password)) throw bad(PASSWORD_RULE)
-  const s = await content.supplierForToken(req.body?.token, 'reset', { consume: true })
-  if (!s || !s.user_id) throw bad('This link is no longer valid. Ask for a new one from the sign-in page.', 410)
-  // Whoever opened the link owns the mailbox, so the address is confirmed as well.
-  const { error } = await (await supabase()).auth.admin.updateUserById(s.user_id, { password: req.body.password, email_confirm: true })
-  if (error) throw (/password/i.test(error.message) ? bad(error.message) : new Error(`reset: ${error.message}`))
+  // 'invite' links come from staff who added the supplier: the login is created when they choose a password.
+  const s = await content.supplierForToken(req.body?.token, ['reset', 'invite'])
+  if (!s || (!s.user_id && s.auth_token_kind !== 'invite')) throw bad('This link is no longer valid. Ask for a new one from the sign-in page.', 410)
+  const sb = await supabase()
+  let userId = s.user_id
+  if (!userId) {
+    const { data, error } = await sb.auth.admin.createUser({ email: s.email, password: req.body.password, email_confirm: true, user_metadata: { account_type: 'supplier', name: clean(s.contact_person || s.company_name, 120), company: s.company_name } })
+    if (error) {
+      if (/already|registered|exists/i.test(error.message)) throw bad('A login already exists for this email address. Use "Forgot password" on the sign-in page.', 409)
+      if (/password/i.test(error.message)) throw bad(error.message)
+      throw new Error(`invite: ${error.message}`)
+    }
+    await sb.from('profiles').delete().eq('id', data.user.id).eq('active', false).then(() => {}, () => {})
+    try { await content.attachSupplierAccount(s.id, data.user.id) } catch (e) { await sb.auth.admin.deleteUser(data.user.id).catch(() => {}); throw e }
+  } else {
+    // Whoever opened the link owns the mailbox, so the address is confirmed as well.
+    const { error } = await sb.auth.admin.updateUserById(userId, { password: req.body.password, email_confirm: true })
+    if (error) throw (/password/i.test(error.message) ? bad(error.message) : new Error(`reset: ${error.message}`))
+  }
+  await content.supplierForToken(req.body.token, ['reset', 'invite'], { consume: true })
   if (!s.verified_at) await content.markSupplierVerified(s.id)
-  await audit({ actor: SUPPLIER, action: 'password_reset', entity: 'supplier', entityId: s.id, after: { email: s.email } })
+  await audit({ actor: SUPPLIER, action: s.user_id ? 'password_reset' : 'accept_invite', entity: 'supplier', entityId: s.id, after: { email: s.email } })
   res.json({ ok: true, email: s.email })
 }))
 
