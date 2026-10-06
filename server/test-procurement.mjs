@@ -95,13 +95,14 @@ try {
   await step('bad procurement notification address refused', () => refused(() => admin('/settings', { method: 'PUT', body: { procurement: { notify_to: 'nope' } } }), /valid email/, 'bad address'))
 
   /* ------------------------------------------------------ permissions --- */
-  await step('GET /me: admin and procurement may, sales may not', async () => {
+  await step('GET /me: admin and procurement own procurement; sales has no supplier inbox', async () => {
     const [a, b, c] = await Promise.all([admin('/me'), buyer('/me'), sales('/me')])
-    if (!a.permissions.procurement || !b.permissions.procurement || c.permissions.procurement || b.permissions.quotes) throw new Error(JSON.stringify([a.permissions, b.permissions, c.permissions]))
+    // Sales and procurement now read each other's side (view only), but sales has no supplier inbox and procurement cannot create invoices.
+    if (!a.permissions.procurement || !b.permissions.procurement || c.permissions.supplier_messages || b.permissions.payments) throw new Error(JSON.stringify([a.permissions, b.permissions, c.permissions]))
     return 'procurement ✓ (admin, procurement)'
   })
-  await step('sales cannot open procurement', () => refused(() => sales('/tenders'), /^403/, 'sales → tenders'))
-  await step('procurement cannot open sales', () => refused(() => buyer('/quotes'), /^403/, 'procurement → invoices'))
+  await step('sales may read procurement but not raise opportunities', () => refused(() => sales('/tenders', { method: 'POST', body: { commodity: 'Soybeans', quantity: 10, closes_at: inHours(48) } }), /^403/, 'sales → create tender'))
+  await step('procurement may read invoices but not create them', () => refused(() => buyer('/quotes', { method: 'POST', body: { client_name: 'x', items: [{ description: 'x', quantity: 1, unit_price: 1 }] } }), /^403/, 'procurement → create invoice'))
   await step('sales cannot read the procurement inbox', () => refused(() => sales('/procurement/messages/threads'), /^403/, 'sales → procurement inbox'))
   await step('procurement cannot read the sales inbox', () => refused(() => buyer('/messages/threads'), /^403/, 'procurement → sales inbox'))
 
@@ -385,6 +386,13 @@ try {
   })
   await step('GET /purchase-orders/:id/pdf is a PDF', async () => { const r = await fetch(`${API}/api/admin/purchase-orders/${order.id}/pdf`, { headers: { Authorization: `Bearer ${staff.buyer.token}` } }); const b = Buffer.from(await r.arrayBuffer()); if (r.status !== 200 || b.subarray(0, 4).toString() !== '%PDF') throw new Error(r.status); return `${b.length} bytes` })
   await step('a draft order cannot be answered yet', async () => { const r = await fetch(`${API}/api/po/${order.token}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'acknowledge' }) }); if (r.status !== 409) throw new Error(r.status); return '409 ✓' })
+  await step('procurement\'s order waits for an admin; sending before approval is refused', async () => {
+    const cur = await buyer(`/purchase-orders/${order.id}`)
+    if (cur.approval !== 'pending') throw new Error(`approval is ${cur.approval}`)
+    await refused(() => buyer(`/purchase-orders/${order.id}/send`, { method: 'POST', body: {} }), /waiting for approval/, 'send while pending')
+    await admin(`/approvals/purchase_order/${order.id}/decision`, { method: 'POST', body: { decision: 'approved' } })
+    return 'pending → approved by an admin'
+  })
   if (DRY) await step('POST /purchase-orders/:id/send (dry run: PDF attached and filed, → issued)', async () => {
     const r = await buyer(`/purchase-orders/${order.id}/send`, { method: 'POST', body: {} })
     if (r.order.status !== 'issued' || !r.order.issued_at || r.message.status !== 'sent' || r.message.scope !== 'procurement' || r.message.po_id !== order.id || r.message.supplier_id !== sup.id || !r.message.attachments.some(a => a.name === `${order.number}.pdf` && a.document_id)) throw new Error(JSON.stringify(r).slice(0, 300))
@@ -469,13 +477,12 @@ try {
     if (b.documents.some(x => /^L?PO-/.test(x.name))) throw new Error('the order PDF is listed among the bid documents')
     return refused(() => pub(`/supplier/bids/${guest.id}/files/${d.id}`, { method: 'DELETE', token: sup.token }), /added by our team/, 'supplier deletes a staff file')
   })
-  await step('documents: each side handles its own', async () => {
+  await step('documents: the sales list never carries supplier files', async () => {
+    // Sales and procurement now read each other's side, so what stays true is the separation of the lists.
     const mine = await buyer(`/documents?bid_id=${guest.id}`)
-    await refused(() => sales(`/documents?supplier_id=${sup.id}`), /^403/, 'sales → supplier files')
-    await refused(() => buyer('/documents'), /^403/, 'procurement → client files')
-    if (mine.length) { await refused(() => sales(`/documents/${mine[0].id}/url`), /^403/, 'sales → a supplier file'); const u = await buyer(`/documents/${mine[0].id}/url`); if (!u.url) throw new Error('no url') }
+    if (mine.length) { const u = await buyer(`/documents/${mine[0].id}/url`); if (!u.url) throw new Error('no url') }
     const all = await sales('/documents'); if (all.some(d => d.supplier_id != null || d.bid_id != null)) throw new Error('supplier files in the sales list')
-    return `${mine.length} on the bid · gated both ways`
+    return `${mine.length} on the bid · lists kept apart`
   })
 
   /* ------------------------------------------------------------ inbox --- */

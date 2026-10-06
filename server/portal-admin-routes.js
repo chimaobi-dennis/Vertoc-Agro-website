@@ -11,6 +11,7 @@ import * as content from './content.js'
 import { bad, handler, idOrNull } from './http.js'
 import { tellPortal } from './messaging.js'
 import { inviteClient } from './client-routes.js'
+import { requireApproved } from './approval-routes.js'
 import { inviteInvestor } from './investor-routes.js'
 
 const router = Router()
@@ -110,6 +111,7 @@ router.post('/investors/:id/invite', inv, h(async (req, res) => {
 router.post('/clients/:id/invite', can('clients'), h(async (req, res) => {
   const c = await content.getClient(req.params.id)
   if (!c) throw bad('client not found', 404)
+  await requireApproved('client', c.id)
   await invited(req, res, { entity: 'client', row: c, email: String(req.body?.email || '').trim() || c.email || c.data?.email || '', send: inviteClient })
 }))
 router.get('/investors/:id', inv, h(async (req, res) => {

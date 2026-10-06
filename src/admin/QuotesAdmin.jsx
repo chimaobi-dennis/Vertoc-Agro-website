@@ -4,6 +4,7 @@ import { Plus, Search, Settings2 } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Input, PageHeader, Table, Td } from './ui'
 import { useSort } from '../lib/sort'
+import { ApprovalBadge } from './ApprovalUi'
 import { Bone } from '../components/Skeleton'
 import { fmtDate, fmtMoney, quoteTone } from './format'
 
@@ -56,8 +57,8 @@ export default function QuotesAdmin() {
               <Td><Link to={`/staff360/quotes/${r.id}`} className="font-medium hover:text-accent">{r.number}</Link></Td>
               <Td>{r.client_id ? <Link to={`/staff360/clients/${r.client_id}?tab=quotes`} className="hover:text-accent">{r.client_name || '—'}</Link> : (r.client_name || '—')}</Td>
               <Td className="text-muted-foreground max-w-[260px] truncate">{r.title || '—'}</Td>
-              <Td className="font-medium whitespace-nowrap">{fmtMoney(r.total, r.currency)}</Td>
-              <Td><Badge tone={quoteTone(r.status)}>{r.status}</Badge></Td>
+              <Td className="font-medium whitespace-nowrap">{r.amounts_hidden ? '—' : fmtMoney(r.total, r.currency)}</Td>
+              <Td><Badge tone={quoteTone(r.status)}>{r.status}</Badge><ApprovalBadge approval={r.approval} className="ml-1.5" /></Td>
               <Td className="text-muted-foreground whitespace-nowrap">{fmtDate(r.valid_until)}</Td>
               <Td className="text-right"><Link to={`/staff360/quotes/${r.id}`} className="text-xs font-semibold text-accent">Open →</Link></Td>
             </tr>

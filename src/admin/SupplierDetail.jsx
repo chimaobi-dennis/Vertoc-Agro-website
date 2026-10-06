@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Archive, ArchiveRestore, ArrowLeft, BadgeCheck, Ban, FileSignature, FolderOpen, Gavel, KeyRound, Mail, Plus, Send, Trash2, UserRound } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
+import { ApprovalBadge, ApprovalBanner } from './ApprovalUi'
 import { Alert, Badge, Button, Card, Empty, Field, Input, PageHeader, Table, Tabs, Td, Textarea, confirmDelete, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import Composer from './Composer'
@@ -76,11 +77,13 @@ export default function SupplierDetail() {
         description={editing && s ? `${SOURCE[s.source] ? SOURCE[s.source][0].toUpperCase() + SOURCE[s.source].slice(1) : 'Added'} ${fmtDay(s.created_at)}${s.email ? ` · ${s.email}` : ''}` : 'Only the company name is required. Suppliers who bid or register on the website are added on their own.'}
         action={editing && s && (
           <div className="flex flex-wrap items-center gap-2">
+            <ApprovalBadge approval={s.approval} />
             <Badge tone={s.status === 'active' ? 'green' : s.status === 'blocked' ? 'red' : 'muted'}>{s.status}</Badge>
             <Button variant="outline" onClick={() => setCompose(true)} disabled={!s.email}><Mail className="w-4 h-4" />Send email</Button>
             <Link to={`/staff360/purchase-orders/new?supplier=${s.id}`}><Button variant="accent"><Plus className="w-4 h-4" />New order</Button></Link>
           </div>
         )} />
+      {editing && s && <ApprovalBanner type="supplier" doc={s} onChanged={() => adminFetch(`/suppliers/${id}`).then(take)} />}
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
       {!editing && <DraftNotice draft={draftInfo} onDiscard={() => { draftInfo.clear(); setForm(EMPTY) }} />}
       {editing && <Tabs tabs={TABS.map(t => ({ ...t, count: t.key === 'bids' ? s?.bids?.length : t.key === 'orders' ? s?.orders?.length : undefined }))} value={tab} onChange={setTab} />}
@@ -124,7 +127,7 @@ export default function SupplierDetail() {
               ) : (
                 <>
                   <p className="text-muted-foreground">No login yet. {s.email ? <>Invite them: <b className="text-foreground break-all">{s.email}</b> gets a link to create a password. Or they can register on the website with that address; the account is attached to this record, with every bid made from it.</> : 'Add an email address, save, then invite them to create a login.'}</p>
-                  {s.email && <Button type="button" variant="outline" className="w-full mt-4 h-9" onClick={sendLink}><Send className="w-4 h-4" />Send invitation</Button>}
+                  {s.email && s.approval !== 'pending' && <Button type="button" variant="outline" className="w-full mt-4 h-9" onClick={sendLink}><Send className="w-4 h-4" />Send invitation</Button>}
                 </>
               )}
             </Card>

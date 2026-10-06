@@ -16,6 +16,8 @@ import { bad, handler, idOrNull } from './http.js'
 import { notifyBidStatus, notifyBidUnlocked, sendBidRequest, sendPurchaseOrder, sendSupplierLink, messageBidders, orderLink, tenderLink, publicUrl } from './messaging.js'
 import { renderKey, PROCUREMENT_TEMPLATES } from './templates.js'
 import { renderPurchaseOrderPdf } from './quote-pdf.js'
+import { amend, requireApproved, submitted, withAmounts, maySeeAmounts } from './approval-routes.js'
+import { hasUser } from './permissions.js'
 
 const router = Router()
 const h = handler('procurement')
@@ -42,7 +44,7 @@ router.get('/suppliers/:id', sup, h(async (req, res) => {
   res.json({ ...s, bids, orders, account })
 }))
 router.post('/suppliers', sup, h(async (req, res) => {
-  const after = await content.createSupplier(req.body || {}, { source: 'admin', actorId: req.user.id })
+  const after = await submitted(req, 'supplier', await content.createSupplier(req.body || {}, { source: 'admin', actorId: req.user.id }))
   await audit({ actor: req.user, action: 'create', entity: 'supplier', entityId: after.id, after })
   res.status(201).json(after)
 }))
@@ -64,6 +66,7 @@ router.delete('/suppliers/:id', sup, h(async (req, res) => {
 router.post('/suppliers/:id/send-link', sup, h(async (req, res) => {
   const s = await content.getSupplier(req.params.id)
   if (!s) throw bad('supplier not found', 404)
+  await requireApproved('supplier', s.id)
   const kind = !s.user_id ? 'invite' : s.verified_at ? 'reset' : 'verify'
   if (kind === 'invite' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s.email || '')) throw bad('Add an email address first: the invitation is sent there.')
   const token = await content.issueSupplierToken(s.id, kind, { invite: 168, reset: 2, verify: 24 }[kind])
@@ -201,7 +204,8 @@ router.delete('/bids/:id/requests/:rid', bidding, h(async (req, res) => {
 
 /* ---------------------------------------------------- purchase orders --- */
 router.get('/purchase-orders', orders, h(async (req, res) => {
-  res.json(await content.listPurchaseOrders({ status: req.query.status || 'all', kind: req.query.kind || 'all', supplier_id: idOrNull(req.query.supplier_id), tender_id: idOrNull(req.query.tender_id) }))
+  const list = await content.listPurchaseOrders({ status: req.query.status || 'all', kind: req.query.kind || 'all', supplier_id: idOrNull(req.query.supplier_id), tender_id: idOrNull(req.query.tender_id) })
+  res.json(maySeeAmounts(req) ? list : list.map(o => withAmounts(req, o)))
 }))
 router.get('/purchase-orders/:id', orders, h(async (req, res) => {
   const o = await content.getPurchaseOrder(req.params.id)
@@ -212,19 +216,22 @@ router.get('/purchase-orders/:id', orders, h(async (req, res) => {
     o.tender_id ? content.getTender(o.tender_id) : null,
     content.listPoShipments({ po_id: o.id }),
   ])
-  res.json({ ...o, shipments, fulfilment: content.fulfilment(o, shipments), messages: messages.filter(m => m.headers?.internal !== true), documents, tender: tender && { id: tender.id, number: tender.number, title: tender.title }, link: orderLink(o) })
+  const approval = await content.getApproval('purchase_order', o.id).catch(() => null)
+  const amendments = await content.listAmendments({ entity: 'purchase_order', entity_id: o.id }).catch(() => [])
+  res.json({ ...withAmounts(req, o), approval: approval?.approval || 'approved', approval_note: approval?.approval_note || '', submitted_by: approval?.submitted_by || null, amendments, shipments, fulfilment: content.fulfilment(o, shipments), messages: messages.filter(m => m.headers?.internal !== true), documents, tender: tender && { id: tender.id, number: tender.number, title: tender.title }, link: orderLink(o) })
 }))
 router.post('/purchase-orders', orders, h(async (req, res) => {
-  const after = await content.createPurchaseOrder(req.body || {}, req.user.id)
+  const after = await submitted(req, 'purchase_order', await content.createPurchaseOrder(req.body || {}, req.user.id))
   await audit({ actor: req.user, action: 'create', entity: 'purchase_order', entityId: after.id, after })
   res.status(201).json({ ...after, link: orderLink(after) })
 }))
 router.patch('/purchase-orders/:id', orders, h(async (req, res) => {
   const before = await content.getPurchaseOrder(req.params.id)
   if (!before) throw bad('order not found', 404)
-  const after = await content.updatePurchaseOrder(before.id, req.body || {})
-  await audit({ actor: req.user, action: 'update', entity: 'purchase_order', entityId: after.id, before, after })
-  res.json({ ...after, link: orderLink(after) })
+  const { reason, ...patch } = req.body || {}
+  const r = await amend(req, { type: 'purchase_order', before, patch, reason, update: content.updatePurchaseOrder, guard: (b, p) => { if (['acknowledged', 'fulfilled'].includes(b.status) && ['items', 'discount', 'tax_rate', 'currency', 'kind'].some(k => p[k] !== undefined)) throw bad('The supplier has acknowledged this order, so its items and prices are locked. Raise a new order for changes.') } })
+  await audit({ actor: req.user, action: r.amendment ? 'amend_request' : r.direct ? 'amend' : 'update', entity: 'purchase_order', entityId: before.id, before, after: r.amendment ? { proposed: r.amendment.proposed } : r.record })
+  res.status(r.amendment ? 202 : 200).json({ ...r.record, link: orderLink(r.record), ...(r.amendment ? { amendment: r.amendment } : {}) })
 }))
 router.delete('/purchase-orders/:id', orders, h(async (req, res) => {
   const before = await content.getPurchaseOrder(req.params.id)
@@ -236,12 +243,15 @@ router.delete('/purchase-orders/:id', orders, h(async (req, res) => {
 router.get('/purchase-orders/:id/pdf', orders, h(async (req, res) => {
   const o = await content.getPurchaseOrder(req.params.id)
   if (!o) throw bad('order not found', 404)
+  if (!maySeeAmounts(req)) throw bad('Your role does not show order amounts.', 403)
   const pdf = await renderPurchaseOrderPdf(o, await content.getSettings(), orderLink(o))
   res.setHeader('Content-Type', 'application/pdf')
   res.setHeader('Content-Disposition', `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${o.number}.pdf"`)
   res.send(pdf)
 }))
-router.post('/purchase-orders/:id/send', can('purchase_orders', 'approve'), h(async (req, res) => {
+router.post('/purchase-orders/:id/send', h(async (req, res) => {
+  if (!hasUser(req.user, 'purchase_orders', 'create') && !hasUser(req.user, 'purchase_orders', 'approve')) throw bad("You don't have permission for this (LPO / PO: create).", 403)
+  await requireApproved('purchase_order', req.params.id)
   const b = req.body || {}
   const r = await sendPurchaseOrder(req.params.id, { actor: req.user, to: b.to, subject: b.subject, body: b.body, attachmentIds: b.attachment_ids || [], fromId: b.from_id || null })
   res.json({ ...r, link: orderLink(r.order) })

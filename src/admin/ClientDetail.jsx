@@ -6,6 +6,7 @@ import { Alert, Badge, Button, Card, Field, Input, PageHeader, Table, Tabs, Td, 
 import { Bone } from '../components/Skeleton'
 import DynamicField from './DynamicField'
 import InviteBox from './InviteBox'
+import { ApprovalBadge, ApprovalBanner } from './ApprovalUi'
 import Composer from './Composer'
 import { DraftNotice, useDraft } from './useDraft'
 import { DocumentsPanel, MessagesPanel, PurchasesPanel, QuotesPanel } from './ClientTabs'
@@ -86,12 +87,14 @@ export default function ClientDetail() {
         description={editing && client ? `Added ${client.created_at.slice(0, 10)}${email ? ` · ${email}` : ''}` : 'Only the name is required.'}
         action={editing && client && (
           <div className="flex flex-wrap items-center gap-2">
+            <ApprovalBadge approval={client.approval} />
             <Badge tone={client.status === 'active' ? 'green' : 'muted'}>{client.status}</Badge>
             {client.has_account && <Badge tone={client.verified_at ? 'blue' : 'amber'} className="whitespace-nowrap">{client.verified_at ? 'portal account' : 'portal account · email not confirmed'}</Badge>}
             <Button variant="outline" onClick={openCompose}><Mail className="w-4 h-4" />Send email</Button>
             <Link to={`/staff360/quotes/new?client=${client.id}`}><Button variant="accent"><Plus className="w-4 h-4" />New invoice</Button></Link>
           </div>
         )} />
+      {editing && client && <ApprovalBanner type="client" doc={client} onChanged={() => adminFetch(`/clients/${id}`).then(c => setClient(x => ({ ...x, ...c })))} />}
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
       {!editing && <DraftNotice draft={draftInfo} onDiscard={() => { draftInfo.clear(); setName(''); setData({}) }} />}
 
@@ -121,7 +124,7 @@ export default function ClientDetail() {
             </div>
           </form>
 
-          {editing && client && client.status === 'active' && (
+          {editing && client && client.status === 'active' && client.approval !== 'pending' && (
             <div className="mt-8 max-w-4xl">
               <InviteBox who="This client" state={client.has_account ? (client.verified_at ? 'active' : 'unconfirmed') : 'none'} email={client.email || email} endpoint={`/clients/${client.id}/invite`}
                 onDone={() => adminFetch(`/clients/${id}`).then(c => setClient(x => ({ ...x, ...c }))).catch(() => {})} />

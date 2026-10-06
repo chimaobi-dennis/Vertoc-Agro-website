@@ -7,7 +7,7 @@
  */
 import express, { Router } from 'express'
 import { authenticate, can, demand, forgetRole } from './auth.js'
-import { ACTIONS, ACTION_LABELS, BUILT_IN_ROLES, MODULES, cleanPermissions, diffPermissions, enumFor, hasUser, menuFlags } from './permissions.js'
+import { ACTIONS, ACTION_LABELS, BUILT_IN_ROLES, MODULES, cleanPermissions, diffPermissions, enumFor, hasUser, menuFlags, seesAmounts } from './permissions.js'
 import { audit } from './audit.js'
 import * as content from './content.js'
 import { deliver, sendQuote, inviteUser, sendSetPasswordLink, acknowledgeEnquiry, resolveResendKey, resolveWebhookSecret, dryRun, quoteLink, publicUrl, panelLink } from './messaging.js'
@@ -18,6 +18,7 @@ import { encryptSecret, sha256, newToken } from './secrets.js'
 import { refreshMcpSettings } from './mcp-auth.js'
 import procurementRoutes from './procurement-routes.js'
 import portalAdminRoutes from './portal-admin-routes.js'
+import approvalRoutes, { amend, mayApprove, requireApproved, submitted, withAmounts, maySeeAmounts } from './approval-routes.js'
 
 const router = Router()
 router.use(authenticate)
@@ -40,10 +41,10 @@ const bad = (message, status = 400) => Object.assign(new Error(message), { expos
 
 router.get('/me', h(async (req, res) => {
   // `permissions`: what the menus show. `can`: every action, module by module.
-  res.json({ ...req.user, perms: undefined, permissions: menuFlags(req.user.perms), can: req.user.perms, role_name: BUILT_IN_ROLES[req.user.role_key]?.name || req.user.role_key })
+  res.json({ ...req.user, perms: undefined, permissions: menuFlags(req.user.perms), can: req.user.perms, sees_amounts: seesAmounts(req.user.perms), role_name: BUILT_IN_ROLES[req.user.role_key]?.name || req.user.role_key })
 }))
 
-router.get('/stats', h(async (_req, res) => {
+router.get('/stats', h(async (req, res) => {
   const sb = await supabase()
   // A count of 0 rather than a 500 if a later migration is not applied yet.
   const count = async (table, where) => {
@@ -61,6 +62,7 @@ router.get('/stats', h(async (_req, res) => {
     posts: await count('posts'),
     enquiriesNew: await count('enquiries', q => q.eq('status', 'new')),
     users: await count('profiles', q => q.eq('active', true)),
+    approvalsPending: await Promise.resolve().then(async () => { const t = ['quote', 'purchase_order', 'client', 'supplier'].filter(x => mayApprove(req, x)); if (!t.length) return 0; return (await content.listPending(t)).length + (await content.listAmendments({ status: 'pending' })).filter(a => t.includes(a.entity)).length }).catch(() => 0),
     quotesOpen: await count('quotes', q => q.in('status', ['sent', 'viewed'])),
     purchasesPending: await count('purchases', q => q.eq('status', 'pending')),
     paymentsNew: await count('payments', q => q.eq('status', 'submitted')),
@@ -461,7 +463,7 @@ router.get('/clients/:id', crm, h(async (req, res) => {
 }))
 
 router.post('/clients', crm, h(async (req, res) => {
-  const after = await exposing(content.createClient)(req.body, req.user.id)
+  const after = await submitted(req, 'client', await exposing(content.createClient)(req.body, req.user.id))
   await audit({ actor: req.user, action: 'create', entity: 'client', entityId: after.id, after })
   res.status(201).json(after)
 }))
@@ -685,26 +687,30 @@ router.delete('/documents/:id', anyDocs, h(async (req, res) => {
 }))
 
 router.get('/quotes', inbox, h(async (req, res) => {
-  res.json(await content.listQuotes({ status: req.query.status || 'all', client_id: idOrNull(req.query.client_id) }))
+  const list = await content.listQuotes({ status: req.query.status || 'all', client_id: idOrNull(req.query.client_id) })
+  res.json(maySeeAmounts(req) ? list : list.map(q => withAmounts(req, q)))
 }))
 router.get('/quotes/:id', inbox, h(async (req, res) => {
   const q = await content.getQuote(req.params.id)
   if (!q) throw bad('quote not found', 404)
   const [messages, documents, shipments] = await Promise.all([content.listMessages({ quote_id: q.id }), content.listDocuments({ quote_id: q.id }),
     content.listShipments(q.id).catch(e => ({ items: [], lines: [], shipped: 0, remaining: 100, can_create: false, hint: e.expose ? e.message : 'Shipments are unavailable right now.' }))])
-  res.json({ ...q, messages, documents, shipments, link: quoteLink(q) })
+  const approval = await content.getApproval('quote', q.id).catch(() => null)
+  const amendments = await content.listAmendments({ entity: 'quote', entity_id: q.id }).catch(() => [])
+  res.json({ ...withAmounts(req, q), approval: approval?.approval || 'approved', approval_note: approval?.approval_note || '', submitted_by: approval?.submitted_by || null, amendments, messages, documents, shipments, link: quoteLink(q) })
 }))
 router.post('/quotes', inbox, h(async (req, res) => {
-  const after = await exposing(content.createQuote)(req.body || {}, req.user.id)
+  const after = await submitted(req, 'quote', await exposing(content.createQuote)(req.body || {}, req.user.id))
   await audit({ actor: req.user, action: 'create', entity: 'quote', entityId: after.id, after })
   res.status(201).json({ ...after, link: quoteLink(after) })
 }))
 router.patch('/quotes/:id', inbox, h(async (req, res) => {
   const before = await content.getQuote(req.params.id)
   if (!before) throw bad('quote not found', 404)
-  const after = await exposing(content.updateQuote)(before.id, req.body || {})
-  await audit({ actor: req.user, action: 'update', entity: 'quote', entityId: after.id, before, after })
-  res.json({ ...after, link: quoteLink(after) })
+  const { reason, ...patch } = req.body || {}
+  const r = await exposing(amend)(req, { type: 'quote', before, patch, reason, update: content.updateQuote, guard: (b, p) => { if (b.status === 'accepted' && ['items', 'discount', 'tax_rate', 'currency'].some(k => p[k] !== undefined)) throw new Error('this quote was accepted by the client; prices are locked. Create a new quote instead.') } })
+  await audit({ actor: req.user, action: r.amendment ? 'amend_request' : r.direct ? 'amend' : 'update', entity: 'quote', entityId: before.id, before, after: r.amendment ? { proposed: r.amendment.proposed } : r.record })
+  res.status(r.amendment ? 202 : 200).json({ ...r.record, link: quoteLink(r.record), ...(r.amendment ? { amendment: r.amendment } : {}) })
 }))
 router.delete('/quotes/:id', inbox, h(async (req, res) => {
   const before = await content.getQuote(req.params.id)
@@ -716,13 +722,17 @@ router.delete('/quotes/:id', inbox, h(async (req, res) => {
 router.get('/quotes/:id/pdf', inbox, h(async (req, res) => {
   const q = await content.getQuote(req.params.id)
   if (!q) throw bad('quote not found', 404)
+  if (!maySeeAmounts(req)) throw bad('Your role does not show invoice amounts.', 403)
   const [settings, fields] = await Promise.all([content.getSettings(), content.listQuoteFields()])
   const pdf = await renderQuotePdf(q, settings, fields, quoteLink(q))
   res.setHeader('Content-Type', 'application/pdf')
   res.setHeader('Content-Disposition', `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${q.number}.pdf"`)
   res.send(pdf)
 }))
-router.post('/quotes/:id/send', can('invoices', 'approve'), h(async (req, res) => {
+// Anyone who may create invoices can send an approved one; an unapproved invoice cannot go out.
+router.post('/quotes/:id/send', h(async (req, res) => {
+  if (!hasUser(req.user, 'invoices', 'create') && !hasUser(req.user, 'invoices', 'approve')) throw bad("You don't have permission for this (Invoices: create).", 403)
+  await requireApproved('quote', req.params.id)
   const b = req.body || {}
   const r = await sendQuote(req.params.id, { actor: req.user, to: b.to, subject: b.subject, body: b.body, attachmentIds: b.attachment_ids || [], fromId: b.from_id || null })
   res.json({ ...r, link: quoteLink(r.quote) })
@@ -952,5 +962,6 @@ router.post('/templates/:key/reset', settingsAdmin, h(async (req, res) => {
 router.use(procurementRoutes)
 /* payments, investments, supplier deliveries, reports */
 router.use(portalAdminRoutes)
+router.use(approvalRoutes)
 
 export default router

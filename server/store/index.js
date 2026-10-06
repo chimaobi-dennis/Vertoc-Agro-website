@@ -84,3 +84,10 @@ export const {
   KYC_STATUSES, safeInvestor, publicInvestor, createInvestor, updateInvestor, getInvestor, deleteInvestor, listInvestors,
   listInvestments, getInvestment, createInvestment, updateInvestment, setInvestmentProof, deleteInvestment, addPayout, deletePayout, publicInvestment, investmentTotals,
 } = portals
+
+// Approval workflow and amendments (migration 016).
+const approvals = hasSupabase ? await import('./approvals.js') : {}
+export const {
+  APPROVAL_HINT, APPROVAL_TABLES, APPROVAL_MODULE, getApproval, stampSubmission, resubmit, decide, listPending, countPending,
+  createAmendment, listAmendments, getAmendment, closeAmendment,
+} = approvals

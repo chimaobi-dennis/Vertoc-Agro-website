@@ -4,6 +4,7 @@ import { Plus, Search } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Input, PageHeader, Table, Td } from './ui'
 import { useSort } from '../lib/sort'
+import { ApprovalBadge } from './ApprovalUi'
 import { Bone } from '../components/Skeleton'
 import { PO_SHORT, fmtDay, money, poTone } from '../lib/procurement'
 
@@ -53,8 +54,8 @@ export default function PurchaseOrdersAdmin() {
               <Td><Link to={`/staff360/purchase-orders/${r.id}`} className="font-medium hover:text-accent whitespace-nowrap">{r.number}</Link><span className="block text-xs text-muted-foreground">{PO_SHORT[r.kind]}</span></Td>
               <Td>{r.supplier_id ? <Link to={`/staff360/suppliers/${r.supplier_id}?tab=orders`} className="hover:text-accent">{r.supplier_name || '—'}</Link> : (r.supplier_name || '—')}</Td>
               <Td className="text-muted-foreground max-w-[260px] truncate">{r.title || '—'}</Td>
-              <Td className="font-medium whitespace-nowrap tabular-nums">{money(r.total, r.currency)}</Td>
-              <Td><Badge tone={poTone(r.status)}>{r.status}</Badge></Td>
+              <Td className="font-medium whitespace-nowrap tabular-nums">{r.amounts_hidden ? '—' : money(r.total, r.currency)}</Td>
+              <Td><Badge tone={poTone(r.status)}>{r.status}</Badge><ApprovalBadge approval={r.approval} className="ml-1.5" /></Td>
               <Td className="text-muted-foreground whitespace-nowrap">{fmtDay(r.delivery_date)}</Td>
               <Td className="text-right"><Link to={`/staff360/purchase-orders/${r.id}`} className="text-xs font-semibold text-accent">Open →</Link></Td>
             </tr>

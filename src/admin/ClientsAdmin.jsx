@@ -4,6 +4,7 @@ import { Download, FileText, Plus, Search, Settings2 } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Button, Card, Input, PageHeader, Table, Td } from './ui'
 import { useSort } from '../lib/sort'
+import { ApprovalBadge } from './ApprovalUi'
 import { Bone } from '../components/Skeleton'
 import { displayValue as display } from './DynamicField'
 
@@ -72,7 +73,7 @@ export default function ClientsAdmin() {
           ))}
           {ready && sorted.map(r => (
             <tr key={r.id} className="hover:bg-muted/40">
-              <Td><Link to={`/staff360/clients/${r.id}`} className="font-medium hover:text-accent">{r.name}</Link></Td>
+              <Td><Link to={`/staff360/clients/${r.id}`} className="font-medium hover:text-accent">{r.name}</Link><ApprovalBadge approval={r.approval} className="ml-2" /></Td>
               {cols.map(c => <Td key={c.key} className="text-muted-foreground">{display(c, r.data?.[c.key])}</Td>)}
               <Td className="text-right"><Link to={`/staff360/clients/${r.id}`} className="text-xs font-semibold text-accent">Open →</Link></Td>
             </tr>

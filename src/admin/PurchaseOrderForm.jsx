@@ -13,6 +13,8 @@ import { Bone } from '../components/Skeleton'
 import Composer from './Composer'
 import { fmtDateTime, messageTone, openInNewTab } from './format'
 import { DraftNotice, useDraft } from './useDraft'
+import { AmendmentHistory, ApprovalBadge, ApprovalBanner, ReadOnlyItems } from './ApprovalUi'
+import { useAuth } from './AuthContext'
 import { DeliveriesPanel } from './DeliveriesAdmin'
 import { PO_KINDS, PO_SHORT, PO_STATUSES, fmtMoment, money, poTone, qty } from '../lib/procurement'
 
@@ -42,6 +44,7 @@ export default function PurchaseOrderForm() {
   const [err, setErr] = useState(null)
   const [compose, setCompose] = useState(false)
   const [toast, toastEl] = useToast()
+  const { can } = useAuth()
 
   const fill = o => {
     setForm({ kind: o.kind, number: (String(o.number || '').match(/-(\d+)$/) || [])[1] || '', supplier_id: o.supplier_id ?? '', supplier_name: o.supplier_name, supplier_email: o.supplier_email, supplier_address: o.supplier_address, title: o.title, currency: o.currency,
@@ -82,7 +85,18 @@ export default function PurchaseOrderForm() {
     // A locked order accepts everything except its items and prices.
     const { items: _i, discount: _d, tax_rate: _t, currency: _c, kind: _k, number: _n, ...rest } = all
     try {
-      if (editing) { const o = await adminFetch(`/purchase-orders/${id}`, { method: 'PATCH', body: locked ? rest : all }); setOrder(x => ({ ...x, ...o })); fill(o); toast('Saved'); return o }
+      if (editing) {
+        const body = { ...(locked ? rest : all) }
+        // Changing an official order without approval rights proposes an amendment instead.
+        if (!can('purchase_orders', 'approve') && order?.approval === 'approved') {
+          const reason = window.prompt('This order is official, so your change goes to an admin for approval. Why is it being changed?', '')
+          if (reason === null) { setBusy(false); return }
+          body.reason = reason
+        }
+        const o = await adminFetch(`/purchase-orders/${id}`, { method: 'PATCH', body })
+        if (o.amendment) { toast('Amendment sent for approval. The current version stays official until then.'); await load(); return o }
+        setOrder(x => ({ ...x, ...o })); fill(o); toast('Saved'); return o
+      }
       const o = await adminFetch('/purchase-orders', { method: 'POST', body: all }); draftInfo.clear(); nav(`/staff360/purchase-orders/${o.id}`, { replace: true }); return o
     } catch (x) { setErr(x.message); throw x } finally { setBusy(false) }
   }
@@ -97,12 +111,26 @@ export default function PurchaseOrderForm() {
   const cur = form.currency || 'NGN'
   const year = (editing && order?.number?.match(/-(\d{4})-/)?.[1]) || new Date().getFullYear()
 
+  // View-only roles see what is ordered, from whom and when, never the prices.
+  if (editing && order?.amounts_hidden) return (
+    <>
+      <Link to="/staff360/purchase-orders" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Purchase orders</Link>
+      <PageHeader eyebrow="Procurement" title={order.number} description={`${PO_KINDS[order.kind]} · ${order.supplier_name || ''}${order.delivery_date ? ` · delivery ${order.delivery_date}` : ''}`} action={<div className="flex gap-2"><ApprovalBadge approval={order.approval} /><Badge tone={poTone(order.status)}>{order.status}</Badge></div>} />
+      <div className="space-y-6 max-w-3xl">
+        <ReadOnlyItems items={order.items} />
+        {(order.delivery_location || order.notes) && <Card className="p-5 text-sm space-y-2">{order.delivery_location && <p><span className="text-muted-foreground">Deliver to: </span>{order.delivery_location}</p>}{order.notes && <p className="whitespace-pre-wrap"><span className="text-muted-foreground">Specifications and notes: </span>{order.notes}</p>}</Card>}
+      </div>
+      {toastEl}
+    </>
+  )
+
   return (
     <>
       <Link to="/staff360/purchase-orders" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Purchase orders</Link>
       <PageHeader eyebrow="Procurement" title={editing ? (order?.number || ' ') : 'New purchase order'}
         description={editing && order ? `${PO_KINDS[order.kind]}${order.title ? ` · ${order.title}` : ''}` : 'Build the order, then email it as a PDF with a link the supplier acknowledges it on.'}
-        action={editing && order && <Badge tone={poTone(order.status)}>{order.status}</Badge>} />
+        action={editing && order && <div className="flex flex-wrap items-center gap-2"><ApprovalBadge approval={order.approval} />{order.amendments?.some(a => a.status === 'pending') && <Badge tone="amber" className="whitespace-nowrap">Pending amendment approval</Badge>}<Badge tone={poTone(order.status)}>{order.status}</Badge></div>} />
+      {editing && order && <ApprovalBanner type="purchase_order" doc={order} onChanged={load} />}
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
       {!editing && <DraftNotice draft={draftInfo} onDiscard={() => { draftInfo.clear(); setForm(initial); setItems([blank()]); setDirty(false) }} />}
       {locked && <div className="mb-4"><Alert tone="info">The supplier has acknowledged this order, so its items and prices are locked. Raise a new order for changes.</Alert></div>}
@@ -179,7 +207,7 @@ export default function PurchaseOrderForm() {
               <Button type="submit" variant="accent" className="w-full" disabled={busy}>{busy ? 'Saving…' : editing ? (dirty ? 'Save changes' : 'Saved') : 'Create order'}</Button>
               {editing && (
                 <>
-                  <Button type="button" variant="primary" className="w-full" onClick={openSend} disabled={busy || ['acknowledged', 'fulfilled', 'cancelled'].includes(order.status)}><Send className="w-4 h-4" />{order.status === 'draft' ? 'Send to supplier' : 'Send again'}</Button>
+                  <Button type="button" variant="primary" className="w-full" onClick={openSend} disabled={busy || ['acknowledged', 'fulfilled', 'cancelled'].includes(order.status) || ['pending', 'rejected'].includes(order.approval)} title={order.approval === 'pending' ? 'Waiting for approval' : undefined}><Send className="w-4 h-4" />{order.status === 'draft' ? 'Send to supplier' : 'Send again'}</Button>
                   <div className="grid grid-cols-2 gap-2">
                     <Button type="button" variant="outline" onClick={preview}><Eye className="w-4 h-4" />PDF</Button>
                     <Button type="button" variant="outline" onClick={copyLink} disabled={order.status === 'draft'} title={order.status === 'draft' ? 'The supplier can acknowledge it once it is issued' : order.link}><Copy className="w-4 h-4" />Link</Button>
@@ -235,6 +263,8 @@ export default function PurchaseOrderForm() {
           <DeliveriesPanel poId={order.id} canAdd={['issued', 'acknowledged'].includes(order.status)} onChanged={() => adminFetch(`/purchase-orders/${id}`).then(o => setOrder(x => ({ ...x, fulfilment: o.fulfilment, shipments: o.shipments }))).catch(() => {})} />
         </section>
       )}
+
+      {editing && order && order.amendments?.length > 0 && <div className="mt-6 max-w-3xl"><AmendmentHistory amendments={order.amendments} cur={cur} type="purchase_order" onChanged={load} /></div>}
 
       {editing && order && (
         <Composer open={compose} onClose={() => setCompose(false)} title={`Send ${order.number}`} sendOrderId={order.id} scope="procurement" supplierId={order.supplier_id} poId={order.id}

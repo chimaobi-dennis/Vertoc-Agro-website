@@ -10,6 +10,8 @@ import { QUOTE_STATUSES, fmtDateTime, fmtMoney, fmtShort, messageTone, openInNew
 import ShipmentCreate from './ShipmentCreate'
 import { MODE_LABELS, SHIPMENT_LABELS, fmtEta, fmtPct, shipmentTone } from '../lib/shipments'
 import { DraftNotice, useDraft } from './useDraft'
+import { AmendmentHistory, ApprovalBadge, ApprovalBanner, ReadOnlyItems } from './ApprovalUi'
+import { useAuth } from './AuthContext'
 
 const money = v => Math.round((Number(v) || 0) * 100) / 100
 const blank = () => ({ description: '', quantity: 1, unit: 'MT', unit_price: '' })
@@ -40,10 +42,11 @@ export default function QuoteForm() {
   const [compose, setCompose] = useState(false)
   const [shipOpen, setShipOpen] = useState(false)
   const [toast, toastEl] = useToast()
+  const { can } = useAuth()
 
   useEffect(() => {
     adminFetch('/clients?status=active').then(setClients).catch(() => setClients([]))
-    adminFetch('/quote-fields').then(setFields).catch(e => setErr(e.message))
+    adminFetch('/quote-fields').then(setFields).catch(() => setFields([]))
     adminFetch('/settings').then(setSettings).catch(() => setSettings({ quotes: {}, company: {} }))
     if (editing) load()
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -79,7 +82,17 @@ export default function QuoteForm() {
     setErr(null); setBusy(true)
     const body = { ...form, client_id: form.client_id || null, items: items.filter(it => it.description.trim()) }
     try {
-      if (editing) { const q = await adminFetch(`/quotes/${id}`, { method: 'PATCH', body }); setQuote(x => ({ ...x, ...q })); setDirty(false); toast('Saved'); return q }
+      if (editing) {
+        // Changing an official invoice without approval rights proposes an amendment instead.
+        if (!can('invoices', 'approve') && quote?.approval === 'approved') {
+          const reason = window.prompt('This invoice is official, so your change goes to an admin for approval. Why is it being changed?', '')
+          if (reason === null) { setBusy(false); return }
+          body.reason = reason
+        }
+        const q = await adminFetch(`/quotes/${id}`, { method: 'PATCH', body })
+        if (q.amendment) { toast('Amendment sent for approval. The current version stays official until then.'); await load(); return q }
+        setQuote(x => ({ ...x, ...q })); setDirty(false); toast('Saved'); return q
+      }
       const q = await adminFetch('/quotes', { method: 'POST', body }); draftInfo.clear(); nav(`/staff360/quotes/${q.id}`, { replace: true }); return q
     } catch (x) { setErr(x.message); throw x } finally { setBusy(false) }
   }
@@ -99,12 +112,29 @@ export default function QuoteForm() {
   const numberYear = (editing && quote?.number?.match(/-(\d{4})-/)?.[1]) || new Date().getFullYear()
   const ship = quote?.shipments || { items: [], lines: [], shipped: 0, remaining: 100, can_create: false }
 
+  // View-only roles (logistics, inventory) see what is supplied and where it goes, never the prices.
+  if (editing && quote?.amounts_hidden) return (
+    <>
+      <Link to="/staff360/quotes" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Invoices</Link>
+      <PageHeader eyebrow="Sales" title={quote.number} description={`${quote.client_name || ''}${quote.title ? ` · ${quote.title}` : ''}`} action={<Badge tone={quoteTone(quote.status)}>{quote.status}</Badge>} />
+      <div className="space-y-6 max-w-3xl"><ReadOnlyItems items={quote.items} />
+        <Card className="p-6"><div className="flex items-center justify-between mb-3"><h2 className="font-semibold">Shipments</h2></div>
+          {ship.items.length ? <ul className="divide-y divide-border rounded-xl border border-border">{ship.items.map(s => <li key={s.id}><Link to={`/staff360/quotes/${id}/shipments/${s.id}`} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm hover:bg-muted/50"><span className="font-semibold">Shipment {s.number}</span><span className="text-muted-foreground flex-1">{s.origin?.name} → {s.destination?.name}</span><Badge tone={shipmentTone(s.status)}>{SHIPMENT_LABELS[s.status]}</Badge></Link></li>)}</ul> : <p className="text-sm text-muted-foreground">No shipments yet.</p>}
+          {ship.can_create && <Button type="button" variant="accent" className="mt-4" onClick={() => setShipOpen(true)}><Truck className="w-4 h-4" />Create shipment</Button>}
+        </Card>
+      </div>
+      <ShipmentCreate open={shipOpen} onClose={() => setShipOpen(false)} quoteId={quote.id} lines={ship.lines || []} onCreated={s => { setShipOpen(false); nav(`/staff360/quotes/${id}/shipments/${s.id}`) }} />
+      {toastEl}
+    </>
+  )
+
   return (
     <>
       <Link to="/staff360/quotes" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"><ArrowLeft className="w-4 h-4" />Invoices</Link>
       <PageHeader eyebrow="Sales" title={editing ? (quote?.number || ' ') : 'New invoice'}
         description={editing && quote ? (quote.title || 'Untitled invoice') : 'Build a priced invoice, then email it as a PDF with a unique link the client can accept online.'}
-        action={editing && quote && <Badge tone={quoteTone(quote.status)}>{quote.status}</Badge>} />
+        action={editing && quote && <div className="flex flex-wrap items-center gap-2"><ApprovalBadge approval={quote.approval} />{quote.amendments?.some(a => a.status === 'pending') && <Badge tone="amber" className="whitespace-nowrap">Pending amendment approval</Badge>}<Badge tone={quoteTone(quote.status)}>{quote.status}</Badge></div>} />
+      {editing && quote && <ApprovalBanner type="quote" doc={quote} onChanged={load} />}
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
       {!editing && <DraftNotice draft={draftInfo} onDiscard={() => { draftInfo.clear(); setForm(initialForm); setItems([blank()]); setDirty(false) }} />}
       {locked && <div className="mb-4"><Alert tone="info">This invoice was accepted by the client, so prices and items are locked. Create a new invoice for changes.</Alert></div>}
@@ -202,6 +232,8 @@ export default function QuoteForm() {
               </Card>
             )}
 
+            {editing && <AmendmentHistory amendments={quote.amendments} cur={cur} type="quote" onChanged={load} />}
+
             <Card className="p-6 grid gap-5 animate-fade-up" style={{ animationDelay: '210ms' }}>
               <Field label="Notes to the client" hint="Printed on the invoice."><Textarea rows={3} value={form.notes} onChange={e => set({ notes: e.target.value })} /></Field>
               <Field label="Terms" hint="Printed on the invoice. Defaults come from Settings → Invoices."><Textarea rows={3} value={form.terms} onChange={e => set({ terms: e.target.value })} /></Field>
@@ -214,7 +246,7 @@ export default function QuoteForm() {
               <Button type="submit" variant="accent" className="w-full" disabled={busy}>{busy ? 'Saving…' : editing ? (dirty ? 'Save changes' : 'Saved') : 'Create invoice'}</Button>
               {editing && (
                 <>
-                  <Button type="button" variant="primary" className="w-full" onClick={openSend} disabled={busy || ['accepted', 'declined'].includes(quote.status)}><Send className="w-4 h-4" />{quote.status === 'draft' ? 'Send to client' : 'Send again'}</Button>
+                  <Button type="button" variant="primary" className="w-full" onClick={openSend} disabled={busy || ['accepted', 'declined'].includes(quote.status) || ['pending', 'rejected'].includes(quote.approval)} title={quote.approval === 'pending' ? 'Waiting for approval' : undefined}><Send className="w-4 h-4" />{quote.status === 'draft' ? 'Send to client' : 'Send again'}</Button>
                   <div className="grid grid-cols-2 gap-2">
                     <Button type="button" variant="outline" onClick={preview}><Eye className="w-4 h-4" />PDF</Button>
                     <Button type="button" variant="outline" onClick={copyLink} disabled={quote.status === 'draft'} title={quote.status === 'draft' ? 'The link goes live once the invoice is sent' : quote.link}><Copy className="w-4 h-4" />Link</Button>

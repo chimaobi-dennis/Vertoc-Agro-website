@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Banknote, BarChart3, Briefcase, ChevronDown, Factory, Landmark, TrendingUp, Truck, FileSignature, FileText, Gavel, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Mails, Menu, Moon, Newspaper, Package, ScrollText, Settings, Sun, Users, X, Star } from 'lucide-react'
+import { Banknote, BarChart3, Briefcase, ChevronDown, Factory, Landmark, TrendingUp, Truck, FileSignature, FileText, Gavel, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Mails, Menu, Moon, Newspaper, Package, ScrollText, Settings, ShieldCheck, Sun, Users, X, Star } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { useAdminTheme } from './AdminTheme'
@@ -8,6 +8,7 @@ import { useAdminTheme } from './AdminTheme'
 // `perm` is a module of the permission table (server/permissions.js): an item shows when the person may view it.
 const NAV = [
   { to: '/staff360', label: 'Dashboard', icon: LayoutDashboard, end: true, group: 'Manage' },
+  { to: '/staff360/approvals', label: 'Approvals', icon: ShieldCheck, group: 'Manage', badge: 'approvalsPending' },
   { to: '/staff360/products', label: 'Products', icon: Package, perm: 'content', group: 'Manage' },
   { to: '/staff360/posts', label: 'Blog', icon: Newspaper, perm: 'content', group: 'Manage' },
   { to: '/staff360/reviews', label: 'Reviews', icon: Star, perm: 'content', group: 'Manage', badge: 'reviewsPending' },
@@ -48,7 +49,7 @@ export default function AdminLayout() {
   const [openGroups, setOpenGroups] = useState(() => { try { return JSON.parse(localStorage.getItem('staff360:nav') || '{}') } catch { return {} } })
 
   // Unread-mail and new-bid badges: refreshed on every route change and once a minute.
-  const badges = NAV.some(n => n.badge && me?.permissions?.[n.perm])
+  const badges = NAV.some(n => n.badge && (!n.perm || me?.permissions?.[n.perm]))
   useEffect(() => {
     if (!badges) return
     const load = () => adminFetch('/stats').then(setStats).catch(() => {})
