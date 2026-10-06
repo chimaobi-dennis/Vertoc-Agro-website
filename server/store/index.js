@@ -91,3 +91,9 @@ export const {
   APPROVAL_HINT, APPROVAL_TABLES, APPROVAL_MODULE, getApproval, stampSubmission, resubmit, decide, listPending, countPending,
   createAmendment, listAmendments, getAmendment, closeAmendment,
 } = approvals
+
+// Inventory: goods received against approved orders (migration 017).
+const inventory = hasSupabase ? await import('./inventory.js') : {}
+export const {
+  INVENTORY_HINT, INVENTORY_STATUSES, INVENTORY_LABELS, listExpected, getExpected, receive, deleteReceipt, setClosed, stock, inventoryCounts,
+} = inventory

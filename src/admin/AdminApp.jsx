@@ -30,6 +30,7 @@ import EnquiriesAdmin from './EnquiriesAdmin'
 import EnquiryDetail from './EnquiryDetail'
 import QuotesAdmin from './QuotesAdmin'
 import ApprovalsAdmin from './ApprovalsAdmin'
+import { InventoryAdmin, InventoryOrder } from './InventoryAdmin'
 import QuoteForm from './QuoteForm'
 import QuoteFieldsAdmin from './QuoteFieldsAdmin'
 import SettingsAdmin from './SettingsAdmin'
@@ -104,6 +105,9 @@ export default function AdminApp() {
           <Route path="clients/new" element={P('clients', <ClientDetail />)} />
           <Route path="clients/fields" element={P('clients', <ClientFieldsAdmin />)} />
           <Route path="clients/:id" element={P('clients', <ClientDetail />)} />
+          <Route path="inventory" element={P('inventory', <InventoryAdmin />)} />
+          <Route path="inventory/stock" element={P('inventory', <InventoryAdmin stockTab />)} />
+          <Route path="inventory/orders/:id" element={P('inventory', <InventoryOrder />)} />
           <Route path="approvals" element={<ApprovalsAdmin />} />
           <Route path="quotes" element={P('invoices', <QuotesAdmin />)} />
           <Route path="quotes/new" element={P('invoices', <QuoteForm />)} />

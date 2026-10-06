@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Banknote, BarChart3, Briefcase, ChevronDown, Factory, Landmark, TrendingUp, Truck, FileSignature, FileText, Gavel, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Mails, Menu, Moon, Newspaper, Package, ScrollText, Settings, ShieldCheck, Sun, Users, X, Star } from 'lucide-react'
+import { Banknote, BarChart3, Boxes, Briefcase, ChevronDown, PackageCheck, Factory, Landmark, TrendingUp, Truck, FileSignature, FileText, Gavel, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Mails, Menu, Moon, Newspaper, Package, ScrollText, Settings, ShieldCheck, Sun, Users, X, Star } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { useAdminTheme } from './AdminTheme'
@@ -23,10 +23,12 @@ const NAV = [
   { to: '/staff360/deliveries', label: 'Supplier shipments', icon: Truck, perm: 'shipments', group: 'Procurement', badge: 'deliveriesMoving' },
   { to: '/staff360/procurement/messages', label: 'Messages', icon: Mails, perm: 'supplier_messages', group: 'Procurement', badge: 'procUnread' },
   { to: '/staff360/suppliers', label: 'Suppliers', icon: Factory, perm: 'suppliers', group: 'Procurement' },
+  { to: '/staff360/inventory', label: 'Expected deliveries', icon: PackageCheck, perm: 'inventory', group: 'Inventory', badge: 'inventoryOpen', end: true, also: ['/staff360/inventory/orders'] },
+  { to: '/staff360/inventory/stock', label: 'Stock', icon: Boxes, perm: 'inventory', group: 'Inventory' },
   { to: '/staff360/investments', label: 'Investments', icon: TrendingUp, perm: 'investments', group: 'Investment', badge: 'investmentsNew' },
   { to: '/staff360/investors', label: 'Investors', icon: Landmark, perm: 'investments', group: 'Investment' },
 ]
-const GROUPS = ['Manage', 'Sales', 'Procurement', 'Investment']
+const GROUPS = ['Manage', 'Sales', 'Procurement', 'Inventory', 'Investment']
 // Administration lives under the person's avatar (top right), not in the sidebar.
 const SYSTEM = [
   { to: '/staff360/staff', label: 'Staff', icon: Users, perm: 'staff' },
@@ -58,7 +60,7 @@ export default function AdminLayout() {
 
   const items = NAV.filter(n => !n.perm || me?.permissions?.[n.perm])
   const systemItems = SYSTEM.filter(n => !n.perm || me?.permissions?.[n.perm])
-  const at = n => (n.end ? pathname === n.to : pathname.startsWith(n.to) || (n.also || []).some(p => pathname.startsWith(p)))
+  const at = n => (n.end ? pathname === n.to : pathname.startsWith(n.to)) || (n.also || []).some(p => pathname.startsWith(p))
   const hit = [...NAV, ...SYSTEM].reverse().find(at)
   const activeGroup = [...NAV].reverse().find(at)?.group
 
