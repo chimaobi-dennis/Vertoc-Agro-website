@@ -8,6 +8,7 @@ import { Bone } from '../components/Skeleton'
 import { RolesPanel, useRoles } from './Permissions'
 import { useSort } from '../lib/sort'
 import { fmtDateTime } from './format'
+import Avatar from './Avatar'
 
 /** Staff accounts, and the roles that decide what each of them may do. */
 export default function UsersAdmin() {
@@ -57,16 +58,18 @@ export default function UsersAdmin() {
         )}
         <div className="flex justify-end mb-3">{sortControl}</div>
         <Card>
-          <Table head={['Staff member', 'Role', 'Status', 'Joined', '']}>
-            {!rows && [0, 1].map(i => <tr key={i}>{[0, 1, 2, 3, 4].map(j => <Td key={j}><Bone className="h-4 w-24" /></Td>)}</tr>)}
+          <Table head={['Staff member', 'Staff ID', 'Role', 'Reports to', 'Status', 'Last sign-in', '']}>
+            {!rows && [0, 1].map(i => <tr key={i}>{[0, 1, 2, 3, 4, 5, 6].map(j => <Td key={j}><Bone className="h-4 w-24" /></Td>)}</tr>)}
             {sorted?.map(u => {
               const self = u.id === me.id
               return (
                 <tr key={u.id} className="hover:bg-muted/40">
-                  <Td><Link to={`/staff360/staff/${u.id}`} className="font-medium hover:text-accent">{u.name || u.email}</Link>{self && <Badge tone="blue" className="ml-2">you</Badge>}<div className="text-xs text-muted-foreground">{u.email}{u.position ? ` · ${u.position}` : ''}</div></Td>
+                  <Td><div className="flex items-center gap-3"><Avatar src={u.avatar_url} name={u.name || u.email} size={36} /><div className="min-w-0"><Link to={`/staff360/staff/${u.id}`} className="font-medium hover:text-accent">{u.name || u.email}</Link>{self && <Badge tone="blue" className="ml-2">you</Badge>}<div className="text-xs text-muted-foreground">{u.email}{u.position ? ` · ${u.position}` : ''}{u.department ? ` · ${u.department}` : ''}{u.phone ? ` · ${u.phone}` : ''}</div></div></div></Td>
+                  <Td className="font-mono text-xs whitespace-nowrap">{u.staff_id || '—'}</Td>
                   <Td>{manage && roles.length ? <Select value={u.role_key} disabled={self} onChange={e => patch(u, { role: e.target.value })} className="w-44">{roleOptions}</Select> : <span>{u.role_name || u.role}</span>}{u.custom_permissions && <Badge tone="amber" className="ml-2">custom permissions</Badge>}</Td>
+                  <Td className="text-muted-foreground text-xs">{u.reports_to_name || '—'}</Td>
                   <Td><Badge tone={u.active ? 'green' : 'red'}>{u.active ? 'active' : 'inactive'}</Badge></Td>
-                  <Td className="text-muted-foreground text-xs whitespace-nowrap">{fmtDateTime(u.created_at)}</Td>
+                  <Td className="text-muted-foreground text-xs whitespace-nowrap">{u.last_sign_in_at ? fmtDateTime(u.last_sign_in_at) : 'never'}<span className="block">added {fmtDateTime(u.created_at)}</span></Td>
                   <Td className="text-right whitespace-nowrap">{can('staff', 'edit') && <Button variant={u.active ? 'outline' : 'accent'} disabled={self} onClick={() => patch(u, { active: !u.active })} className="h-8 px-3 text-xs">{u.active ? 'Deactivate' : 'Activate'}</Button>}<Link to={`/staff360/staff/${u.id}`} className="ml-3 text-xs font-semibold text-accent">Open →</Link></Td>
                 </tr>
               )

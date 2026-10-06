@@ -155,7 +155,11 @@ router.get('/users', can('staff'), h(async (_req, res) => {
     .select('*').order('created_at', { ascending: false })
   if (error) throw new Error(error.message)
   const custom = await customRoles()
-  res.json(data.map(p => ({ ...p, role_key: keyOf(p), role_name: BUILT_IN_ROLES[keyOf(p)]?.name || custom.find(r => r.key === keyOf(p))?.name || keyOf(p), custom_permissions: Boolean(p.permissions) })))
+  // Last sign-in comes from Supabase Auth; the list still loads without it.
+  const seen = {}
+  try { const { data: au } = await sb.auth.admin.listUsers({ perPage: 1000 }); for (const u of au?.users || []) seen[u.id] = u.last_sign_in_at || null } catch { /* optional */ }
+  const nameOf = id => { const m = data.find(x => x.id === id); return m ? (m.name || m.email) : '' }
+  res.json(data.map(p => ({ ...p, last_sign_in_at: seen[p.id] ?? null, reports_to_name: p.reports_to ? nameOf(p.reports_to) : '', role_key: keyOf(p), role_name: BUILT_IN_ROLES[keyOf(p)]?.name || custom.find(r => r.key === keyOf(p))?.name || keyOf(p), custom_permissions: Boolean(p.permissions) })))
 }))
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -188,7 +192,8 @@ router.get('/users/:id', can('staff'), h(async (req, res) => {
     authDetails(sb, p.id),
     sb.from('audit_log').select('id, action, entity, entity_id, at').eq('actor_id', p.id).order('at', { ascending: false }).limit(20).then(r => r.data || []),
   ])
-  res.json({ ...p, role_key: keyOf(p), auth, activity })
+  const manager = p.reports_to ? (await sb.from('profiles').select('id,name,email,staff_id').eq('id', p.reports_to).maybeSingle()).data : null
+  res.json({ ...p, role_key: keyOf(p), auth, activity, manager })
 }))
 
 // A fresh set-password link: the invitation again while it is still
@@ -256,6 +261,26 @@ router.patch('/users/:id', can('staff', 'edit'), h(async (req, res) => {
     patch.email = String(b.email).trim().toLowerCase()
   }
   if (b.position !== undefined) patch.position = String(b.position || '').trim().slice(0, 80)
+  if (b.phone !== undefined) patch.phone = String(b.phone || '').trim().slice(0, 40)
+  if (b.department !== undefined) patch.department = String(b.department || '').trim().slice(0, 80)
+  // The Staff ID is given by the system and never changes: any value sent for it is ignored.
+  if (b.reports_to !== undefined) {
+    const to = b.reports_to || null
+    if (to && !UUID_RE.test(to)) throw bad('Choose someone from the list.')
+    if (to === id) throw bad('Nobody reports to themselves.')
+    if (to) {
+      const sbr = await supabase()
+      // No loops: the chain above the new manager must not lead back to this person.
+      let cur = to
+      for (let i = 0; cur && i < 20; i++) {
+        const { data: m } = await sbr.from('profiles').select('id,reports_to').eq('id', cur).maybeSingle()
+        if (!m) throw bad('That person is not on the staff list.')
+        if (m.reports_to === id) throw bad('That would make a loop: they already report to this person.')
+        cur = m.reports_to
+      }
+    }
+    patch.reports_to = to
+  }
   if (!Object.keys(patch).length) throw bad('Nothing to update.')
   if (!UUID_RE.test(id)) throw bad('User not found.', 404)
   // Only someone who manages staff may change what a person can do.
@@ -291,6 +316,7 @@ router.patch('/users/:id', can('staff', 'edit'), h(async (req, res) => {
     if (b.role !== undefined) old.role = b.role
     ;({ data: after, error } = await sb.from('profiles').update(old).eq('id', id).select().single())
   }
+  if (error && /staff_id|phone|department|reports_to|avatar_url/.test(error.message)) throw bad('Staff profiles need the database migration 018: run server/migrations/018_staff_profiles.sql in the Supabase SQL editor first.', 409)
   if (error) throw /position/.test(error.message) ? bad('Positions need the database migration 008_positions.sql — run it in the Supabase SQL editor first.') : new Error(error.message)
   await audit({ actor: req.user, action: 'update', entity: 'user', entityId: id, before, after })
   // A change to what someone may do gets its own line in the log.
@@ -417,6 +443,53 @@ router.post('/upload', express.json({ limit: '12mb' }), can('content'), h(async 
 
   await audit({ actor: req.user, action: 'upload', entity: 'media', entityId: path, after: { url: pub.publicUrl, bytes: buffer.length } })
   res.status(201).json({ url: pub.publicUrl, path })
+}))
+
+/* ------------------------------------------------------ staff profiles --- */
+const AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+async function saveAvatar(targetId, body) {
+  const { contentType, data } = body || {}
+  if (!AVATAR_TYPES.has(contentType)) throw bad('Use a JPEG, PNG or WebP picture.')
+  const buffer = Buffer.from(String(data || '').replace(/^data:[^;]+;base64,/, ''), 'base64')
+  if (!buffer.length) throw bad('No picture received.')
+  if (buffer.length > 4 * 1024 * 1024) throw bad('The picture must be under 4 MB.')
+  const sb = await supabase()
+  const path = `avatars/${targetId}-${Date.now()}.${contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg'}`
+  const { error } = await sb.storage.from('media').upload(path, buffer, { contentType, upsert: false })
+  if (error) throw new Error(error.message)
+  const url = sb.storage.from('media').getPublicUrl(path).data.publicUrl
+  const { error: e2 } = await sb.from('profiles').update({ avatar_url: url }).eq('id', targetId)
+  if (e2) throw /avatar_url/.test(e2.message) ? bad('Staff profiles need the database migration 018 first.', 409) : new Error(e2.message)
+  return url
+}
+// Anyone signed in may change their own picture and phone number; the rest of the profile is staff management's.
+// The people list a staff member may see: names for reporting lines and "reports to".
+router.get('/directory', h(async (_req, res) => {
+  const { data } = await (await supabase()).from('profiles').select('id,name,email,staff_id,avatar_url,department').eq('active', true).order('name')
+  res.json(data || [])
+}))
+router.post('/me/avatar', express.json({ limit: '8mb' }), h(async (req, res) => {
+  const url = await saveAvatar(req.user.id, req.body)
+  await audit({ actor: req.user, action: 'update', entity: 'user', entityId: req.user.id, after: { avatar_url: url } })
+  res.status(201).json({ url })
+}))
+router.patch('/me/profile', h(async (req, res) => {
+  const patch = {}
+  if (req.body?.phone !== undefined) patch.phone = String(req.body.phone || '').trim().slice(0, 40)
+  if (req.body?.name !== undefined) { patch.name = String(req.body.name || '').trim().slice(0, 120); if (!patch.name) throw bad('Please enter your name.') }
+  if (req.body?.avatar_url === '') patch.avatar_url = ''
+  if (!Object.keys(patch).length) throw bad('Nothing to update.')
+  const sb = await supabase()
+  const { data, error } = await sb.from('profiles').update(patch).eq('id', req.user.id).select().single()
+  if (error) throw /phone|avatar_url/.test(error.message) ? bad('Staff profiles need the database migration 018 first.', 409) : new Error(error.message)
+  await audit({ actor: req.user, action: 'update', entity: 'user', entityId: req.user.id, after: patch })
+  res.json({ name: data.name, phone: data.phone, avatar_url: data.avatar_url })
+}))
+router.post('/users/:id/avatar', express.json({ limit: '8mb' }), can('staff', 'edit'), h(async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) throw bad('User not found.', 404)
+  const url = await saveAvatar(req.params.id, req.body)
+  await audit({ actor: req.user, action: 'update', entity: 'user', entityId: req.params.id, after: { avatar_url: url } })
+  res.status(201).json({ url })
 }))
 
 /* ================================================ PHASE 2: CRM + INBOX ==== */

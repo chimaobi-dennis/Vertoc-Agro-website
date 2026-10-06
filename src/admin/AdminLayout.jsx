@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Banknote, BarChart3, Boxes, Briefcase, ChevronDown, PackageCheck, Factory, Landmark, TrendingUp, Truck, FileSignature, FileText, Gavel, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Mails, Menu, Moon, Newspaper, Package, ScrollText, Settings, ShieldCheck, Sun, Users, X, Star } from 'lucide-react'
+import { Banknote, BarChart3, Boxes, Briefcase, ChevronDown, PackageCheck, Factory, Landmark, TrendingUp, Truck, FileSignature, FileText, Gavel, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Mails, Menu, Moon, Newspaper, Package, ScrollText, Settings, ShieldCheck, UserRound, Sun, Users, X, Star } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { useAdminTheme } from './AdminTheme'
+import Avatar from './Avatar'
 
 // `perm` is a module of the permission table (server/permissions.js): an item shows when the person may view it.
 const NAV = [
@@ -154,15 +155,16 @@ export default function AdminLayout() {
             <div className="relative" ref={menuRef}>
               <button type="button" onClick={() => setMenu(m => !m)} aria-haspopup="menu" aria-expanded={menu} aria-label="Account menu"
                 className="flex items-center gap-2 rounded-full pl-1 pr-2 py-1 hover:bg-muted transition-colors">
-                <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center">{initials(who)}</span>
+                <Avatar src={me?.avatar_url} name={who} size={32} />
                 <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${menu ? 'rotate-180' : ''}`} />
               </button>
               {menu && (
                 <div role="menu" className="absolute right-0 mt-2 w-64 rounded-2xl border border-border bg-card shadow-xl py-2 z-50 animate-fade-in">
                   <div className="px-4 py-2.5 border-b border-border mb-1">
                     <p className="text-sm font-semibold truncate">{who}</p>
-                    <p className="text-xs text-muted-foreground truncate">{me?.role_name || me?.role}</p>
+                    <p className="text-xs text-muted-foreground truncate">{me?.role_name || me?.role}{me?.staff_id ? ` · ${me.staff_id}` : ''}</p>
                   </div>
+                  <NavLink to="/staff360/profile" role="menuitem" className={({ isActive }) => `flex items-center gap-3 mx-2 mt-1 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${isActive ? 'bg-accent/10 text-accent' : 'text-foreground/80 hover:bg-muted hover:text-foreground'}`}><UserRound className="w-4 h-4 shrink-0" />My profile</NavLink>
                   {systemItems.length > 0 && <p className="px-4 pt-2 pb-1 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">System</p>}
                   {systemItems.map(({ to, label, icon: Icon }) => (
                     <NavLink key={to} to={to} role="menuitem"

@@ -7,12 +7,14 @@ import { Alert, Badge, Button, Card, Field, Input, PageHeader, Select, useToast 
 import { Bone } from '../components/Skeleton'
 import { fmtDateTime } from './format'
 import { PermissionMatrix, useRoles } from './Permissions'
+import { AvatarEditor } from './Avatar'
 
 /** One staff account: profile (editable), sign-in facts from Supabase Auth, recent activity. */
 export default function UserDetail() {
   const { id } = useParams()
   const { me, can } = useAuth()
   const { data: roleData } = useRoles()
+  const [people, setPeople] = useState([])
   const [custom, setCustom] = useState(null)      // this person's own permissions while being edited; null = the role's
   const [user, setUser] = useState(null)
   const [form, setForm] = useState(null)
@@ -21,14 +23,15 @@ export default function UserDetail() {
   const [sending, setSending] = useState(false)
   const [toast, toastEl] = useToast()
 
-  const load = useCallback(() => adminFetch(`/users/${id}`).then(u => { setUser(u); setCustom(u.permissions || null); setForm({ name: u.name || '', email: u.email || '', role: u.role_key || u.role, position: u.position || '' }) }).catch(e => setErr(e.message)), [id])
+  const load = useCallback(() => adminFetch(`/users/${id}`).then(u => { setUser(u); setCustom(u.permissions || null); setForm({ name: u.name || '', email: u.email || '', role: u.role_key || u.role, position: u.position || '', phone: u.phone || '', department: u.department || '', reports_to: u.reports_to || '' }) }).catch(e => setErr(e.message)), [id])
   useEffect(() => { load() }, [load])
+  useEffect(() => { adminFetch('/directory').then(setPeople).catch(() => {}) }, [])
 
   const self = user && me && user.id === me.id
   const manage = can('staff', 'manage')
   const roles = roleData?.roles || []
   const roleOf = key => roles.find(r => r.key === key)
-  const dirty = user && form && (form.name !== (user.name || '') || form.email !== user.email || form.role !== (user.role_key || user.role) || form.position !== (user.position || ''))
+  const dirty = user && form && (form.name !== (user.name || '') || form.email !== user.email || form.role !== (user.role_key || user.role) || form.position !== (user.position || '') || form.phone !== (user.phone || '') || form.department !== (user.department || '') || form.reports_to !== (user.reports_to || ''))
 
   const save = async e => {
     e.preventDefault(); setBusy(true)
@@ -37,6 +40,9 @@ export default function UserDetail() {
     if (form.email !== user.email) body.email = form.email
     if (form.role !== (user.role_key || user.role)) body.role = form.role
     if (form.position !== (user.position || '')) body.position = form.position
+    if (form.phone !== (user.phone || '')) body.phone = form.phone
+    if (form.department !== (user.department || '')) body.department = form.department
+    if (form.reports_to !== (user.reports_to || '')) body.reports_to = form.reports_to || null
     try { await adminFetch(`/users/${id}`, { method: 'PATCH', body }); toast(body.email ? 'Saved. The new address is what they sign in with from now on.' : 'Saved'); load() }
     catch (x) { toast(x.message, 'error') } finally { setBusy(false) }
   }
@@ -83,6 +89,7 @@ export default function UserDetail() {
             <form onSubmit={save}>
               <Card className="p-6 animate-fade-up">
                 <h2 className="font-semibold mb-4 flex items-center gap-2"><UserRound className="w-4 h-4 text-accent" />Profile</h2>
+                <div className="mb-6"><AvatarEditor src={user.avatar_url} name={user.name || user.email} endpoint={`/users/${user.id}/avatar`} onChanged={load} disabled={!can('staff', 'edit')} /></div>
                 <div className="grid md:grid-cols-2 gap-5">
                   <Field label="Name"><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Display name" /></Field>
                   <Field label="Email" hint={self ? 'This is the address you sign in with.' : 'The address they sign in with; changing it takes effect immediately.'}><Input type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></Field>
@@ -90,7 +97,12 @@ export default function UserDetail() {
                     <Select value={form.role} disabled={self || !manage} onChange={e => setForm({ ...form, role: e.target.value })}>{roles.length ? roles.map(r => <option key={r.key} value={r.key}>{r.name}</option>) : <option value={form.role}>{form.role}</option>}</Select>
                   </Field>
                   <Field label="Position" hint='Shown in their emails, e.g. "Precious Ubadire, Managing Director"'><Input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} placeholder="Managing Director" /></Field>
+                  <Field label="Phone number"><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+234…" /></Field>
+                  <Field label="Department"><Input value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} placeholder="Procurement, Sales, Finance…" /></Field>
+                  <Field label="Reports to"><Select value={form.reports_to} onChange={e => setForm({ ...form, reports_to: e.target.value })}><option value="">Nobody</option>{people.filter(p => p.id !== user.id).map(p => <option key={p.id} value={p.id}>{p.name || p.email}{p.staff_id ? ` · ${p.staff_id}` : ''}</option>)}</Select></Field>
+                  <Field label="Staff ID" hint="Given automatically when they joined; it never changes."><Input value={user.staff_id || 'Given once the account is active'} readOnly className="bg-muted/50 font-mono" /></Field>
                   <Field label="Joined"><Input value={fmtDateTime(user.created_at)} readOnly className="bg-muted/50" /></Field>
+                  <Field label="Last sign-in"><Input value={a?.last_sign_in_at ? fmtDateTime(a.last_sign_in_at) : 'Never'} readOnly className="bg-muted/50" /></Field>
                 </div>
                 <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
                   <Button type="button" variant={user.active ? 'outline' : 'accent'} disabled={self} onClick={toggleActive}>{user.active ? 'Deactivate account' : 'Activate account'}</Button>

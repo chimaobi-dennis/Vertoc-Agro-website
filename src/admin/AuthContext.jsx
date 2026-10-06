@@ -41,12 +41,14 @@ export function AuthProvider({ children }) {
     return () => { alive = false }
   }, [session])
 
+  // Reload who I am (after changing my own picture or name) without the sign-in splash.
+  const refresh = useCallback(() => adminFetch('/me').then(setMe).catch(() => {}), [])
   const signOut = useCallback(async () => { await supabase?.auth.signOut(); setMe(null) }, [])
 
   // What this person may do: can('bidding', 'unlock'). The server enforces it; the panel only hides what would be refused.
   const can = useCallback((module, action = 'view') => Boolean(me?.can?.[module]?.includes(action)), [me])
 
-  return <Ctx.Provider value={{ session, me, error, loading, signOut, can }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={{ session, me, error, loading, signOut, can, refresh }}>{children}</Ctx.Provider>
 }
 
 export const useAuth = () => useContext(Ctx)

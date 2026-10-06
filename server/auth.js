@@ -46,7 +46,7 @@ export async function authenticate(req, res, next) {
     if (!profile.active) return deny(res, 403, 'This account has been deactivated.')
 
     const { key, perms, custom } = await effectivePermissions(supabase, profile)
-    req.user = { id: profile.id, email: profile.email || user.email, name: profile.name, role: profile.role, role_key: key, perms, custom_permissions: custom, position: profile.position || '' }
+    req.user = { id: profile.id, email: profile.email || user.email, name: profile.name, role: profile.role, role_key: key, perms, custom_permissions: custom, position: profile.position || '', staff_id: profile.staff_id || '', phone: profile.phone || '', department: profile.department || '', avatar_url: profile.avatar_url || '', reports_to: profile.reports_to || null }
     next()
   } catch (e) {
     console.error('[auth]', e.message)
