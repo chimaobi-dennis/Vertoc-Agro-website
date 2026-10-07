@@ -84,6 +84,13 @@ export const DEFAULT_TEMPLATES = {
     cta_label: 'Open your supplier dashboard',
     variables: ['supplier_name', 'contact_person', 'email', 'tender_number', 'tender_title', 'commodity', 'quantity', 'price', 'total', 'delivery_date', 'closes_at', 'link', 'company_name'],
   },
+  tender_invitation: {
+    name: 'Bid invitation (to selected suppliers)', description: 'Procurement. Sent to the suppliers staff select for an open opportunity, and again when staff resend it to those who have not bid.',
+    subject: 'Invitation to bid: {{commodity}} ({{tender_number}}), closes {{deadline}}',
+    body: 'Dear {{contact_person}},\n\n{{company_name}} invites {{supplier_name}} to bid on the opportunity below.\n\nReference: {{tender_number}}\nCommodity: {{commodity}}\nRequired quantity: {{quantity}}\nDelivery location: {{delivery_location}}{{#if delivery_period}}\nDelivery period: {{delivery_period}}{{/if}}\nBidding deadline: {{deadline}}\n{{#if specification}}\nSpecifications:\n{{specification}}\n{{/if}}{{#if requirements}}\nRequirements:\n{{requirements}}\n{{/if}}\nUse the button below to read the full details and submit your bid before the deadline. Bids received after it cannot be accepted.\n\nKind regards,\n{{company_name}} Procurement',
+    cta_label: 'Submit your bid',
+    variables: ['supplier_name', 'contact_person', 'tender_number', 'tender_title', 'commodity', 'quantity', 'specification', 'requirements', 'delivery_location', 'delivery_period', 'deadline', 'link', 'company_name'],
+  },
   bid_notice: {
     name: 'New bid (to the team)', description: 'Procurement. Sent to the procurement notification address when a supplier submits a bid.',
     subject: 'New bid from {{supplier_name}} on {{tender_number}}: {{price}}',
@@ -268,6 +275,12 @@ export async function buildVars(key, ctx = {}) {
     const m = ctx.message
     return { ...base, from: m.from_email, from_name: m.from_name || m.from_email, subject: m.subject, excerpt: String(m.body || '').trim().slice(0, 600), link: ctx.link || '' }
   }
+  if (key === 'tender_invitation') {
+    const t = ctx.tender || {}, s = ctx.supplier || {}
+    const when = t.closes_at ? `${fmtDate(t.closes_at)}, ${new Date(t.closes_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lagos' })} (Nigeria time)` : ''
+    return { ...base, supplier_name: s.company_name || '', contact_person: s.contact_person || s.company_name || 'Sir/Madam', tender_number: t.number, tender_title: t.title, commodity: t.commodity,
+      quantity: `${quantity(t.quantity)} ${t.unit || 'MT'}`, specification: t.specification || '', requirements: t.requirements || '', delivery_location: t.delivery_location || '', delivery_period: t.delivery_period || (t.delivery_by ? `by ${fmtDate(t.delivery_by)}` : ''), deadline: when, link: ctx.link || '' }
+  }
   if (['bid_received', 'bid_notice', 'bid_status', 'bid_request', 'bid_update_notice'].includes(key)) {
     const b = ctx.bid || {}, t = ctx.tender || {}
     const unit = b.unit || t.unit || 'MT', cur = b.currency || t.currency || 'NGN'
@@ -320,6 +333,7 @@ export const SAMPLE_VARS = {
   quote_response: { client_name: 'Alessia Loghin', response: 'accepted', quote_number: 'VA-2026-0007', quote_title: 'Cocoa beans, 20 MT', total: 'USD 51,600.00', note: 'Please confirm the shipping date.', link: 'https://vertocagro.com/staff360/quotes/7' },
   inbound_notice: { from: 'alessia@example.com', from_name: 'Alessia Loghin', subject: 'Re: Invoice VA-2026-0007', excerpt: 'Thank you, we would like to proceed. Can you confirm the loading port?', link: 'https://vertocagro.com/staff360/messages/12' },
   bid_received: { ...SAMPLE_BID, link: 'https://vertocagro.com/supplier/bids/14' },
+  tender_invitation: { supplier_name: 'Kano Grains Ltd', contact_person: 'Musa Abdullahi', tender_number: 'VB-2026-0004', tender_title: 'Soybeans supply opportunity', commodity: 'Soybeans', quantity: '500 MT', specification: 'Moisture max 13%. Foreign matter max 1%.', requirements: 'NAFDAC-compliant packaging.', delivery_location: 'Ibadan, Oyo State', delivery_period: '15–30 November 2026', deadline: '20 October 2026, 17:00 (Nigeria time)', link: 'https://vertocagro.com/bidding/VB-2026-0004' },
   bid_notice: { ...SAMPLE_BID, link: 'https://vertocagro.com/staff360/bids/14' },
   bid_status: { ...SAMPLE_BID, status: 'Shortlisted', status_explained: BID_STATUS_TEXT.shortlisted, status_note: 'Please keep the stock available until 20 October.', link: 'https://vertocagro.com/supplier/bids/14' },
   bid_request: { ...SAMPLE_BID, question: 'Please upload the latest moisture analysis for this lot and confirm the bag size.', link: 'https://vertocagro.com/supplier/bids/14' },

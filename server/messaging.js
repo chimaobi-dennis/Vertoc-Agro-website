@@ -405,6 +405,58 @@ export async function messageBidders({ tender, bids, subject, body, actor, fromI
   return { sent, failed }
 }
 
+/* ------------------------------------------------ bid invitations --- */
+const RESEND_COOLDOWN_MS = 10 * 60 * 1000
+/**
+ * Work out, per supplier, whether an invitation to this opportunity would go out now, and why not if it would not.
+ * First notice: a supplier already successfully notified is skipped. Resend: only suppliers already notified who have not bid,
+ * and not within ten minutes of the last notice. Pure: sends nothing.
+ */
+export async function planInvitations({ tender, supplierIds, resend = false }) {
+  const [notices, bidders] = await Promise.all([content.listNotices(tender.id), content.biddersOf(tender.id)])
+  const plan = []
+  for (const id of [...new Set(supplierIds.map(Number))]) {
+    const s = await content.getSupplier(id)
+    const mine = notices.filter(n => n.supplier_id === id)
+    const sentBefore = mine.some(n => n.status === 'sent'), last = mine[0]
+    let reason = null
+    if (!s) reason = 'Supplier not found.'
+    else if (s.status !== 'active') reason = `The supplier is ${s.status}.`
+    else if (s.approval && s.approval !== 'approved') reason = 'The supplier is waiting for approval.'
+    else if (!EMAIL_RE.test(s.email || '')) reason = 'No valid email address on record.'
+    else if (bidders.has(id)) reason = 'Already submitted a bid.'
+    else if (!resend && sentBefore) reason = 'Already notified. Use Resend to send it again.'
+    else if (resend && !mine.length) reason = 'Never notified: send the first notice instead.'
+    else if (resend && last && Date.now() - Date.parse(last.created_at) < RESEND_COOLDOWN_MS) reason = 'Notified a few minutes ago. Wait ten minutes before resending.'
+    plan.push({ supplier: s, supplier_id: id, name: s?.company_name || `#${id}`, email: s?.email || '', will_send: !reason, reason })
+  }
+  return plan
+}
+export async function renderInvitation({ tender, supplier, actor }) {
+  const link = tenderLink(tender)
+  const tpl = await renderKey('tender_invitation', { tender, supplier, link, actor })
+  if (!tpl.subject || !tpl.body) throw bad('The bid invitation template is switched off. Turn it on under Email templates.', 409)
+  return { subject: tpl.subject, body: tpl.body, cta: tpl.cta || { label: 'Submit your bid', url: link }, link }
+}
+/** Send the invitations planned above, and record each one. Returns { sent, failed, skipped }. */
+export async function sendInvitations({ tender, supplierIds, resend = false, actor, fromId = null }) {
+  const plan = await planInvitations({ tender, supplierIds, resend })
+  const sent = [], failed = [], skipped = plan.filter(p => !p.will_send).map(p => ({ supplier_id: p.supplier_id, name: p.name, reason: p.reason }))
+  for (const p of plan.filter(x => x.will_send)) {
+    const base = { tender_id: tender.id, supplier_id: p.supplier_id, supplier_name: p.supplier.company_name, email: p.supplier.email, kind: resend ? 'resend' : 'initial', initiated_by: actor?.id || null, initiated_name: actor?.name || actor?.email || '' }
+    try {
+      const mail = await renderInvitation({ tender, supplier: p.supplier, actor })
+      const m = await deliver({ actor, to: p.supplier.email, toName: p.supplier.contact_person || p.supplier.company_name, subject: mail.subject, body: mail.body, cta: mail.cta, scope: 'procurement', supplierId: p.supplier_id, fromId, auto: true })
+      await content.recordNotice({ ...base, status: m.status === 'failed' ? 'failed' : 'sent', message_id: m.id, error: m.error || '' })
+      ;(m.status === 'failed' ? failed : sent).push({ supplier_id: p.supplier_id, name: p.name, email: p.email, message_id: m.id, ...(m.status === 'failed' ? { error: m.error } : {}) })
+    } catch (e) {
+      await content.recordNotice({ ...base, status: 'failed', error: String(e.message).slice(0, 500) }).catch(() => {})
+      failed.push({ supplier_id: p.supplier_id, name: p.name, email: p.email, error: e.message })
+    }
+  }
+  return { sent, failed, skipped }
+}
+
 /* ------------------------------------------ codes, portals, notices --- */
 export const portalLink = (portal, path = '') => `${publicUrl()}/${portal}${path}`
 

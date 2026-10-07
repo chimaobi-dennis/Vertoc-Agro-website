@@ -13,7 +13,7 @@ import { can, demand } from './auth.js'
 import { audit } from './audit.js'
 import * as content from './content.js'
 import { bad, handler, idOrNull } from './http.js'
-import { notifyBidStatus, notifyBidUnlocked, sendBidRequest, sendPurchaseOrder, sendSupplierLink, messageBidders, orderLink, tenderLink, publicUrl } from './messaging.js'
+import { planInvitations, renderInvitation, sendInvitations, notifyBidStatus, notifyBidUnlocked, sendBidRequest, sendPurchaseOrder, sendSupplierLink, messageBidders, orderLink, tenderLink, publicUrl } from './messaging.js'
 import { renderKey, PROCUREMENT_TEMPLATES } from './templates.js'
 import { renderPurchaseOrderPdf } from './quote-pdf.js'
 import { amend, requireApproved, submitted, withAmounts, maySeeAmounts } from './approval-routes.js'
@@ -200,6 +200,54 @@ router.delete('/bids/:id/requests/:rid', bidding, h(async (req, res) => {
   await content.deleteBidRequest(b.id, req.params.rid)
   await audit({ actor: req.user, action: 'update', entity: 'bid', entityId: b.id, after: { removed_request: Number(req.params.rid) } })
   res.json(await content.getBid(b.id))
+}))
+
+/* ------------------------------------------- bid invitations to suppliers --- */
+const openTender = async id => {
+  const t = await content.getTender(id)
+  if (!t) throw bad('opportunity not found', 404)
+  if (t.status !== 'published' || Date.parse(t.closes_at) <= Date.now()) throw bad('Invitations can only be sent for a published opportunity that is still open for bids.', 409)
+  return t
+}
+const idsOf = body => (Array.isArray(body?.supplier_ids) ? body.supplier_ids : []).map(Number).filter(Number.isFinite)
+// Who could be invited, and where each stands: never notified, notified (when, did it arrive), or already bid.
+router.get('/tenders/:id/notices', bidding, h(async (req, res) => {
+  const t = await content.getTender(req.params.id)
+  if (!t) throw bad('opportunity not found', 404)
+  const [history, bidders, suppliers] = await Promise.all([content.listNotices(t.id).catch(e => { if (e.expose) throw e; return [] }), content.biddersOf(t.id), content.listSuppliers({ status: 'active', q: req.query.q || '' })])
+  const people = suppliers.filter(s => !s.approval || s.approval === 'approved').map(s => {
+    const mine = history.filter(n => n.supplier_id === s.id)
+    return { id: s.id, company_name: s.company_name, contact_person: s.contact_person, email: s.email, commodities: s.commodities, has_bid: bidders.has(s.id), notices: mine.length, last_notice_at: mine[0]?.created_at || null, last_status: mine[0]?.status || null }
+  })
+  res.json({ open: t.status === 'published' && Date.parse(t.closes_at) > Date.now(), history, suppliers: people })
+}))
+router.post('/tenders/:id/notices/preview', bidding, h(async (req, res) => {
+  const t = await content.getTender(req.params.id)
+  if (!t) throw bad('opportunity not found', 404)
+  const ids = idsOf(req.body)
+  if (!ids.length) throw bad('Choose at least one supplier.')
+  const plan = await planInvitations({ tender: t, supplierIds: ids, resend: Boolean(req.body?.resend) })
+  const first = plan.find(p => p.supplier) || null
+  const mail = first ? await renderInvitation({ tender: t, supplier: first.supplier, actor: req.user }) : null
+  res.json({ ...(mail || {}), example_for: first?.name || null, recipients: plan.map(({ supplier, ...p }) => p) })
+}))
+router.post('/tenders/:id/notices', bidding, h(async (req, res) => {
+  const t = await openTender(req.params.id)
+  const ids = idsOf(req.body)
+  if (!ids.length) throw bad('Choose at least one supplier.')
+  const r = await sendInvitations({ tender: t, supplierIds: ids, resend: false, actor: req.user })
+  await audit({ actor: req.user, action: 'notify', entity: 'tender', entityId: t.id, after: { number: t.number, sent: r.sent.map(x => x.name), failed: r.failed.map(x => x.name), skipped: r.skipped.length } })
+  res.status(r.sent.length || r.failed.length ? 201 : 200).json(r)
+}))
+// Authorised staff only: sending again to suppliers who were notified and have not bid.
+router.post('/tenders/:id/notices/resend', can('bidding', 'edit'), h(async (req, res) => {
+  const t = await openTender(req.params.id)
+  let ids = idsOf(req.body)
+  if (!ids.length) { const [h2, bidders] = await Promise.all([content.listNotices(t.id), content.biddersOf(t.id)]); ids = [...new Set(h2.map(n => n.supplier_id).filter(x => x != null && !bidders.has(x)))] }
+  if (!ids.length) throw bad('Everyone who was notified has already bid.')
+  const r = await sendInvitations({ tender: t, supplierIds: ids, resend: true, actor: req.user })
+  await audit({ actor: req.user, action: 'resend_notice', entity: 'tender', entityId: t.id, after: { number: t.number, sent: r.sent.map(x => x.name), failed: r.failed.map(x => x.name), skipped: r.skipped.length } })
+  res.status(r.sent.length || r.failed.length ? 201 : 200).json(r)
 }))
 
 /* ---------------------------------------------------- purchase orders --- */

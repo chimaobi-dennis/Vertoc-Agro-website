@@ -4,13 +4,13 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, PackageCheck, Search, Trash2 } from 'lucide-react'
-import { adminFetch } from '../lib/adminApi'
+import { ArrowLeft, Download, FileText, PackageCheck, Search, Trash2 } from 'lucide-react'
+import { adminFetch, adminFetchBlob } from '../lib/adminApi'
 import { useAuth } from './AuthContext'
 import { Alert, Badge, Button, Card, Field, Input, PageHeader, Table, Tabs, Td, Textarea, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import { useSort } from '../lib/sort'
-import { fmtDateTime } from './format'
+import { fmtDateTime, openInNewTab } from './format'
 import { fmtDay } from '../lib/procurement'
 
 const LABEL = { expected: 'Expected', partially_received: 'Partially received', fully_received: 'Fully received', disputed: 'Rejected / disputed', closed: 'Closed' }
@@ -79,6 +79,10 @@ export function InventoryOrder() {
     try { await adminFetch(`/inventory/orders/${id}/receipts`, { method: 'POST', body: { delivery_note: f.delivery_note, notes: f.notes, lines } }); setF({ delivery_note: '', notes: '', lines: {} }); toast('Goods receipt recorded'); load() }
     catch (x) { setErr(x.message) } finally { setBusy(false) }
   }
+  // The goods receipt note, opened from a blob like the invoice and order PDFs.
+  const grn = (r, download = false) => (download
+    ? adminFetchBlob(`/inventory/orders/${id}/receipts/${r.id}/pdf?download=1`).then(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `${r.number}.pdf`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 30000) }).catch(x => toast(x.message, 'error'))
+    : openInNewTab(adminFetchBlob(`/inventory/orders/${id}/receipts/${r.id}/pdf`).then(b => URL.createObjectURL(b))).catch(x => toast(x.message, 'error')))
   const act = async (path, ok, method = 'POST', body) => { setBusy(true); try { await adminFetch(`/inventory/orders/${id}${path}`, { method, body }); toast(ok); load() } catch (x) { toast(x.message, 'error') } finally { setBusy(false) } }
   if (err && !d) return <Alert>{err}</Alert>
   if (!d) return <Card className="p-6 space-y-4">{[...Array(4)].map((_, i) => <Bone key={i} className="h-10 w-full" />)}</Card>
@@ -126,7 +130,7 @@ export function InventoryOrder() {
             <ul className="divide-y divide-border">
               {d.receipts.map(r => (
                 <li key={r.id} className="px-5 py-3 text-sm">
-                  <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{r.number}</span><span className="flex-1 text-muted-foreground">{fmtDateTime(r.received_at)} · {r.received_name || 'staff'}{r.delivery_note ? ` · ${r.delivery_note}` : ''}</span>{can('inventory', 'approve') && <button type="button" onClick={() => window.confirm(`Remove ${r.number}? The quantities leave the totals and stock.`) && act(`/receipts/${r.id}`, 'Receipt removed', 'DELETE')} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive" aria-label="Remove receipt"><Trash2 className="w-3.5 h-3.5" /></button>}</div>
+                  <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{r.number}</span><span className="flex-1 min-w-[12rem] text-muted-foreground">{fmtDateTime(r.received_at)} · {r.received_name || 'staff'}{r.delivery_note ? ` · ${r.delivery_note}` : ''}</span><Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => grn(r)}><FileText className="w-3.5 h-3.5" />GRN PDF</Button><button type="button" onClick={() => grn(r, true)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground" title="Download the GRN" aria-label="Download the GRN"><Download className="w-3.5 h-3.5" /></button>{can('inventory', 'approve') && <button type="button" onClick={() => window.confirm(`Remove ${r.number}? The quantities leave the totals and stock.`) && act(`/receipts/${r.id}`, 'Receipt removed', 'DELETE')} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive" aria-label="Remove receipt"><Trash2 className="w-3.5 h-3.5" /></button>}</div>
                   <ul className="mt-1.5 text-xs text-muted-foreground space-y-0.5">{r.lines.map(l => <li key={l.id}>{l.description}: delivered {n(l.delivered)}, accepted {n(l.accepted)}{Number(l.delivered) > Number(l.accepted) ? `, rejected ${n(l.delivered - l.accepted)}` : ''} {l.unit}{l.note ? ` — ${l.note}` : ''}</li>)}</ul>
                   {r.notes && <p className="text-xs mt-1">{r.notes}</p>}
                 </li>

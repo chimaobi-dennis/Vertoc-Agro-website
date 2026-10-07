@@ -9,6 +9,8 @@ import { audit } from './audit.js'
 import * as content from './content.js'
 import { bad, handler } from './http.js'
 import { withAmounts } from './approval-routes.js'
+import { renderGrnPdf } from './quote-pdf.js'
+import { publicUrl } from './messaging.js'
 
 const router = Router()
 const h = handler('admin')
@@ -33,6 +35,16 @@ router.post('/inventory/orders/:id/receipts', inv, h(async (req, res) => {
   const r = await content.receive(req.params.id, req.body || {}, req.user)
   await audit({ actor: req.user, action: 'receive', entity: 'goods_receipt', entityId: r.receipt.id, after: { receipt: r.receipt.number, order: r.order.number, lines: r.receipt.lines?.length ?? undefined, status: r.order.inventory_status, totals: r.totals } })
   res.status(201).json({ receipt: r.receipt, lines: r.lines, totals: r.totals, inventory_status: r.order.inventory_status })
+}))
+// The goods receipt note: a PDF for any delivery that was recorded, with no prices.
+router.get('/inventory/orders/:id/receipts/:rid/pdf', inv, h(async (req, res) => {
+  const grn = await content.grnData(req.params.id, req.params.rid)
+  if (!grn) throw bad('goods receipt not found', 404)
+  const pdf = await renderGrnPdf(grn, await content.getSettings(), `${publicUrl()}/staff360/inventory/orders/${grn.order.id}`)
+  await audit({ actor: req.user, action: 'grn_pdf', entity: 'goods_receipt', entityId: grn.receipt.id, after: { receipt: grn.receipt.number, order: grn.order.number } })
+  res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader('Content-Disposition', `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${grn.receipt.number}.pdf"`)
+  res.send(pdf)
 }))
 router.delete('/inventory/orders/:id/receipts/:rid', can('inventory', 'approve'), h(async (req, res) => {
   const r = await content.deleteReceipt(req.params.id, req.params.rid)

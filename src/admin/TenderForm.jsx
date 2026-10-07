@@ -6,17 +6,18 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Ban, Copy, ExternalLink, FileText, Gavel, Lock, Megaphone, RotateCcw, Trash2 } from 'lucide-react'
+import { ArrowLeft, Ban, Copy, ExternalLink, FileText, Gavel, Lock, Mail, Megaphone, RotateCcw, Trash2 } from 'lucide-react'
 import { adminFetch } from '../lib/adminApi'
 import { Alert, Badge, Button, Card, Field, Input, PageHeader, Tabs, Textarea, confirmDelete, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import BidsTable from './BidsTable'
+import TenderNotices from './TenderNotices'
 import { DraftNotice, useDraft } from './useDraft'
 import { FILE_LABELS, TENDER_LABELS, fmtMoment, fromLocalInput, fromNow, money, perUnit, poTone, qty, tenderTone, toLocalInput } from '../lib/procurement'
 
 const inDays = d => { const x = new Date(Date.now() + d * 86400e3); x.setHours(17, 0, 0, 0); return toLocalInput(x.toISOString()) }
 const blank = s => ({ number: '', title: '', commodity: '', quantity: '', unit: s?.default_unit || 'MT', specification: '', delivery_location: '', delivery_period: '', delivery_by: '', asking_price: '', currency: s?.default_currency || 'NGN', payment_terms: s?.payment_terms || '', requirements: '', required_documents: [], opens_at: '', closes_at: inDays(14) })
-const TABS = [{ key: 'bids', label: 'Bids', icon: Gavel }, { key: 'details', label: 'Details', icon: FileText }]
+const TABS = [{ key: 'bids', label: 'Bids', icon: Gavel }, { key: 'notify', label: 'Notify suppliers', icon: Mail }, { key: 'details', label: 'Details', icon: FileText }]
 
 export default function TenderForm() {
   const { id } = useParams(); const editing = Boolean(id)
@@ -31,7 +32,7 @@ export default function TenderForm() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const [toast, toastEl] = useToast()
-  const tab = editing && sp.get('tab') === 'details' ? 'details' : editing ? 'bids' : 'details'
+  const tab = editing && ['details', 'notify'].includes(sp.get('tab')) ? sp.get('tab') : editing ? 'bids' : 'details'
 
   const fill = t => setForm({
     number: (String(t.number || '').match(/-(\d+)$/) || [])[1] || '', title: t.title, commodity: t.commodity, quantity: t.quantity, unit: t.unit, specification: t.specification,
@@ -85,6 +86,8 @@ export default function TenderForm() {
         </div>
       )}
       {editing && <Tabs tabs={TABS.map(t => (t.key === 'bids' ? { ...t, count: tender ? (c.total || 0) - (c.withdrawn || 0) : undefined } : t))} value={tab} onChange={setTab} />}
+
+      {editing && tender && tab === 'notify' && <TenderNotices tender={tender} state={state} />}
 
       {editing && tender && tab === 'bids' && (
         <>

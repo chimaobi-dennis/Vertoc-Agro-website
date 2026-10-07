@@ -95,7 +95,7 @@ export const {
 // Inventory: goods received against approved orders (migration 017).
 const inventory = hasSupabase ? await import('./inventory.js') : {}
 export const {
-  INVENTORY_HINT, INVENTORY_STATUSES, INVENTORY_LABELS, listExpected, getExpected, receive, deleteReceipt, setClosed, stock, inventoryCounts,
+  INVENTORY_HINT, INVENTORY_STATUSES, INVENTORY_LABELS, listExpected, getExpected, grnData, receive, deleteReceipt, setClosed, stock, inventoryCounts,
 } = inventory
 
 // Investor profile change requests (migration 019).
@@ -103,3 +103,7 @@ const investorChanges = hasSupabase ? await import('./investor-changes.js') : {}
 export const {
   CHANGES_HINT, SUPPORT_LABEL, PICTURE_LABEL, REQUEST_STATUSES, REQUEST_LABELS, CHANGE_GROUPS, changeMeta, createRequest, listRequests, getRequest, pendingRequests, cancelRequest, reviewRequest,
 } = investorChanges
+
+// Bid invitations sent to suppliers (migration 020).
+const tenderNotices = hasSupabase ? await import('./tender-notices.js') : {}
+export const { NOTICES_HINT, listNotices, recordNotice, biddersOf } = tenderNotices

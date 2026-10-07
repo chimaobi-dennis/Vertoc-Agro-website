@@ -130,3 +130,16 @@ export async function inventoryCounts() {
   const s = (data || []).map(r => r.inventory_status)
   return { expected: s.filter(x => x === 'expected').length, open: s.filter(x => ['expected', 'partially_received'].includes(x)).length, disputed: s.filter(x => x === 'disputed').length }
 }
+
+/** What a goods receipt note prints: the receipt's own lines against the order, with outstanding as of that receipt. */
+export async function grnData(poId, receiptId) {
+  const cur = await getExpected(poId)
+  if (!cur) return null
+  const receipt = cur.receipts.find(r => r.id === Number(receiptId))
+  if (!receipt) return null
+  // Everything accepted up to and including this delivery, so the note shows what was still owed at that moment.
+  const upTo = cur.receipts.filter(r => r.id <= receipt.id).flatMap(r => r.lines)
+  const figures = lineFigures(cur.order, upTo)
+  const lines = receipt.lines.map(l => ({ ...l, ordered: figures[l.item_index]?.ordered ?? 0, outstanding: figures[l.item_index]?.outstanding ?? 0 })).sort((a, b) => a.item_index - b.item_index)
+  return { order: cur.order, receipt, lines }
+}
