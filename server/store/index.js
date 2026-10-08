@@ -107,3 +107,7 @@ export const {
 // Bid invitations sent to suppliers (migration 020).
 const tenderNotices = hasSupabase ? await import('./tender-notices.js') : {}
 export const { NOTICES_HINT, listNotices, recordNotice, biddersOf } = tenderNotices
+
+// Cancelling LPOs / POs with a recorded reason (migration 021).
+const poCancel = hasSupabase ? await import('./po-cancel.js') : {}
+export const { CANCEL_HINT, CANCELLABLE, cancelOrder, recordCancelNotice, listCancellations } = poCancel

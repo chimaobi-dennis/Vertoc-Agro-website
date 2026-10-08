@@ -777,7 +777,7 @@ export function publicPurchaseOrder(po, settings) {
     supplier_name: po.supplier_name, supplier_address: po.supplier_address, currency: po.currency, items: po.items,
     subtotal: po.subtotal, discount: po.discount, tax_rate: po.tax_rate, total: po.total,
     delivery_location: po.delivery_location, delivery_date: po.delivery_date, payment_terms: po.payment_terms, notes: po.notes, terms: po.terms,
-    date: po.issued_at || po.created_at, issued_at: po.issued_at, responded_at: po.responded_at, response_note: po.response_note,
+    date: po.issued_at || po.created_at, issued_at: po.issued_at, cancelled_at: po.cancelled_at, cancel_reason: po.status === 'cancelled' ? po.cancel_reason : '', responded_at: po.responded_at, response_note: po.response_note,
     company: settings.company,
   }
 }

@@ -6,9 +6,9 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Copy, Eye, Plus, Send, Trash2 } from 'lucide-react'
+import { ArrowLeft, Ban, Copy, Eye, Plus, Send, Trash2 } from 'lucide-react'
 import { adminFetch, adminFetchBlob } from '../lib/adminApi'
-import { Alert, Badge, Button, Card, Field, Input, PageHeader, Select, Textarea, confirmDelete, useToast } from './ui'
+import { Alert, Badge, Button, Card, Field, Input, Modal, PageHeader, Select, Textarea, confirmDelete, useToast } from './ui'
 import { Bone } from '../components/Skeleton'
 import Composer from './Composer'
 import { fmtDateTime, messageTone, openInNewTab } from './format'
@@ -45,6 +45,8 @@ export default function PurchaseOrderForm() {
   const [compose, setCompose] = useState(false)
   const [toast, toastEl] = useToast()
   const { can } = useAuth()
+  const [cancel, setCancel] = useState(null)      // { step: 1 | 2, reason }
+  const [cancelBusy, setCancelBusy] = useState(false)
 
   const fill = o => {
     setForm({ kind: o.kind, number: (String(o.number || '').match(/-(\d+)$/) || [])[1] || '', supplier_id: o.supplier_id ?? '', supplier_name: o.supplier_name, supplier_email: o.supplier_email, supplier_address: o.supplier_address, title: o.title, currency: o.currency,
@@ -107,6 +109,13 @@ export default function PurchaseOrderForm() {
   const setStatus = async status => { try { const o = await adminFetch(`/purchase-orders/${id}`, { method: 'PATCH', body: { status } }); setOrder(x => ({ ...x, ...o })); toast('Status updated') } catch (x) { toast(x.message, 'error') } }
   const remove = async () => { if (!confirmDelete(order.number)) return; try { await adminFetch(`/purchase-orders/${id}`, { method: 'DELETE' }); nav('/staff360/purchase-orders') } catch (x) { toast(x.message, 'error') } }
 
+  const cancelled = order?.status === 'cancelled'
+  const mayCancel = editing && order && !['cancelled', 'fulfilled'].includes(order.status) && can('purchase_orders', order.status !== 'draft' && order.approval === 'approved' ? 'approve' : 'edit')
+  const doCancel = async () => {
+    setCancelBusy(true)
+    try { await adminFetch(`/purchase-orders/${id}/cancel`, { method: 'POST', body: { reason: cancel.reason, confirm: true } }); setCancel(null); toast('Order cancelled'); await load() }
+    catch (x) { toast(x.message, 'error'); setCancel(c => ({ ...c, step: 1 })) } finally { setCancelBusy(false) }
+  }
   const loading = !suppliers || !settings || (editing && !order)
   const cur = form.currency || 'NGN'
   const year = (editing && order?.number?.match(/-(\d{4})-/)?.[1]) || new Date().getFullYear()
@@ -136,10 +145,28 @@ export default function PurchaseOrderForm() {
       {locked && <div className="mb-4"><Alert tone="info">The supplier has acknowledged this order, so its items and prices are locked. Raise a new order for changes.</Alert></div>}
       {editing && order?.tender && <div className="mb-4"><Alert tone="info">Raised from the awarded bid on <Link to={`/staff360/tenders/${order.tender.id}`} className="font-semibold text-accent">{order.tender.number}</Link>{order.bid_id && <> · <Link to={`/staff360/bids/${order.bid_id}`} className="font-semibold text-accent">open the bid</Link></>}.</Alert></div>}
 
+      {cancelled && (
+        <Card className="mb-6 p-5 border-destructive/30 bg-destructive/5">
+          <div className="flex items-center gap-2 mb-3"><Ban className="w-4 h-4 text-destructive" /><h2 className="font-semibold">This {order.kind === 'po' ? 'PO' : 'LPO'} was cancelled</h2></div>
+          <dl className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+            <div><dt className="text-xs uppercase tracking-wider text-muted-foreground">Cancelled by</dt><dd className="font-medium mt-0.5">{order.cancelled_name || '—'}</dd></div>
+            <div><dt className="text-xs uppercase tracking-wider text-muted-foreground">Date and time</dt><dd className="font-medium mt-0.5">{order.cancelled_at ? fmtDateTime(order.cancelled_at) : '—'}</dd></div>
+            <div><dt className="text-xs uppercase tracking-wider text-muted-foreground">Supplier notification</dt><dd className="font-medium mt-0.5">{{ sent: 'Sent', failed: 'Not delivered', not_needed: 'Not needed: it was never sent to the supplier' }[order.cancel_notify_status] || 'Pending'}</dd></div>
+            <div><dt className="text-xs uppercase tracking-wider text-muted-foreground">Notification date and time</dt><dd className="font-medium mt-0.5">{order.cancel_notified_at ? fmtDateTime(order.cancel_notified_at) : '—'}</dd></div>
+            <div className="sm:col-span-2 lg:col-span-4"><dt className="text-xs uppercase tracking-wider text-muted-foreground">Reason for cancellation</dt><dd className="mt-0.5 whitespace-pre-wrap">{order.cancel_reason}</dd></div>
+          </dl>
+          {order.cancellations?.length > 0 && (
+            <div className="mt-5 pt-4 border-t border-border"><p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Complete cancellation history</p>
+              <ul className="space-y-2 text-sm">{order.cancellations.map(c => <li key={c.id}><span className="font-medium">{fmtDateTime(c.cancelled_at)}</span> · {c.cancelled_name} · was {c.previous_status} · supplier notice: {c.notify_status || 'pending'}{c.notified_at ? ` (${fmtDateTime(c.notified_at)})` : ''}{c.notify_error ? ` — ${c.notify_error}` : ''}<span className="block text-muted-foreground whitespace-pre-wrap">{c.reason}</span></li>)}</ul></div>
+          )}
+        </Card>
+      )}
+
       {loading ? (
         <div className="grid lg:grid-cols-[1fr_340px] gap-6"><Card className="p-6 space-y-4">{[...Array(6)].map((_, i) => <Bone key={i} className="h-11 w-full" />)}</Card><Card className="p-6 space-y-3">{[...Array(4)].map((_, i) => <Bone key={i} className="h-10 w-full" />)}</Card></div>
       ) : (
         <form onSubmit={submit} className="grid lg:grid-cols-[1fr_340px] gap-6 items-start">
+          <fieldset disabled={cancelled} className="contents">
           <div className="space-y-6 min-w-0">
             <Card className="p-6 grid md:grid-cols-2 gap-5 animate-fade-up">
               <Field label="Type" hint="An LPO is for a supplier in Nigeria; a PO for anyone else.">
@@ -218,7 +245,7 @@ export default function PurchaseOrderForm() {
             {editing && (
               <Card className="p-5 animate-fade-up" style={{ animationDelay: '170ms' }}>
                 <Field label="Status" hint="Set by hand if the supplier answers by phone or on paper.">
-                  <Select value={order.status} onChange={e => setStatus(e.target.value)}>{PO_STATUSES.map(s => <option key={s}>{s}</option>)}</Select>
+                  <Select value={order.status} onChange={e => setStatus(e.target.value)}>{PO_STATUSES.filter(s => s !== 'cancelled' || cancelled).map(s => <option key={s}>{s}</option>)}</Select>
                 </Field>
                 <dl className="mt-4 text-xs text-muted-foreground space-y-1.5">
                   <div className="flex justify-between"><dt>Created</dt><dd>{fmtMoment(order.created_at)}</dd></div>
@@ -241,10 +268,11 @@ export default function PurchaseOrderForm() {
                   ))}
                   {!order.messages?.length && <li className="px-5 py-6 text-center text-xs text-muted-foreground">Not sent yet.</li>}
                 </ul>
-                <div className="px-5 py-3 border-t border-border"><Button type="button" variant="ghost" className="h-8 px-2 text-xs text-destructive" onClick={remove}><Trash2 className="w-3.5 h-3.5" />Delete order</Button></div>
+                <div className="px-5 py-3 border-t border-border flex flex-wrap gap-2">{mayCancel && <Button type="button" variant="outline" className="h-8 px-3 text-xs text-destructive" onClick={() => setCancel({ step: 1, reason: '' })}><Ban className="w-3.5 h-3.5" />Cancel {order.kind === 'po' ? 'PO' : 'LPO'}</Button>}{!cancelled && <Button type="button" variant="ghost" className="h-8 px-2 text-xs text-destructive" onClick={remove}><Trash2 className="w-3.5 h-3.5" />Delete order</Button>}</div>
               </Card>
             )}
           </div>
+          </fieldset>
         </form>
       )}
 
@@ -269,6 +297,25 @@ export default function PurchaseOrderForm() {
       {editing && order && (
         <Composer open={compose} onClose={() => setCompose(false)} title={`Send ${order.number}`} sendOrderId={order.id} scope="procurement" supplierId={order.supplier_id} poId={order.id}
           to={form.supplier_email} template={{ key: 'purchase_order', po_id: order.id }} onSent={() => { toast('Order sent'); load() }} />
+      )}
+      {order && (
+        <Modal open={Boolean(cancel)} onClose={() => !cancelBusy && setCancel(null)} title={cancel?.step === 2 ? `Cancel ${order.number}?` : `Cancel ${order.number}`}
+          footer={cancel?.step === 2
+            ? <><Button type="button" variant="outline" disabled={cancelBusy} onClick={() => setCancel({ ...cancel, step: 1 })}>Back</Button><Button type="button" variant="danger" disabled={cancelBusy} onClick={doCancel}>{cancelBusy ? 'Cancelling…' : `Yes, cancel this ${order.kind === 'po' ? 'PO' : 'LPO'}`}</Button></>
+            : <><Button type="button" variant="outline" onClick={() => setCancel(null)}>Keep the order</Button><Button type="button" variant="danger" disabled={(cancel?.reason || '').trim().length < 5} onClick={() => setCancel({ ...cancel, step: 2 })}>Continue</Button></>}>
+          {cancel?.step === 2 ? (
+            <div className="space-y-4 text-sm">
+              <Alert tone="info">Are you sure you want to cancel this LPO/PO? This action will be recorded{order.issued_at ? ' and the supplier will be notified' : ''}.</Alert>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Reason that will be recorded{order.issued_at ? ' and sent to the supplier' : ''}</p>
+              <p className="whitespace-pre-wrap rounded-xl bg-muted/50 px-4 py-3">{cancel.reason}</p>
+              {!order.issued_at && <p className="text-xs text-muted-foreground">This order was never sent to the supplier, so no email goes out.</p>}
+            </div>
+          ) : (
+            <Field label="Reason for cancellation *" hint="Required. Explain in detail: it is kept permanently and the supplier receives it.">
+              <Textarea rows={5} autoFocus value={cancel?.reason || ''} onChange={e => setCancel({ ...cancel, reason: e.target.value })} placeholder="For example: the supplier can no longer meet the delivery date, or the quantity was entered wrongly." />
+            </Field>
+          )}
+        </Modal>
       )}
       {toastEl}
     </>

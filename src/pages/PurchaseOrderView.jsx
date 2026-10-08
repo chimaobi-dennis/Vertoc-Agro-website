@@ -72,7 +72,7 @@ export default function PurchaseOrderView() {
               {o.status === 'acknowledged' && <Banner icon={CheckCircle2} tone="accent" title="Acknowledged" text={`Thank you — you acknowledged this order on ${fmtDay(o.responded_at)}. Please deliver as set out below.`} />}
               {o.status === 'fulfilled' && <Banner icon={PackageCheck} tone="accent" title="Fulfilled" text="This order has been delivered and closed. Thank you." />}
               {o.status === 'declined' && <Banner icon={XCircle} tone="muted" title="Declined" text={`You declined this order on ${fmtDay(o.responded_at)}. Our procurement team will be in touch.`} />}
-              {o.status === 'cancelled' && <Banner icon={Ban} tone="muted" title="Cancelled" text="We cancelled this order. Please do not deliver against it; contact us if you have questions." />}
+              {o.status === 'cancelled' && <Banner icon={Ban} tone="muted" title="Cancelled" text={`We cancelled this order${o.cancelled_at ? ` on ${new Date(o.cancelled_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}. Please do not deliver against it; contact us if you have questions.${o.cancel_reason ? ` Reason: ${o.cancel_reason}` : ''}`} />}
 
               <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-card animate-fade-up" style={{ animationDelay: '70ms' }}>
                 <div className="bg-primary text-primary-foreground p-6 md:p-8 flex flex-wrap justify-between gap-6">

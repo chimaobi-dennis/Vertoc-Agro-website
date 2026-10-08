@@ -350,6 +350,21 @@ const DEFAULT_LINK_TEXT = {
   invite: { subject: 'You are invited to the supplier portal', body: 'We have set up a supplier account for you. Use the button below to choose your password; after that you can sign in with this email address. The link works once and expires in 7 days.', cta: 'Create my login' },
 }
 
+/** Tell the supplier an order was cancelled. Records the outcome on the order and its permanent record. Never throws. */
+export async function notifyPoCancelled({ order, record, was, actor }) {
+  // An order that was never sent to the supplier is not news to them.
+  if (!was.issued_at) return content.recordCancelNotice(order.id, record.id, { status: 'not_needed' })
+  try {
+    if (!EMAIL_RE.test(order.supplier_email || '')) throw new Error('There is no email address for this supplier on the order.')
+    const link = orderLink(order)
+    const tpl = await renderKey('po_cancelled', { order, link, actor })
+    if (!tpl.subject || !tpl.body) throw new Error('The "Order cancelled" email template is switched off.')
+    const m = await deliver({ actor, to: order.supplier_email, toName: order.supplier_name, subject: tpl.subject, body: tpl.body, cta: tpl.cta, scope: 'procurement', supplierId: order.supplier_id, poId: order.id, auto: true })
+    if (order.supplier_id) await content.notify('supplier', order.supplier_id, { title: `${order.number} was cancelled`, body: order.cancel_reason, link: `/supplier/orders/${order.number}` }).catch(() => {})
+    return content.recordCancelNotice(order.id, record.id, m.status === 'failed' ? { status: 'failed', error: m.error, messageId: m.id } : { status: 'sent', messageId: m.id })
+  } catch (e) { return content.recordCancelNotice(order.id, record.id, { status: 'failed', error: e.message }) }
+}
+
 /** Email a PO / LPO: PDF attached, the supplier's link as the button, status -> issued. */
 export async function sendPurchaseOrder(id, { actor, to, subject, body, attachmentIds = [], fromId = null }) {
   const o = await content.getPurchaseOrder(id)

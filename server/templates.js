@@ -84,6 +84,13 @@ export const DEFAULT_TEMPLATES = {
     cta_label: 'Open your supplier dashboard',
     variables: ['supplier_name', 'contact_person', 'email', 'tender_number', 'tender_title', 'commodity', 'quantity', 'price', 'total', 'delivery_date', 'closes_at', 'link', 'company_name'],
   },
+  po_cancelled: {
+    name: 'Order cancelled (to the supplier)', description: 'Procurement. Sent to the supplier automatically when staff cancel an LPO / PO that had been sent to them.',
+    subject: '{{po_kind}} {{po_number}} has been cancelled',
+    body: 'Dear {{contact_person}},\n\nWe are writing to tell you that {{po_kind}} {{po_number}} has been cancelled.\n\nReference: {{po_number}}\nItems:\n{{items}}\nTotal quantity: {{quantity}}\nDate of cancellation: {{cancelled_on}}\n\nReason for cancellation:\n{{reason}}\n\nPlease do not deliver against this order. If you have already loaded or dispatched goods, or you have any question, reply to this email and our procurement team will help.\n\nKind regards,\n{{company_name}} Procurement',
+    cta_label: 'View the order',
+    variables: ['supplier_name', 'contact_person', 'po_kind', 'po_number', 'items', 'commodity', 'quantity', 'cancelled_on', 'reason', 'link', 'company_name'],
+  },
   tender_invitation: {
     name: 'Bid invitation (to selected suppliers)', description: 'Procurement. Sent to the suppliers staff select for an open opportunity, and again when staff resend it to those who have not bid.',
     subject: 'Invitation to bid: {{commodity}} ({{tender_number}}), closes {{deadline}}',
@@ -275,6 +282,15 @@ export async function buildVars(key, ctx = {}) {
     const m = ctx.message
     return { ...base, from: m.from_email, from_name: m.from_name || m.from_email, subject: m.subject, excerpt: String(m.body || '').trim().slice(0, 600), link: ctx.link || '' }
   }
+  if (key === 'po_cancelled') {
+    const o = ctx.order || {}, items = Array.isArray(o.items) ? o.items : []
+    const units = [...new Set(items.map(i => i.unit || 'MT'))]
+    const total = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0)
+    return { ...base, supplier_name: o.supplier_name || '', contact_person: o.supplier_name || 'Sir/Madam', po_kind: o.kind === 'po' ? 'Purchase Order' : 'Local Purchase Order', po_number: o.number,
+      items: items.map(i => `- ${i.description}: ${quantity(i.quantity)} ${i.unit || ''}`.trim()).join('\n'), commodity: items.map(i => i.description).join(', '),
+      quantity: units.length === 1 ? `${quantity(total)} ${units[0]}` : items.map(i => `${quantity(i.quantity)} ${i.unit || ''}`.trim()).join(' + '),
+      cancelled_on: `${fmtDate(o.cancelled_at)}, ${new Date(o.cancelled_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lagos' })} (Nigeria time)`, reason: o.cancel_reason || '', link: ctx.link || '' }
+  }
   if (key === 'tender_invitation') {
     const t = ctx.tender || {}, s = ctx.supplier || {}
     const when = t.closes_at ? `${fmtDate(t.closes_at)}, ${new Date(t.closes_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lagos' })} (Nigeria time)` : ''
@@ -333,6 +349,7 @@ export const SAMPLE_VARS = {
   quote_response: { client_name: 'Alessia Loghin', response: 'accepted', quote_number: 'VA-2026-0007', quote_title: 'Cocoa beans, 20 MT', total: 'USD 51,600.00', note: 'Please confirm the shipping date.', link: 'https://vertocagro.com/staff360/quotes/7' },
   inbound_notice: { from: 'alessia@example.com', from_name: 'Alessia Loghin', subject: 'Re: Invoice VA-2026-0007', excerpt: 'Thank you, we would like to proceed. Can you confirm the loading port?', link: 'https://vertocagro.com/staff360/messages/12' },
   bid_received: { ...SAMPLE_BID, link: 'https://vertocagro.com/supplier/bids/14' },
+  po_cancelled: { supplier_name: 'Kano Grains Ltd', contact_person: 'Kano Grains Ltd', po_kind: 'Local Purchase Order', po_number: 'LPO-2026-0003', items: '- Soybeans: 500 MT', commodity: 'Soybeans', quantity: '500 MT', cancelled_on: '12 October 2026, 14:30 (Nigeria time)', reason: 'The delivery window can no longer be met.', link: 'https://vertocagro.com/po/example' },
   tender_invitation: { supplier_name: 'Kano Grains Ltd', contact_person: 'Musa Abdullahi', tender_number: 'VB-2026-0004', tender_title: 'Soybeans supply opportunity', commodity: 'Soybeans', quantity: '500 MT', specification: 'Moisture max 13%. Foreign matter max 1%.', requirements: 'NAFDAC-compliant packaging.', delivery_location: 'Ibadan, Oyo State', delivery_period: '15–30 November 2026', deadline: '20 October 2026, 17:00 (Nigeria time)', link: 'https://vertocagro.com/bidding/VB-2026-0004' },
   bid_notice: { ...SAMPLE_BID, link: 'https://vertocagro.com/staff360/bids/14' },
   bid_status: { ...SAMPLE_BID, status: 'Shortlisted', status_explained: BID_STATUS_TEXT.shortlisted, status_note: 'Please keep the stock available until 20 October.', link: 'https://vertocagro.com/supplier/bids/14' },

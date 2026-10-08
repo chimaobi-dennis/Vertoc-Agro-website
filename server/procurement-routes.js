@@ -13,7 +13,7 @@ import { can, demand } from './auth.js'
 import { audit } from './audit.js'
 import * as content from './content.js'
 import { bad, handler, idOrNull } from './http.js'
-import { planInvitations, renderInvitation, sendInvitations, notifyBidStatus, notifyBidUnlocked, sendBidRequest, sendPurchaseOrder, sendSupplierLink, messageBidders, orderLink, tenderLink, publicUrl } from './messaging.js'
+import { notifyPoCancelled, planInvitations, renderInvitation, sendInvitations, notifyBidStatus, notifyBidUnlocked, sendBidRequest, sendPurchaseOrder, sendSupplierLink, messageBidders, orderLink, tenderLink, publicUrl } from './messaging.js'
 import { renderKey, PROCUREMENT_TEMPLATES } from './templates.js'
 import { renderPurchaseOrderPdf } from './quote-pdf.js'
 import { amend, requireApproved, submitted, withAmounts, maySeeAmounts } from './approval-routes.js'
@@ -266,7 +266,8 @@ router.get('/purchase-orders/:id', orders, h(async (req, res) => {
   ])
   const approval = await content.getApproval('purchase_order', o.id).catch(() => null)
   const amendments = await content.listAmendments({ entity: 'purchase_order', entity_id: o.id }).catch(() => [])
-  res.json({ ...withAmounts(req, o), approval: approval?.approval || 'approved', approval_note: approval?.approval_note || '', submitted_by: approval?.submitted_by || null, amendments, shipments, fulfilment: content.fulfilment(o, shipments), messages: messages.filter(m => m.headers?.internal !== true), documents, tender: tender && { id: tender.id, number: tender.number, title: tender.title }, link: orderLink(o) })
+  const cancellations = hasUser(req.user, 'purchase_orders', 'approve') && o.status === 'cancelled' ? await content.listCancellations({ po_id: o.id }).catch(() => []) : undefined
+  res.json({ ...withAmounts(req, o), cancellations, approval: approval?.approval || 'approved', approval_note: approval?.approval_note || '', submitted_by: approval?.submitted_by || null, amendments, shipments, fulfilment: content.fulfilment(o, shipments), messages: messages.filter(m => m.headers?.internal !== true), documents, tender: tender && { id: tender.id, number: tender.number, title: tender.title }, link: orderLink(o) })
 }))
 router.post('/purchase-orders', orders, h(async (req, res) => {
   const after = await submitted(req, 'purchase_order', await content.createPurchaseOrder(req.body || {}, req.user.id))
@@ -277,13 +278,30 @@ router.patch('/purchase-orders/:id', orders, h(async (req, res) => {
   const before = await content.getPurchaseOrder(req.params.id)
   if (!before) throw bad('order not found', 404)
   const { reason, ...patch } = req.body || {}
+  if (patch.status === 'cancelled' && before.status !== 'cancelled') throw bad('Use "Cancel order": it asks for the reason and tells the supplier.')
+  if (before.status === 'cancelled' && patch.status !== undefined && patch.status !== 'cancelled') demand(req, 'purchase_orders', 'approve')
   const r = await amend(req, { type: 'purchase_order', before, patch, reason, update: content.updatePurchaseOrder, guard: (b, p) => { if (['acknowledged', 'fulfilled'].includes(b.status) && ['items', 'discount', 'tax_rate', 'currency', 'kind'].some(k => p[k] !== undefined)) throw bad('The supplier has acknowledged this order, so its items and prices are locked. Raise a new order for changes.') } })
   await audit({ actor: req.user, action: r.amendment ? 'amend_request' : r.direct ? 'amend' : 'update', entity: 'purchase_order', entityId: before.id, before, after: r.amendment ? { proposed: r.amendment.proposed } : r.record })
   res.status(r.amendment ? 202 : 200).json({ ...r.record, link: orderLink(r.record), ...(r.amendment ? { amendment: r.amendment } : {}) })
 }))
+// Cancel with a recorded reason: the order is kept, the supplier is told, the record is permanent.
+router.post('/purchase-orders/:id/cancel', orders, h(async (req, res) => {
+  const before = await content.getPurchaseOrder(req.params.id)
+  if (!before) throw bad('order not found', 404)
+  // Pulling back an order the supplier already has is an approver's call; a draft or unapproved one can be dropped by whoever edits it.
+  const official = before.status !== 'draft' && (await content.getApproval('purchase_order', before.id)).approval === 'approved'
+  demand(req, 'purchase_orders', official ? 'approve' : 'edit')
+  if (req.body?.confirm !== true) throw bad('Please confirm the cancellation.')
+  const { order, record, was } = await content.cancelOrder(before.id, { reason: req.body?.reason, user: req.user })
+  const notified = await notifyPoCancelled({ order, record, was, actor: req.user })
+  await audit({ actor: req.user, action: 'cancel', entity: 'purchase_order', entityId: order.id, before: { status: was.status }, after: { number: order.number, status: 'cancelled', reason: order.cancel_reason, supplier_notification: notified?.cancel_notify_status || '' } })
+  res.json({ ...(notified || order), link: orderLink(order) })
+}))
+router.get('/cancellations', can('purchase_orders', 'approve'), h(async (_req, res) => res.json(await content.listCancellations())))
 router.delete('/purchase-orders/:id', orders, h(async (req, res) => {
   const before = await content.getPurchaseOrder(req.params.id)
   if (!before) throw bad('order not found', 404)
+  if (before.status === 'cancelled') throw bad('A cancelled order is kept for the record and cannot be deleted.', 409)
   const r = await content.deletePurchaseOrder(before.id)
   await audit({ actor: req.user, action: 'delete', entity: 'purchase_order', entityId: before.id, before })
   res.json(r)
