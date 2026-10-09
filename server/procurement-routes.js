@@ -206,7 +206,7 @@ router.delete('/bids/:id/requests/:rid', bidding, h(async (req, res) => {
 const openTender = async id => {
   const t = await content.getTender(id)
   if (!t) throw bad('opportunity not found', 404)
-  if (t.status !== 'published' || Date.parse(t.closes_at) <= Date.now()) throw bad('Invitations can only be sent for a published opportunity that is still open for bids.', 409)
+  if (content.tenderState(t) !== 'open') throw bad('Invitations can only be sent for a published opportunity that is still open for bids.', 409)
   return t
 }
 const idsOf = body => (Array.isArray(body?.supplier_ids) ? body.supplier_ids : []).map(Number).filter(Number.isFinite)

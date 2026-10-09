@@ -171,6 +171,9 @@ export async function markSupplierVerified(id) {
 export const TENDER_STATUSES = ['draft', 'published', 'closed', 'awarded', 'cancelled']
 /** What a tender is right now: a published one is upcoming, open or closed by its dates. */
 export function tenderState(t, now = Date.now()) {
+  // Awarding bids never closes an opportunity: only its closing time does. Opportunities marked 'awarded'
+  // by the older behaviour are read as published until their closing time has passed.
+  if (t.status === 'awarded') return Date.parse(t.closes_at) > now ? (Date.parse(t.opens_at) > now ? 'upcoming' : 'open') : 'awarded'
   if (t.status !== 'published') return t.status
   if (Date.parse(t.opens_at) > now) return 'upcoming'
   if (Date.parse(t.closes_at) <= now) return 'closed'
@@ -440,12 +443,14 @@ export async function getBid(id) {
   return { ...safeBid(b), label: BID_LABELS[b.status], ...x, vs_asking: asking == null ? null : money(b.price - asking), vs_asking_pct: asking ? Math.round((b.price - asking) / asking * 1000) / 10 : null }
 }
 
-/** An awarded bid marks its opportunity awarded; taking the last award back closes it again. */
+/**
+ * Awarding a bid (in full or in part, to one supplier or several) leaves the opportunity exactly as it was: it stays open
+ * for new bids until its closing time. Only an opportunity that an older version marked 'awarded' while its deadline has
+ * not passed is put back to published, so it is open again as the closing time promises.
+ */
 async function syncTenderAward(tenderId) {
   const t = await tenderRow(tenderId); if (!t) return
-  const awarded = unwrap(await supabase.from('bids').select('id').eq('tender_id', t.id).eq('status', 'awarded').limit(1), 'syncTenderAward') ?? []
-  if (awarded.length && ['published', 'closed'].includes(t.status)) await supabase.from('tenders').update({ status: 'awarded' }).eq('id', t.id)
-  if (!awarded.length && t.status === 'awarded') await supabase.from('tenders').update({ status: 'closed' }).eq('id', t.id)
+  if (t.status === 'awarded' && Date.parse(t.closes_at) > Date.now()) await supabase.from('tenders').update({ status: 'published' }).eq('id', t.id)
 }
 /**
  * Staff change a bid: its status (with a note the supplier sees) and the

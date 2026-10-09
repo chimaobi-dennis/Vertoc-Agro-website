@@ -91,6 +91,7 @@ export default function TenderForm() {
 
       {editing && tender && tab === 'bids' && (
         <>
+          {state === 'open' && tender.award?.suppliers > 0 && <div className="mb-4"><Alert tone="info">{qty(tender.award.awarded, tender.unit)} of {qty(tender.award.required, tender.unit)} has been awarded, and bidding stays open for other suppliers until {fmtMoment(tender.closes_at)}. Awarding never closes an opportunity; only the closing time does.</Alert></div>}
           {state === 'draft' && <div className="mb-4"><Alert tone="info">This opportunity is a draft. Publish it from the Details tab and it appears on the website, open for bids.</Alert></div>}
           <BidsTable tender={tender} onChanged={load} />
           {tender.orders?.length > 0 && (

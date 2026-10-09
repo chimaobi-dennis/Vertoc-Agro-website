@@ -340,12 +340,11 @@ try {
     const back = await buyer(`/bids/${guest.id}`, { method: 'PATCH', body: { awarded_quantity: 400, awarded_price: 640000 } }); if (back.awarded_quantity !== 400) throw new Error('award not adjusted')
     return '300 + 700 of 1,000 MT at their own prices · balance 0 · limits enforced · each order takes its award'
   })
-  await step('awarding a bid marks the opportunity awarded', async () => {
+  await step('awarding a bid leaves the opportunity open until its closing time', async () => {
     const b = await buyer(`/bids/${guest.id}`, { method: 'PATCH', body: { status: 'awarded', ...N } }); if (b.status !== 'awarded') throw new Error(b.status)
-    const t = await buyer(`/tenders/${tender.id}`); if (t.status !== 'awarded' || t.counts.awarded !== 1) throw new Error(t.status)
-    const p = await pub(`/tenders/${tender.number}`); if (p.state !== 'awarded' || p.accepting_bids) throw new Error('public ' + p.state)
-    await refused(() => pub(`/tenders/${tender.number}/bids`, { method: 'POST', token: sup2.token, body: { quantity: 1, price: 1, commodity_location: 'x', delivery_date: day(5), accepts_terms: true, confirmed: true } }), /closed for bids/, 'bid after award')
-    return 'awarded · closed for bids'
+    const t = await buyer(`/tenders/${tender.id}`); if (t.status !== 'published' || t.state !== 'open' || t.counts.awarded !== 1) throw new Error(`${t.status}/${t.state}`)
+    const p = await pub(`/tenders/${tender.number}`); if (p.state !== 'open' || !p.accepting_bids) throw new Error('public ' + p.state)
+    return 'awarded · still open for bids'
   })
   await step('POST /tenders/:id/close-out: the rest are not selected', async () => {
     const r = await buyer(`/tenders/${tender.id}/close-out`, { method: 'POST', body: { note: 'Thank you for bidding.', ...N } }); if (r.changed !== 1 || r.notified !== (DRY ? 1 : 0)) throw new Error(JSON.stringify(r).slice(0, 120))
@@ -355,7 +354,7 @@ try {
     await refused(() => pub(`/supplier/bids/${bid2.id}/withdraw`, { method: 'POST', token: sup2.token }), /no longer be withdrawn/, 'withdraw after decision')
     return `${r.changed} bid closed out`
   })
-  await step('taking the award back reopens nothing, but closes the opportunity', async () => { await buyer(`/bids/${guest.id}`, { method: 'PATCH', body: { status: 'shortlisted', notify: false } }); const t = await buyer(`/tenders/${tender.id}`); if (t.status !== 'closed') throw new Error(t.status); await buyer(`/bids/${guest.id}`, { method: 'PATCH', body: { status: 'awarded', notify: false } }); return (await buyer(`/tenders/${tender.id}`)).status })
+  await step('taking the award back changes nothing about openness', async () => { await buyer(`/bids/${guest.id}`, { method: 'PATCH', body: { status: 'shortlisted', notify: false } }); const t = await buyer(`/tenders/${tender.id}`); if (t.status === 'awarded') throw new Error(t.status); await buyer(`/bids/${guest.id}`, { method: 'PATCH', body: { status: 'awarded', notify: false } }); return (await buyer(`/tenders/${tender.id}`)).status })
 
   /* --------------------------------------------------- withdraw a bid --- */
   await step('a supplier withdraws a live bid and may bid again', async () => {
