@@ -31,6 +31,7 @@ import EnquiryDetail from './EnquiryDetail'
 import QuotesAdmin from './QuotesAdmin'
 import ApprovalsAdmin from './ApprovalsAdmin'
 import MyProfile from './MyProfile'
+import { InvestContentList, InvestContentEditor } from './InvestContentAdmin'
 import { InventoryAdmin, InventoryOrder } from './InventoryAdmin'
 import QuoteForm from './QuoteForm'
 import QuoteFieldsAdmin from './QuoteFieldsAdmin'
@@ -110,6 +111,8 @@ export default function AdminApp() {
           <Route path="inventory/stock" element={P('inventory', <InventoryAdmin stockTab />)} />
           <Route path="inventory/orders/:id" element={P('inventory', <InventoryOrder />)} />
           <Route path="profile" element={<MyProfile />} />
+          <Route path="invest-content" element={P('investments', <InvestContentList />)} />
+          <Route path="invest-content/:key" element={P('investments', <InvestContentEditor />)} />
           <Route path="approvals" element={<ApprovalsAdmin />} />
           <Route path="quotes" element={P('invoices', <QuotesAdmin />)} />
           <Route path="quotes/new" element={P('invoices', <QuoteForm />)} />

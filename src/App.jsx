@@ -37,6 +37,8 @@ const SupplierApp = lazy(() => import('./supplier/SupplierApp'))
 const ClientApp = lazy(() => import('./client/ClientApp'))
 const InvestorApp = lazy(() => import('./investor/InvestorApp'))
 const Invest = lazy(() => import('./pages/Invest'))
+const InvestTerms = lazy(() => import('./pages/Invest').then(m => ({ default: m.InvestTerms })))
+const InvestExtraPage = lazy(() => import('./pages/Invest').then(m => ({ default: m.InvestExtraPage })))
 const portalFallback = <main className="flex-grow"><div className="min-h-screen bg-background" /></main>
 
 /** Procurement pages know whether a supplier is signed in (to fill in the bid form, to open the portal). */
@@ -91,6 +93,8 @@ export default function App() {
         <Route path="/client/*" element={<Suspense fallback={portalFallback}><ClientApp /></Suspense>} />
         <Route path="/investor/*" element={<Suspense fallback={portalFallback}><InvestorApp /></Suspense>} />
         <Route path="/invest" element={<Suspense fallback={portalFallback}><Invest /></Suspense>} />
+        <Route path="/invest/terms" element={<Suspense fallback={portalFallback}><InvestTerms /></Suspense>} />
+        <Route path="/invest/p/:slug" element={<Suspense fallback={portalFallback}><InvestExtraPage /></Suspense>} />
         <Route path="/testimonials" element={<Testimonials />} />
         <Route path="/industries" element={<Industries />} />
         <Route path="/industries/why-choose-us" element={<WhyChooseUs />} />

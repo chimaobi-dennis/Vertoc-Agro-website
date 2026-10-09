@@ -27,6 +27,7 @@ const NAV = [
   { to: '/staff360/inventory', label: 'Expected deliveries', icon: PackageCheck, perm: 'inventory', group: 'Inventory', badge: 'inventoryOpen', end: true, also: ['/staff360/inventory/orders'] },
   { to: '/staff360/inventory/stock', label: 'Stock', icon: Boxes, perm: 'inventory', group: 'Inventory' },
   { to: '/staff360/investments', label: 'Investments', icon: TrendingUp, perm: 'investments', group: 'Investment', badge: 'investmentsNew' },
+  { to: '/staff360/invest-content', label: 'Invest content', icon: LayoutTemplate, perm: 'investments', group: 'Investment' },
   { to: '/staff360/investors', label: 'Investors', icon: Landmark, perm: 'investments', group: 'Investment' },
 ]
 const GROUPS = ['Manage', 'Sales', 'Procurement', 'Inventory', 'Investment']

@@ -25,6 +25,7 @@ import supplierRouter from './supplier-routes.js'
 import clientRouter from './client-routes.js'
 import investorRouter from './investor-routes.js'
 import { driver } from './store/index.js'
+import { publicContent as publicInvestContent } from './invest-content.js'
 import { renderQuotePdf } from './quote-pdf.js'
 import { authorised } from './mcp-auth.js'
 import { verifySvix, ingestReceived } from './inbound.js'
@@ -102,6 +103,10 @@ app.get('/api/posts', (req, res) =>
   send(res, () => content.listPosts({ status: req.query.status || 'published' })))
 app.get('/api/posts/:slug', (req, res) =>
   send(res, () => content.getPost(req.params.slug)))
+
+// The /invest section's pages, as published under Staff → Invest content (the built-in text where nothing was published).
+app.get('/api/invest-content', (_req, res) =>
+  send(res, () => publicInvestContent(driver === 'supabase' ? null : [])))
 
 // Site identity and contact details, edited under Settings → Site.
 app.get('/api/site', (_req, res) =>

@@ -265,6 +265,7 @@ function cleanOpportunity(input, { partial = false, existing = null } = {}) {
   if (!partial || has(input, 'tenor_months')) { row.tenor_months = Math.round(Number(input.tenor_months)); if (!(row.tenor_months >= 1 && row.tenor_months <= 600)) throw invalid('The tenor must be at least one month.') }
   if (has(input, 'expected_return_pct')) { row.expected_return_pct = input.expected_return_pct == null || input.expected_return_pct === '' ? null : Math.round(Number(input.expected_return_pct) * 1000) / 1000; if (row.expected_return_pct != null && !(row.expected_return_pct >= 0 && row.expected_return_pct <= 1000)) throw invalid('The expected return must be a percentage.') }
   if (has(input, 'return_note')) row.return_note = text(input.return_note, 1000)
+  if (has(input, 'payment_terms')) row.payment_terms = text(input.payment_terms, 2000)
   if (has(input, 'opens_at') && input.opens_at) row.opens_at = moment(input.opens_at, 'Opening date')
   if (has(input, 'closes_at')) row.closes_at = input.closes_at ? moment(input.closes_at, 'Closing date') : null
   if (has(input, 'status')) { if (!OPPORTUNITY_STATUSES.includes(input.status)) throw invalid(`status must be one of: ${OPPORTUNITY_STATUSES.join(', ')}`); row.status = input.status }
@@ -295,13 +296,19 @@ const oppRow = async idOrNumber => {
 export async function getOpportunity(idOrNumber) { const o = await oppRow(idOrNumber); if (!o) return null; const n = oppNumeric(o); return withFunds(n, await committedBy([n.id])) }
 export async function createOpportunity(input, actorId = null) {
   const row = { summary: '', description: '', return_note: '', status: 'draft', ...cleanOpportunity(input), created_by: actorId }
-  return oppNumeric(await insertNumbered('investment_opportunities', 'IO', row, input?.number, 'Opportunity'))
+  try { return oppNumeric(await insertNumbered('investment_opportunities', 'IO', row, input?.number, 'Opportunity')) }
+  catch (e) { if (!('payment_terms' in row) || !/database migration/.test(e.message)) throw e; delete row.payment_terms; return oppNumeric(await insertNumbered('investment_opportunities', 'IO', row, input?.number, 'Opportunity')) }   // before migration 022
 }
 export async function updateOpportunity(id, patch) {
   const cur = await oppRow(id); if (!cur) throw invalid('opportunity not found', 404)
   const row = cleanOpportunity(patch, { partial: true, existing: cur })
   if (!Object.keys(row).length) return oppNumeric(cur)
-  return oppNumeric(unwrap(await supabase.from('investment_opportunities').update(row).eq('id', cur.id).select().single(), 'updateOpportunity'))
+  try { return oppNumeric(unwrap(await supabase.from('investment_opportunities').update(row).eq('id', cur.id).select().single(), 'updateOpportunity')) }
+  catch (e) {
+    if (!('payment_terms' in row) || !/database migration/.test(e.message)) throw e   // before migration 022 the rest still saves
+    delete row.payment_terms
+    return Object.keys(row).length ? oppNumeric(unwrap(await supabase.from('investment_opportunities').update(row).eq('id', cur.id).select().single(), 'updateOpportunity')) : oppNumeric(cur)
+  }
 }
 export async function deleteOpportunity(id) {
   const cur = await oppRow(id); if (!cur) throw invalid('opportunity not found', 404)
@@ -325,7 +332,7 @@ export async function setDocumentLabel(id, label) {
 }
 /** What an investor sees of an opportunity: no internal fields, no other investors. */
 export const publicOpportunity = o => ({ number: o.number, title: o.title, summary: o.summary, description: o.description, currency: o.currency, min_amount: o.min_amount, tenor_months: o.tenor_months,
-  expected_return_pct: o.expected_return_pct, return_note: o.return_note, opens_at: o.opens_at, closes_at: o.closes_at, state: o.state, accepting: o.state === 'open' && (o.available == null || o.available >= Math.max(o.min_amount, 0.01)),
+  expected_return_pct: o.expected_return_pct, return_note: o.return_note, payment_terms: o.payment_terms || '', opens_at: o.opens_at, closes_at: o.closes_at, state: o.state, accepting: o.state === 'open' && (o.available == null || o.available >= Math.max(o.min_amount, 0.01)),
   capacity: o.capacity, available: o.available, filled_pct: o.capacity ? Math.min(100, Math.round(o.committed / o.capacity * 100)) : null })
 
 /* investors */

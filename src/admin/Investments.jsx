@@ -97,7 +97,7 @@ export function InvestmentsAdmin() {
 }
 
 /* ---------------------------------------------------- one opportunity --- */
-const BLANK = { title: '', summary: '', description: '', currency: 'NGN', min_amount: '', capacity: '', tenor_months: 12, expected_return_pct: '', return_note: '', opens_at: '', closes_at: '' }
+const BLANK = { title: '', summary: '', description: '', currency: 'NGN', min_amount: '', capacity: '', tenor_months: 12, expected_return_pct: '', return_note: '', payment_terms: '', opens_at: '', closes_at: '' }
 export function OpportunityForm() {
   const { id } = useParams(); const editing = id !== 'new'
   const nav = useNavigate(); const { can } = useAuth()
@@ -106,7 +106,7 @@ export function OpportunityForm() {
   const [stage, setStage] = useState(EMPTY_STAGE)      // files chosen before the opportunity exists
   const flash = useLocation().state?.flash
   useEffect(() => { if (flash) toast(flash, flash.includes('could not') ? 'error' : undefined) }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  const fill = x => setF({ title: x.title, summary: x.summary, description: x.description, currency: x.currency, min_amount: x.min_amount, capacity: x.capacity ?? '', tenor_months: x.tenor_months, expected_return_pct: x.expected_return_pct ?? '', return_note: x.return_note, opens_at: toLocalInput(x.opens_at), closes_at: toLocalInput(x.closes_at) })
+  const fill = x => setF({ title: x.title, summary: x.summary, description: x.description, currency: x.currency, min_amount: x.min_amount, capacity: x.capacity ?? '', tenor_months: x.tenor_months, expected_return_pct: x.expected_return_pct ?? '', return_note: x.return_note, payment_terms: x.payment_terms || '', opens_at: toLocalInput(x.opens_at), closes_at: toLocalInput(x.closes_at) })
   const load = useCallback(() => adminFetch(`/investment-opportunities/${id}`).then(x => { setO(x); fill(x) }).catch(e => setErr(e.message)), [id])
   useEffect(() => { if (editing) load() }, [editing, load])
   const set = k => e => setF(x => ({ ...x, [k]: e.target.value }))
@@ -146,6 +146,7 @@ export function OpportunityForm() {
             <Field label="Tenor (months) *"><Input type="number" required min="1" step="1" disabled={!edit} value={f.tenor_months} onChange={set('tenor_months')} /></Field>
             <Field label="Expected return (%)" hint="Over the whole tenor. Empty = not stated."><Input type="number" min="0" step="0.001" disabled={!edit} value={f.expected_return_pct} onChange={set('expected_return_pct')} /></Field>
             <Field label="About the return" className="md:col-span-2" hint="e.g. Paid with the principal at maturity. Returns are expected, not guaranteed."><Textarea rows={2} disabled={!edit} value={f.return_note} onChange={set('return_note')} /></Field>
+            <Field label="Payment terms" className="md:col-span-2" hint="How and when the investor pays, and how returns and principal are paid back. Shown on the opportunity."><Textarea rows={3} disabled={!edit} value={f.payment_terms} onChange={set('payment_terms')} /></Field>
             <Field label="Opening date" hint="Empty: open as soon as it is published."><Input type="datetime-local" disabled={!edit} value={f.opens_at} onChange={set('opens_at')} /></Field>
             <Field label="Closing date" hint="Empty: open until you close it."><Input type="datetime-local" disabled={!edit} value={f.closes_at} onChange={set('closes_at')} /></Field>
           </Card>

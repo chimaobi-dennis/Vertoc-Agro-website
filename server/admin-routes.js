@@ -19,6 +19,7 @@ import { refreshMcpSettings } from './mcp-auth.js'
 import procurementRoutes from './procurement-routes.js'
 import portalAdminRoutes from './portal-admin-routes.js'
 import inventoryRoutes from './inventory-routes.js'
+import investContentRoutes from './invest-content.js'
 import approvalRoutes, { amend, mayApprove, requireApproved, submitted, withAmounts, maySeeAmounts } from './approval-routes.js'
 
 const router = Router()
@@ -1039,6 +1040,7 @@ router.use(procurementRoutes)
 /* payments, investments, supplier deliveries, reports */
 router.use(portalAdminRoutes)
 router.use(inventoryRoutes)
+router.use(investContentRoutes)
 router.use(approvalRoutes)
 
 export default router

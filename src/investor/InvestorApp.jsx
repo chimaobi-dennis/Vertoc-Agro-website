@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Bell, CheckCircle2, Circle, ExternalLink, FileText, LayoutDashboard, Loader2, Megaphone, Paperclip, ShieldCheck, TrendingUp, Upload, UserRound } from 'lucide-react'
 import { openFile } from '../lib/openFile'
+import { InvestContentProvider, useInvestPage, usePortalText } from '../lib/investContent'
 import Profile from './InvestorProfile'
 import { investorPortal } from '../lib/portal'
 import { Bone } from '../components/Skeleton'
@@ -48,7 +49,6 @@ const CFG = {
 }
 const useLoad = path => { const [d, setD] = useState(null); const [err, setErr] = useState(null); const load = () => api(path).then(r => { setD(r); setErr(null) }).catch(e => setErr(e.message)); useEffect(() => { load() }, [path]); return [d, err, load] } // eslint-disable-line react-hooks/exhaustive-deps
 const Back = ({ to, children }) => <Link to={to} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6"><ArrowLeft className="w-4 h-4" />{children}</Link>
-const RISK = 'Investing puts your money at risk. Expected returns are estimates, not guarantees, and you may get back less than you put in. Read the terms of each opportunity and take independent advice if you are unsure.'
 
 function Shell() {
   const { me } = investorPortal.use()
@@ -60,6 +60,7 @@ function Shell() {
 }
 
 function OppCard({ o }) {
+  const T = usePortalText()
   return (
     <Card className="p-6 h-full flex flex-col">
       {o.image_url && <img src={o.image_url} alt="" loading="lazy" className="-mx-6 -mt-6 mb-5 w-[calc(100%+3rem)] max-w-none h-40 object-cover rounded-t-2xl" />}
@@ -72,7 +73,7 @@ function OppCard({ o }) {
         <div><dt className="text-xs text-muted-foreground">{o.state === 'upcoming' ? 'Opens' : 'Closes'}</dt><dd className="font-medium">{o.state === 'upcoming' ? fmtDay(o.opens_at) : o.closes_at ? fmtDay(o.closes_at) : 'Open until filled'}</dd></div>
       </dl>
       {o.filled_pct != null && <div className="mt-4"><div className="h-1.5 rounded-full bg-muted overflow-hidden"><div className="h-full bg-accent" style={{ width: `${o.filled_pct}%` }} /></div><p className="text-xs text-muted-foreground mt-1.5">{o.filled_pct}% subscribed{o.available != null ? ` · ${money(o.available, o.currency)} still available` : ''}</p></div>}
-      <Link to={`/investor/opportunities/${o.number}`} className={`${o.accepting ? accent : outline} mt-5`}>{o.accepting ? 'View and invest' : 'View details'}<ArrowRight className="w-4 h-4" /></Link>
+      <Link to={`/investor/opportunities/${o.number}`} className={`${o.accepting ? accent : outline} mt-5`}>{o.accepting ? T.view_button : T.details_button}<ArrowRight className="w-4 h-4" /></Link>
     </Card>
   )
 }
@@ -123,6 +124,7 @@ function KycProgress() {
 }
 
 function Dashboard() {
+  const T = usePortalText()
   const { me, refresh } = investorPortal.use()
   const [sp] = useSearchParams()
   const [opps] = useLoad('/investor/opportunities')
@@ -142,18 +144,19 @@ function Dashboard() {
       </div>
       {next && <Card className="p-5 mb-8 text-sm flex flex-wrap items-center gap-3"><TrendingUp className="w-5 h-5 text-accent" /><span className="flex-1 min-w-[14rem]">Next maturity: <b>{next.number}</b> ({money(next.amount, next.currency)}) matures on <b>{fmtDay(next.maturity_date)}</b>.</span><Link to={`/investor/investments/${next.id}`} className="font-semibold text-accent">Open</Link></Card>}
       <div className="flex items-center justify-between mb-3"><h2 className="font-semibold">Open investment opportunities</h2><Link to="/investor/opportunities" className="text-sm font-semibold text-accent inline-flex items-center gap-1">All opportunities<ArrowRight className="w-3.5 h-3.5" /></Link></div>
-      {!opps ? <Bone className="h-40 w-full rounded-2xl" /> : !open.length ? <Empty icon={Megaphone} title="No open opportunities right now">New opportunities are published here as they become available. We will notify you.</Empty> : <ul className="grid md:grid-cols-2 gap-5">{open.slice(0, 4).map(o => <li key={o.number}><OppCard o={o} /></li>)}</ul>}
+      {!opps ? <Bone className="h-40 w-full rounded-2xl" /> : !open.length ? <Empty icon={Megaphone} title={T.empty_title}>{T.empty_text}</Empty> : <ul className="grid md:grid-cols-2 gap-5">{open.slice(0, 4).map(o => <li key={o.number}><OppCard o={o} /></li>)}</ul>}
     </>
   )
 }
 
 function Opportunities() {
+  const T = usePortalText()
   const [rows, err] = useLoad('/investor/opportunities')
   const [sorted, sortControl] = useSort(rows, { date: 'opens_at', name: 'title', more: [{ key: 'min', label: 'Minimum amount, lowest first', get: 'min_amount' }, { key: 'return', label: 'Expected return, highest first', get: 'expected_return_pct', desc: true }, { key: 'tenor', label: 'Tenor, shortest first', get: 'tenor_months' }, { key: 'closes', label: 'Closing date, soonest first', get: 'closes_at' }] })
   if (err) return <Problem>{err}</Problem>
   if (!rows) return <Bone className="h-40 w-full rounded-2xl" />
   if (!rows.length) return <Empty icon={Megaphone} title="No opportunities yet">New opportunities are published here as they become available.</Empty>
-  return <><div className="flex items-center justify-between gap-3 mb-3"><h1 className="font-semibold text-lg">Investment opportunities</h1>{sortControl}</div><ul className="grid md:grid-cols-2 gap-5">{sorted.map(o => <li key={o.number}><OppCard o={o} /></li>)}</ul><p className="text-xs text-muted-foreground mt-6 max-w-3xl">{RISK}</p></>
+  return <><div className="flex items-center justify-between gap-3 mb-3"><h1 className="font-semibold text-lg">Investment opportunities</h1>{sortControl}</div><ul className="grid md:grid-cols-2 gap-5">{sorted.map(o => <li key={o.number}><OppCard o={o} /></li>)}</ul><p className="text-xs text-muted-foreground mt-6 max-w-3xl whitespace-pre-line">{T.risk_notice}</p></>
 }
 
 /** The papers of an opportunity, by their names. Each opens from a blob in a new tab, like the invoices. */
@@ -169,6 +172,7 @@ function DocLinks({ docs, read, title }) {
 }
 
 function Opportunity() {
+  const T = usePortalText()
   const { number } = useParams(); const nav = useNavigate()
   const { me } = investorPortal.use()
   const [o, err] = useLoad(`/investor/opportunities/${number}`)
@@ -182,7 +186,7 @@ function Opportunity() {
     try { const r = await api(`/investor/opportunities/${number}/invest`, { method: 'POST', body: f }); nav(`/investor/investments/${r.id}?new=1`) } catch (x) { setProblem(x.message) } finally { setBusy(false) }
   }
   const docs = o.documents || []
-  const agreed = docs.length ? `I have read the ${sentence(docs.map(docName))} and accept these terms. I understand that returns are expected, not guaranteed.` : 'I have read the terms of this opportunity and understand that returns are expected, not guaranteed.'
+  const agreed = docs.length ? `${T.agree_prefix} ${sentence(docs.map(docName))} ${T.agree_suffix}` : T.agree_fallback
   const read = async d => { try { await openFile(() => api(`/investor/opportunities/${number}/documents/${d.id}/url`).then(r => ({ url: r.url, name: d.name, type: d.content_type }))) } catch (x) { setProblem(x.message) } }
   return (
     <>
@@ -199,6 +203,7 @@ function Opportunity() {
               <div><dt className="text-xs text-muted-foreground">{o.state === 'upcoming' ? 'Opens' : 'Closes'}</dt><dd className="font-semibold mt-0.5">{o.state === 'upcoming' ? fmtDay(o.opens_at) : o.closes_at ? fmtDay(o.closes_at) : 'Open until filled'}</dd></div>
             </dl>
             {o.filled_pct != null && <div className="mt-5"><div className="h-2 rounded-full bg-muted overflow-hidden"><div className="h-full bg-accent" style={{ width: `${o.filled_pct}%` }} /></div><p className="text-xs text-muted-foreground mt-1.5">{o.filled_pct}% of {money(o.capacity, o.currency)} subscribed · {money(o.available, o.currency)} still available</p></div>}
+            {o.payment_terms && <div className="mt-5"><p className="text-xs text-muted-foreground">Payment terms</p><p className="text-sm whitespace-pre-line mt-0.5">{o.payment_terms}</p></div>}
             {o.return_note && <p className="mt-5 rounded-xl bg-secondary/60 border border-border px-4 py-3 text-sm whitespace-pre-line">{o.return_note}</p>}
           </Card>
           {(o.summary || o.description) && <Card className="p-6"><h2 className="font-semibold mb-3">About this opportunity</h2>{o.summary && <p className="text-sm font-medium mb-3">{o.summary}</p>}<p className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">{o.description}</p></Card>}
@@ -211,15 +216,15 @@ function Opportunity() {
               {me.kyc_status !== 'verified' && <p className="text-xs rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-3 py-2">Your identity is not verified yet. You can apply now; we approve the investment once your <Link to="/investor/profile" className="font-semibold text-accent">identification</Link> has been checked.</p>}
               <label className="block"><Label>Amount to invest ({o.currency}) *</Label><input required type="number" min={o.min_amount || 0.01} max={o.available ?? undefined} step="0.01" inputMode="decimal" className={input} value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} /><span className="block text-xs text-muted-foreground mt-1.5">Minimum {money(o.min_amount, o.currency)}{o.available != null ? ` · up to ${money(o.available, o.currency)}` : ''}.{expected != null ? ` Expected return: ${money(expected, o.currency)} after ${tenor(o.tenor_months)}.` : ''}</span></label>
               <label className="block"><Label hint="(optional)">Note to our team</Label><textarea rows={2} maxLength={2000} className={input} value={f.note} onChange={e => setF({ ...f, note: e.target.value })} /></label>
-              {docs.length > 0 && <DocLinks docs={docs} read={read} title="Read before you apply" />}
+              {docs.length > 0 && <DocLinks docs={docs} read={read} title={T.docs_title} />}
               <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={f.confirmed} onChange={e => setF({ ...f, confirmed: e.target.checked })} /><span>{agreed}</span></label>
-              <button type="submit" disabled={busy || !f.confirmed} className={`${accent} w-full`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />}{busy ? 'Sending…' : 'Apply to invest'}</button>
-              <p className="text-xs text-muted-foreground">Your application goes to our team for approval. We then send you the payment details; the investment starts once your payment is confirmed.</p>
+              <button type="submit" disabled={busy || !f.confirmed} className={`${accent} w-full`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />}{busy ? 'Sending…' : T.apply_button}</button>
+              <p className="text-xs text-muted-foreground">{T.payment_note}</p>
             </form>
           )}
         </Card>
       </div>
-      <p className="text-xs text-muted-foreground mt-8 max-w-3xl">{RISK}</p>
+      <p className="text-xs text-muted-foreground mt-8 max-w-3xl whitespace-pre-line">{T.risk_notice}</p>
     </>
   )
 }
@@ -295,7 +300,14 @@ function Investment() {
 const NotHere = () => <Page><div className="text-center py-24"><h1 className="font-serif text-3xl font-bold mb-3">Page not found</h1><p className="text-muted-foreground">Back to your <Link to="/investor" className="text-accent font-semibold">dashboard</Link>.</p></div></Page>
 function Notes() { const { refresh } = investorPortal.use(); return <><h1 className="font-semibold text-lg mb-3">Notifications</h1><Notifications api={api} path="/investor/notifications" onRead={refresh} /></> }
 
-export default function InvestorApp() {
+/** The sign-in and registration pages take their words, and the terms link, from the managed content. */
+function useCfg() {
+  const reg = useInvestPage('register').page, terms = useInvestPage('terms').page
+  const c = reg?.visible ? reg.content : null
+  return c ? { ...CFG, eyebrow: c.eyebrow || CFG.eyebrow, loginText: c.login_text || CFG.loginText, registerTitle: c.register_title || CFG.registerTitle, registerText: c.register_text || CFG.registerText, registerNote: c.register_note ?? CFG.registerNote, termsHref: terms?.visible && c.terms_link ? c.terms_link : null, termsLabel: c.terms_label } : { ...CFG, termsHref: terms?.visible ? '/invest/terms' : null, termsLabel: 'Read the investor terms and conditions' }
+}
+function Routed() {
+  const CFG = useCfg()
   return (
     <investorPortal.Provider>
       <Routes>
@@ -318,3 +330,4 @@ export default function InvestorApp() {
     </investorPortal.Provider>
   )
 }
+export default function InvestorApp() { return <InvestContentProvider><Routed /></InvestContentProvider> }

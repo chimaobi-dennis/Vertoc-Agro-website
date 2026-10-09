@@ -100,6 +100,7 @@ export function PortalRegister({ cfg }) {
               <label className="block"><Label>Password again *</Label><PasswordInput required minLength={8} maxLength={72} autoComplete="new-password" className={input} value={f.again} onChange={set('again')} /></label>
             </div>
             {cfg.registerNote && <p className="text-xs text-muted-foreground">{cfg.registerNote}</p>}
+            {cfg.termsHref && <p className="text-sm"><a href={cfg.termsHref} target="_blank" rel="noreferrer" className="font-semibold text-accent">{cfg.termsLabel || 'Read the terms and conditions'}</a></p>}
             <div className="hidden" aria-hidden="true"><label htmlFor={`website-${cfg.portal.kind}`}>Leave this field blank</label><input id={`website-${cfg.portal.kind}`} type="text" tabIndex={-1} autoComplete="off" value={f.website} onChange={set('website')} /></div>
             <Turnstile onVerify={setToken} />
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
